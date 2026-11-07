@@ -37,10 +37,11 @@ function listaSqlSoloAdmin(sql: string): string[] | null {
   return null
 }
 
-// PERMISOS_SOLO_ADMIN = [ ... ] de un archivo TS, o null si no lo declara
-function listaTs(ruta: string): string[] | null {
-  if (!existsSync(ruta)) return null
-  const m = /PERMISOS_SOLO_ADMIN[^=]*=\s*\[([\s\S]*?)\]/.exec(readFileSync(ruta, 'utf8'))
+// PERMISOS_SOLO_ADMIN = [ ... ] de un texto TS, o null si no la declara con
+// esa forma. Solo se salta la comparación si el archivo no existe: si existe
+// y la lista no se lee, la prueba falla (no se compara en silencio).
+function listaTs(texto: string): string[] | null {
+  const m = /PERMISOS_SOLO_ADMIN[^=]*=\s*\[([\s\S]*?)\]/.exec(texto)
   return m ? [...m[1].matchAll(/'([^']*)'/g)].map((x) => x[1]) : null
 }
 
@@ -59,11 +60,21 @@ describe('permisos_solo_admin() de 01-seguridad.sql', () => {
   })
 
   for (const ruta of ['src/types.ts', 'netlify/lib/autorizacion.mts']) {
-    const ts = listaTs(RAIZ + ruta)
-    it.skipIf(ts === null)(`coincide con PERMISOS_SOLO_ADMIN de ${ruta}`, () => {
+    it.skipIf(!existsSync(RAIZ + ruta))(`coincide con PERMISOS_SOLO_ADMIN de ${ruta}`, () => {
+      const ts = listaTs(readFileSync(RAIZ + ruta, 'utf8'))
+      expect(ts, `${ruta} existe pero PERMISOS_SOLO_ADMIN no se lee como = [ ... ]`).not.toBeNull()
       expect(ordenada(ts!)).toEqual(ordenada(SQL!))
     })
   }
+})
+
+describe('lectura de PERMISOS_SOLO_ADMIN desde TS', () => {
+  it('lee el arreglo literal y da null con otra forma, que la prueba de arriba convierte en fallo', () => {
+    expect(listaTs("export const PERMISOS_SOLO_ADMIN: readonly string[] = ['manage_roles', 'view_mail']")).toEqual(['manage_roles', 'view_mail'])
+    expect(listaTs("export const PERMISOS_SOLO_ADMIN = new Set(['manage_roles'])")).toBeNull()
+    expect(listaTs("export { PERMISOS_SOLO_ADMIN } from './x'")).toBeNull()
+    expect(listaTs("export const SOLO_ADMIN = ['manage_roles']")).toBeNull()
+  })
 })
 
 describe('lectura de permisos_solo_admin() desde el SQL', () => {
