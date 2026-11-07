@@ -107,6 +107,9 @@ begin
   exception when others then v := sqlstate;
   end;
   reset role;
+  -- auth.uid() lee el claim aunque el rol sea postgres: sin borrarlo, las
+  -- altas de abajo pasarían por roles_guard_escalada como el miembro
+  perform set_config('request.jwt.claims', '', true);
   select count(*) into v_n from public.profiles where id = v_miembro and (role = 'admin' or es_servicio);
   r := r || E'\n' || case when v_n = 0 then 'OK      ' else 'FALLA   ' end || '1.3   miembro cambia su profiles.role y es_servicio → sin cambio · ' || v || ' / ' || v_n || ' cambiados';
 
@@ -114,6 +117,7 @@ begin
   insert into public.roles (name, permissions, position) values ('prueba-rls-gestor', array['manage_roles'], 50);
   insert into public.roles (name, permissions, position) values ('prueba-rls-otro', '{}', 20);
   insert into public.user_roles (user_id, role) values (v_miembro, 'prueba-rls-gestor');
+  perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal1')::text, true);
   set local role authenticated;
 
   begin
@@ -405,6 +409,26 @@ begin
     exception when others then v := v || ' / ' || sqlstate;
     end;
     r := r || E'\n' || case when v = '23514 / 23514' then 'OK      ' else 'FALLA   ' end || '5.6   admin guarda un valor que no es #rrggbb o una clave ajena → 23514 / 23514 · ' || v;
+
+    begin
+      update public.instalacion set zona_horaria = 'Bogota' where id = 1;
+      v := 'actualizó';
+    exception when others then v := sqlstate;
+    end;
+    r := r || E'\n' || case when v = '23514' then 'OK      ' else 'FALLA   ' end || '5.7   admin guarda una zona horaria que no existe → 23514 · ' || v;
+
+    if v_miembro is null then
+      r := r || E'\nOMITIDO 5.8   admin cambia es_servicio · falta la cuenta miembro';
+    else
+      begin
+        update public.profiles set es_servicio = true where id = v_miembro;
+        v := 'actualizó';
+      exception when others then v := sqlstate;
+      end;
+      reset role;
+      select count(*) into v_n from public.profiles where id = v_miembro and es_servicio;
+      r := r || E'\n' || case when v_n = 0 then 'OK      ' else 'FALLA   ' end || '5.8   admin marca a un miembro como cuenta de servicio → sin cambio · ' || v || ' / ' || v_n || ' cambiados';
+    end if;
     reset role;
   end if;
   perform set_config('request.jwt.claims', '', true);
@@ -534,12 +558,15 @@ begin
 end $$;
 
 -- ============ 7) Límite de miembros (trigger de respaldo) ============
+-- profiles_limite_miembros es diferido: cada caso lo dispara con SET
+-- CONSTRAINTS … IMMEDIATE dentro de su bloque, como haría el COMMIT del alta.
 do $$
 declare
   r text := '';
   v text;
   v_n bigint;
   v_n2 bigint;
+  v_id uuid;
 begin
   if current_setting('rls.txid', true) is distinct from txid_current()::text then
     raise exception 'rls-simulacion: correr el archivo entero de una vez (BEGIN … ROLLBACK), no una sección suelta';
@@ -551,36 +578,61 @@ begin
   -- Las altas de Auth crean el perfil (handle_new_user) y el trigger lo frena
   begin
     insert into auth.users (id, aud, role) values (gen_random_uuid(), 'authenticated', 'authenticated');
+    set constraints public.profiles_limite_miembros immediate;
     v := 'entró';
   exception when others then v := case when sqlerrm like 'limite_miembros%' then 'limite_miembros' else sqlstate end;
   end;
+  set constraints public.profiles_limite_miembros deferred;
   r := r || E'\n' || case when v = 'limite_miembros' then 'OK      ' else 'FALLA   ' end || '7.1   alta con el cupo lleno → limite_miembros · ' || v;
 
+  -- Orden de la API Admin de Auth: el usuario entra sin es_servicio y el
+  -- app_metadata del cuerpo llega después con un UPDATE
   begin
+    v_id := gen_random_uuid();
     insert into auth.users (id, aud, role, raw_app_meta_data)
-    values (gen_random_uuid(), 'authenticated', 'authenticated', '{"es_servicio": true}');
+    values (v_id, 'authenticated', 'authenticated', '{"provider": "email", "providers": ["email"]}');
+    update auth.users set raw_app_meta_data = raw_app_meta_data || '{"es_servicio": true}' where id = v_id;
+    set constraints public.profiles_limite_miembros immediate;
     v := 'entró';
   exception when others then v := case when sqlerrm like 'limite_miembros%' then 'limite_miembros' else sqlstate end;
   end;
+  set constraints public.profiles_limite_miembros deferred;
   select count(*) into v_n2 from public.profiles where not es_servicio;
   r := r || E'\n' || case when v = 'entró' and v_n2 = v_n then 'OK      ' else 'FALLA   ' end
-         || '7.2   alta de una cuenta de servicio con el cupo lleno → entró y no cuenta · ' || v || ' / ' || (v_n2 - v_n) || ' miembros de más';
+         || '7.2   alta de una cuenta de servicio por la API Admin con el cupo lleno → entró y no cuenta · ' || v || ' / ' || (v_n2 - v_n) || ' miembros de más';
 
   update public.modulos_instalacion set limites = limites || jsonb_build_object('miembros', v_n + 1) where slug = 'nucleo';
   begin
     insert into auth.users (id, aud, role) values (gen_random_uuid(), 'authenticated', 'authenticated');
+    set constraints public.profiles_limite_miembros immediate;
     v := 'entró';
   exception when others then v := case when sqlerrm like 'limite_miembros%' then 'limite_miembros' else sqlstate end;
   end;
+  set constraints public.profiles_limite_miembros deferred;
   r := r || E'\n' || case when v = 'entró' then 'OK      ' else 'FALLA   ' end || '7.3   alta con un cupo libre → entró · ' || v;
 
   update public.modulos_instalacion set limites = limites || '{"miembros": null}' where slug = 'nucleo';
   begin
     insert into auth.users (id, aud, role) values (gen_random_uuid(), 'authenticated', 'authenticated');
+    set constraints public.profiles_limite_miembros immediate;
     v := 'entró';
   exception when others then v := case when sqlerrm like 'limite_miembros%' then 'limite_miembros' else sqlstate end;
   end;
+  set constraints public.profiles_limite_miembros deferred;
   r := r || E'\n' || case when v = 'entró' then 'OK      ' else 'FALLA   ' end || '7.4   alta sin límite (null) → entró · ' || v;
+
+  begin
+    v_id := gen_random_uuid();
+    insert into auth.users (id, aud, role, raw_app_meta_data)
+    values (v_id, 'authenticated', 'authenticated', '{"provider": "email", "providers": ["email"]}');
+    update auth.users set raw_app_meta_data = raw_app_meta_data || '{"es_servicio": true}' where id = v_id;
+    set constraints public.profiles_limite_miembros immediate;
+    select count(*) into v_n2 from public.profiles where id = v_id and es_servicio;
+    v := v_n2::text;
+  exception when others then v := sqlstate;
+  end;
+  set constraints public.profiles_limite_miembros deferred;
+  r := r || E'\n' || case when v = '1' then 'OK      ' else 'FALLA   ' end || '7.5   cuenta de servicio sin límite (null) → nace con es_servicio · ' || v;
 
   perform set_config('rls.res', current_setting('rls.res') || r, true);
 end $$;

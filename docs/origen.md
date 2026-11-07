@@ -33,7 +33,7 @@ Nombres de tabla y columna que el producto cambia respecto de team-portal (por d
 |---|---|---|---|
 | portal_apps | tabla de apps con «Visible para» | no viaja | Sin iframe no hay URL que registrar; nombre, icono y orden salen de src/lib/modulos.ts (puede_ver_app v2 llega en 04) |
 | roles.funcion | no existe (team-portal busca roles por nombre: leads, perdidas, bot, claude-dev) | text null con check aviso_leads, aviso_perdidas o qa y un rol por función | TP-6 de serie; bot no viaja. El freno de escalada protege is_system o funcion not null |
-| profiles.es_servicio | no existe (cuentas de servicio por lista de correos) | boolean not null default false; solo lo cambia un administrador o la service role | TP-6 de serie; cuentas_servicio_ids() la lee |
+| profiles.es_servicio | no existe (cuentas de servicio por lista de correos) | boolean not null default false; solo lo cambia la service role o el SQL Editor (un administrador no, para no saltar nucleo.miembros) | TP-6 de serie; cuentas_servicio_ids() la lee |
 | connectors.url | text sin check | check http(s) sin espacios, comillas ni < > | Es el href de «Abrir»: nunca javascript: ni data: |
 | instalacion | no existe (los datos de la empresa viven en el código) | fila única id = 1 con nombre, país, moneda, tema, logos y ajustes | Un producto por cliente necesita sus datos en la base |
 | modulos_instalacion | no existe | slug, activo, limites, activado_en, actualizado_en; solo la escribe el instalador | Módulos a la carta (PP-DEC-04) |

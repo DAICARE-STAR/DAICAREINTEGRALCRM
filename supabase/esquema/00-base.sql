@@ -29,7 +29,7 @@
 --   | get_my_role, shares_role   | acepta nombres de rol y claves de permiso)                 |
 --   | handle_new_user            | crea el perfil al crear el usuario en Auth                 |
 --   | guard_profile_role         | profiles.role solo lo cambia la sincronización;            |
---   |                            | es_servicio solo un administrador o la service role        |
+--   |                            | es_servicio solo la service role o el SQL Editor           |
 --   | user_roles_sync_trg        | mantiene la caché profiles.role                            |
 --   | semilla                    | roles admin y member (de sistema); nada más                |
 --
@@ -293,8 +293,10 @@ create trigger user_roles_sync_trg
   for each row execute function public.user_roles_sync();
 
 -- profiles.role se deriva de user_roles: un cambio a mano se ignora (salvo
--- la sincronización). es_servicio solo lo cambia un administrador, la
--- service role o el SQL Editor (sin auth.uid()); para los demás se ignora.
+-- la sincronización). es_servicio solo lo cambia la service role o el SQL
+-- Editor (sin auth.uid()); para los demás, también un administrador, se
+-- ignora: si no, marcar y desmarcar una cuenta saltaría nucleo.miembros
+-- (PP-DEC-04, que solo fija quien instala).
 create or replace function public.guard_profile_role()
 returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
 begin
@@ -303,7 +305,7 @@ begin
     new.role := old.role;
   end if;
   if new.es_servicio is distinct from old.es_servicio
-     and auth.uid() is not null and not public.is_admin() then
+     and auth.uid() is not null then
     new.es_servicio := old.es_servicio;
   end if;
   return new;

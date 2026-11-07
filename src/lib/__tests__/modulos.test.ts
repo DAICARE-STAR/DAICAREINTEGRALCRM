@@ -138,6 +138,10 @@ describe('helpers puros', () => {
     expect(validarLimites(NUCLEO, { miembros: '10' }).ok).toBe(false)
     expect(validarLimites(NUCLEO, { miembros: -1 }).ok).toBe(false)
     expect(validarLimites(NUCLEO, { miembros: 2.5 }).ok).toBe(false)
+    // Más allá de 2^53 − 1 (y de bigint) se rechaza: limite_modulo fallaría en cada alta
+    expect(validarLimites(NUCLEO, { miembros: Number.MAX_SAFE_INTEGER }).ok).toBe(true)
+    expect(validarLimites(NUCLEO, { miembros: 1e19 }).ok).toBe(false)
+    expect(validarLimites(NUCLEO, { miembros: Number.MAX_VALUE }).ok).toBe(false)
     expect(validarLimites('licitaciones', { fuentes: ['secop', 'mercadopublico'] }).ok).toBe(true)
     expect(validarLimites('licitaciones', { fuentes: 'secop' }).ok).toBe(false)
     expect(validarLimites('licitaciones', { fuentes: [1] }).ok).toBe(false)

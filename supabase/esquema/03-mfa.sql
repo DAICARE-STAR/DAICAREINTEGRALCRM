@@ -59,7 +59,9 @@ grant execute on function public.mfa_ok() to authenticated;
 
 -- ============ 2) Política restrictiva en toda tabla que no la tenga ============
 -- Solo aplica a authenticated: anon y service_role no pasan por aquí. No
--- reescribe una política exigir_mfa que ya exista. Sin security definer:
+-- reescribe una política exigir_mfa restrictiva que ya exista; una
+-- permisiva con ese nombre no exige nada y abre la tabla (se suma con OR),
+-- así que se borra y se crea la restrictiva. Sin security definer:
 -- crear políticas exige ser dueño de la tabla, así que solo funciona para
 -- quien instala.
 create or replace function public.aplicar_exigir_mfa()
@@ -74,9 +76,10 @@ begin
      where n.nspname = 'public' and c.relkind in ('r', 'p')
        and not exists (select 1 from pg_catalog.pg_policies p
                         where p.schemaname = 'public' and p.tablename = c.relname
-                          and p.policyname = 'exigir_mfa')
+                          and p.policyname = 'exigir_mfa' and p.permissive = 'RESTRICTIVE')
      order by c.relname
   loop
+    execute format('drop policy if exists exigir_mfa on public.%I', t.relname);
     execute format(
       'create policy exigir_mfa on public.%I as restrictive for all to authenticated using ((select public.mfa_ok()))',
       t.relname);
@@ -86,7 +89,8 @@ begin
   if to_regclass('storage.objects') is not null
      and not exists (select 1 from pg_catalog.pg_policies p
                       where p.schemaname = 'storage' and p.tablename = 'objects'
-                        and p.policyname = 'exigir_mfa') then
+                        and p.policyname = 'exigir_mfa' and p.permissive = 'RESTRICTIVE') then
+    execute 'drop policy if exists exigir_mfa on storage.objects';
     execute 'create policy exigir_mfa on storage.objects as restrictive for all to authenticated using ((select public.mfa_ok()))';
     v_n := v_n + 1;
   end if;

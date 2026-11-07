@@ -232,10 +232,11 @@ returns jsonb language sql stable security definer set search_path = public, pg_
        where n.nspname = 'public' and c.relkind in ('r', 'p') and c.relrowsecurity
          and not exists (select 1 from pg_catalog.pg_policies pp
                           where pp.schemaname = 'public' and pp.tablename = c.relname
-                            and pp.policyname = 'exigir_mfa')),
+                            and pp.policyname = 'exigir_mfa' and pp.permissive = 'RESTRICTIVE')),
     'storage_exigir_mfa', exists (
       select 1 from pg_catalog.pg_policies pp
-       where pp.schemaname = 'storage' and pp.tablename = 'objects' and pp.policyname = 'exigir_mfa'),
+       where pp.schemaname = 'storage' and pp.tablename = 'objects' and pp.policyname = 'exigir_mfa'
+         and pp.permissive = 'RESTRICTIVE'),
     'cambios_24h', (
       select coalesce(jsonb_object_agg(x.action, x.n), '{}'::jsonb)
         from (select a.action, count(*) as n

@@ -112,10 +112,10 @@ describe('esquema consolidado: tablas', () => {
     expect(base).toMatch(/create\s+unique\s+index\s+if\s+not\s+exists\s+roles_funcion_unica\s+on\s+public\.roles\s*\(funcion\)\s+where\s+funcion\s+is\s+not\s+null/i)
   })
 
-  it('profiles trae es_servicio y el freno solo deja cambiarlo a un administrador o sin sesión', () => {
+  it('profiles trae es_servicio y el freno solo deja cambiarlo sin sesión (ni un administrador: saltaría nucleo.miembros)', () => {
     const base = archivos.find((a) => a.nombre === '00-base.sql')!.sql
     expect(base).toMatch(/es_servicio\s+boolean\s+not\s+null\s+default\s+false/i)
-    expect(base).toMatch(/new\.es_servicio is distinct from old\.es_servicio\s+and auth\.uid\(\) is not null and not public\.is_admin\(\)/i)
+    expect(base).toMatch(/new\.es_servicio is distinct from old\.es_servicio\s+and auth\.uid\(\) is not null then\s+new\.es_servicio := old\.es_servicio;/i)
   })
 
   it('las semillas son solo los roles de sistema admin y member', () => {
@@ -196,6 +196,10 @@ describe('esquema consolidado: funciones', () => {
     expect(mfa).not.toMatch(/function\s+public\.aplicar_exigir_mfa\(\)[^$]*security\s+definer/i)
     expect(mfa).toMatch(/revoke\s+execute\s+on\s+function\s+public\.aplicar_exigir_mfa\(\)\s+from\s+public,\s*anon,\s*authenticated,\s*service_role/i)
     expect(mfa).toMatch(/select\s+public\.aplicar_exigir_mfa\(\);/i)
+    // Una exigir_mfa permisiva no exige nada y abre la tabla: solo cuenta la restrictiva y la otra se reemplaza
+    expect(cuerpo.match(/p\.policyname = 'exigir_mfa' and p\.permissive = 'RESTRICTIVE'/g)?.length).toBe(2)
+    expect(cuerpo).toMatch(/drop policy if exists exigir_mfa on public\.%I/)
+    expect(cuerpo).toMatch(/drop policy if exists exigir_mfa on storage\.objects/)
   })
 })
 
@@ -236,6 +240,16 @@ describe('esquema consolidado: 04-instalacion-modulos', () => {
     expect(sql).not.toMatch(/portal_apps/i)
   })
 
+  it('limite_modulo acota el número al rango de bigint antes del cast', () => {
+    expect(cuerpo('limite_modulo')).toMatch(/greatest\(least\(floor\(\(m\.limites ->> p_clave\)::numeric\), 9223372036854775807\), 0\)::bigint/)
+  })
+
+  it('instalacion.zona_horaria solo admite zonas de pg_timezone_names', () => {
+    expect(sql).toMatch(/zona_horaria text not null default 'America\/Bogota'\s+constraint instalacion_zona_check check \(public\.zona_horaria_valida\(zona_horaria\)\)/i)
+    expect(cuerpo('zona_horaria_valida')).toMatch(/from pg_catalog\.pg_timezone_names z where z\.name = p_zona/)
+    expect(sql).toMatch(/grant\s+execute\s+on\s+function\s+public\.zona_horaria_valida\(text\)\s+to\s+authenticated,\s*service_role/i)
+  })
+
   it('modulos_consumo es solo para un administrador', () => {
     expect(cuerpo('modulos_consumo')).toMatch(/if not public\.is_admin\(\) then\s+raise exception[^;]*errcode = '42501'/i)
   })
@@ -265,11 +279,15 @@ describe('esquema consolidado: 04-instalacion-modulos', () => {
   it('el trigger de miembros no cuenta las cuentas de servicio y la semilla trae nucleo con miembros = 10 (PP-LIM)', () => {
     const c = cuerpo('profiles_limite_miembros')
     expect(c).toMatch(/public\.limite_modulo\('nucleo', 'miembros'\)/)
-    expect(c).toMatch(/new\.es_servicio/)
-    expect(c).toMatch(/raw_app_meta_data ->> 'es_servicio', ''\) = 'true'\) then\s+new\.es_servicio := true;/)
+    // es_servicio de app_metadata se marca antes de mirar el límite (también sin límite)
+    expect(c).toMatch(/raw_app_meta_data ->> 'es_servicio', ''\) = 'true'\) then\s+update public\.profiles set es_servicio = true where id = new\.id;/)
+    expect(c.indexOf("raw_app_meta_data ->> 'es_servicio'")).toBeLessThan(c.indexOf("limite_modulo('nucleo', 'miembros')"))
     expect(c).toMatch(/where not p\.es_servicio/)
-    expect(c).toMatch(/raise exception 'limite_miembros/)
-    expect(sql).toMatch(/create\s+trigger\s+profiles_limite_miembros\s+before\s+insert\s+on\s+public\.profiles/i)
+    // Al confirmar, el perfil nuevo ya está contado
+    expect(c).toMatch(/if v_n > v_limite then\s+raise exception 'limite_miembros/)
+    // Diferido: la API Admin de Auth escribe app_metadata después del INSERT, en la misma transacción
+    expect(sql).toMatch(/create\s+constraint\s+trigger\s+profiles_limite_miembros\s+after\s+insert\s+on\s+public\.profiles\s+deferrable\s+initially\s+deferred/i)
+    expect(sql).toMatch(/tgdeferrable and tginitdeferred/)
     expect(sql).toMatch(/values \('nucleo', true, '\{"miembros": 10\}'\)\s+on conflict \(slug\) do nothing/i)
   })
 })
@@ -297,10 +315,36 @@ describe('supabase/pruebas/rls-simulacion.sql', () => {
     for (const s of secciones) expect(s).toMatch(/current_setting\('rls\.txid', true\) is distinct from txid_current\(\)::text then\s+raise exception/)
   })
 
+  it('la sección 1 borra los claims del miembro antes de crear los roles de prueba como postgres', () => {
+    const s1 = bloques.find((b) => b.startsWith('-- ============ 1) '))!
+    const alta = s1.indexOf("insert into public.roles (name, permissions, position) values ('prueba-rls-gestor'")
+    const ultimoReset = s1.lastIndexOf('reset role;', alta)
+    expect(alta).toBeGreaterThan(-1)
+    expect(s1.slice(ultimoReset, alta)).toContain("perform set_config('request.jwt.claims', '', true);")
+  })
+
+  it('la sección 7 dispara el trigger diferido en cada caso y sigue el orden de la API Admin de Auth', () => {
+    const s7 = bloques.find((b) => b.startsWith('-- ============ 7) '))!
+    expect(s7.match(/set constraints public\.profiles_limite_miembros immediate;/g)?.length).toBe(5)
+    expect(s7.match(/set constraints public\.profiles_limite_miembros deferred;/g)?.length).toBe(5)
+    expect(s7).toMatch(/update auth\.users set raw_app_meta_data = raw_app_meta_data \|\| '\{"es_servicio": true\}'/)
+  })
+
   it('no lleva marca, correos ni emojis de una instalación', () => {
     expect(sim).not.toMatch(/luce/i)
     expect(sim).not.toMatch(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z0-9.-]+/)
     expect(sim).not.toMatch(/\p{Extended_Pictographic}/u)
+  })
+})
+
+describe('exigir_mfa restrictiva en las comprobaciones', () => {
+  it('verificar.sql y seguridad_resumen() solo dan por buena una exigir_mfa restrictiva', () => {
+    const verificar = readFileSync(CARPETA + 'verificar.sql', 'utf8')
+    const sinMfa = /sin_mfa as \(([\s\S]*?)\n\),/.exec(verificar)![1]
+    expect(sinMfa).toMatch(/p\.policyname = 'exigir_mfa'\s+and p\.permissive = 'RESTRICTIVE'/)
+    const auditoria = archivos.find((a) => a.nombre === '02-auditoria.sql')!.sql
+    const resumen = /function\s+public\.seguridad_resumen\(\)[\s\S]*?\$\$([\s\S]*?)\$\$/i.exec(auditoria)![1]
+    expect(resumen.match(/policyname = 'exigir_mfa'\s+and pp\.permissive = 'RESTRICTIVE'/g)?.length).toBe(2)
   })
 })
 

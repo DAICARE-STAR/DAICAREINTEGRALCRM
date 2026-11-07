@@ -381,6 +381,8 @@ describe('aplicar.mjs: --verificar', () => {
     expect(malas[1].detalle).toMatch(/ia_dia_equipo/)
     expect(malas[2].detalle).toBe('cotizador activo sin productos')
     expect(comprobarModulos([])[0].detalle).toBe('nucleo no está activo')
+    // Un límite mayor que bigint no sale OK: limite_modulo fallaría en cada alta
+    expect(estados([{ slug: 'nucleo', activo: true, limites: { miembros: 1e19 } }])[1]).toBe('DIFIERE')
   })
 
   it('--verificar sale con 2 si la base no tiene el esquema del instalador, sin crearlo', async () => {

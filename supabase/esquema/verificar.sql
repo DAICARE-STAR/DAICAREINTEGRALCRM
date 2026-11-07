@@ -31,6 +31,7 @@ sin_mfa as (
   where not exists (
     select 1 from pg_policies p
     where p.schemaname = 'public' and p.tablename = t.relname and p.policyname = 'exigir_mfa'
+      and p.permissive = 'RESTRICTIVE'
   )
 ),
 definer_anon as (
@@ -93,7 +94,7 @@ select orden, comprobacion, estado, detalle from (
          else coalesce((select string_agg(relname, ', ' order by relname) from sin_rls), '') end as detalle
   union all
   select 2,
-    'tablas de public con la política exigir_mfa',
+    'tablas de public con la política exigir_mfa restrictiva',
     case when not (select existe from mfa) then 'OMITIDO'
          when (select count(*) from sin_mfa) = 0 then 'OK'
          else 'DIFIERE' end,

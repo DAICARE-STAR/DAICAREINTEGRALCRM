@@ -24,6 +24,7 @@
 --   |----------------------------|------------------------------------------------------------|
 --   | tema_valido(jsonb)         | tema con claves de la lista de primitivas de color y       |
 --   |                            | valores #rrggbb (frena la inyección de CSS)                |
+--   | zona_horaria_valida(text)  | zona de pg_timezone_names (at time zone no falla después)  |
 --   | instalacion                | fila única id = 1: nombre, país, moneda, tema, logos y     |
 --   |                            | ajustes; la leen todos, la cambia solo un administrador    |
 --   | modulos_instalacion        | un módulo por fila con activo y limites; solo lectura      |
@@ -34,7 +35,8 @@
 --   | aplicar_politica_modulo    | política restrictiva modulo_<slug> en una tabla de módulo; |
 --   |                            | solo el dueño (archivos de módulo 10 en adelante)          |
 --   | modulos_consumo()          | miembros, almacenamiento, IA y uso (solo administrador)    |
---   | profiles_limite_miembros   | respaldo del límite de miembros al crear un perfil         |
+--   | profiles_limite_miembros   | respaldo del límite de miembros al crear un perfil, al     |
+--   |                            | confirmar el alta (diferido)                               |
 --   | auditar_modulo             | fila 'base' en audit_log por cambio de un módulo, con slug |
 --   | semilla                    | fila de instalacion y nucleo activo con miembros = 10      |
 --   |                            | (PP-LIM)                                                   |
@@ -94,6 +96,19 @@ $$;
 revoke execute on function public.tema_valido(jsonb) from public, anon;
 grant execute on function public.tema_valido(jsonb) to authenticated, service_role;
 
+-- Zona horaria con nombre que Postgres reconoce: modulos_consumo y los
+-- archivos siguientes la usan en «at time zone», que falla con una zona
+-- desconocida. Lee el catálogo, así que es stable y no immutable.
+create or replace function public.zona_horaria_valida(p_zona text)
+returns boolean language sql stable set search_path = public, pg_temp as $$
+  select p_zona is not null
+     and exists (select 1 from pg_catalog.pg_timezone_names z where z.name = p_zona);
+$$;
+
+-- La usa el CHECK de instalacion.zona_horaria: la ejecuta quien escribe la fila
+revoke execute on function public.zona_horaria_valida(text) from public, anon;
+grant execute on function public.zona_horaria_valida(text) to authenticated, service_role;
+
 -- ============ 2) Instalación (fila única) ============
 -- Patrón de security_settings (64): fila id = 1 creada aquí; sin insert ni
 -- delete para nadie de la API; update solo un administrador.
@@ -108,7 +123,8 @@ create table if not exists public.instalacion (
     constraint instalacion_pais_check check (pais ~ '^[A-Z]{2}$'),
   locale text not null default 'es-CO'
     constraint instalacion_locale_check check (locale ~ '^[a-z]{2}(-[A-Z]{2})?$'),
-  zona_horaria text not null default 'America/Bogota',
+  zona_horaria text not null default 'America/Bogota'
+    constraint instalacion_zona_check check (public.zona_horaria_valida(zona_horaria)),
   moneda_base text not null default 'COP'
     constraint instalacion_moneda_check check (moneda_base ~ '^[A-Z]{3}$'),
   divisas text[] not null default '{}'
@@ -265,10 +281,12 @@ grant execute on function public.puede_ver_app(text) to authenticated;
 
 -- Límite entero de un módulo (activo o no). null = sin límite, también si
 -- la clave falta o no es un número (las listas, como fuentes, no van aquí).
+-- Un número mayor que bigint se toma como el máximo de bigint: el cast
+-- fallaría y tumbaría cada alta (validarLimites ya lo frena al escribir).
 create or replace function public.limite_modulo(p_slug text, p_clave text)
 returns bigint language sql stable security definer set search_path = public, pg_temp as $$
   select case when jsonb_typeof(m.limites -> p_clave) = 'number'
-              then floor((m.limites ->> p_clave)::numeric)::bigint end
+              then greatest(least(floor((m.limites ->> p_clave)::numeric), 9223372036854775807), 0)::bigint end
     from public.modulos_instalacion m
    where m.slug = p_slug;
 $$;
@@ -358,37 +376,47 @@ grant execute on function public.modulos_consumo() to authenticated;
 -- este trigger es el respaldo para fallar cerrado. No cuentan las cuentas
 -- de servicio: ni las que ya tienen es_servicio ni la que se está creando
 -- con app_metadata.es_servicio = true (solo la fija la service role), que
--- nace ya con es_servicio para no contar después.
+-- queda con es_servicio aunque no haya límite.
+-- Es diferido (corre al confirmar la transacción del alta): la API Admin de
+-- Auth inserta el usuario solo con provider y providers y escribe el
+-- app_metadata del cuerpo después, con un UPDATE en la misma transacción;
+-- un trigger inmediato no vería es_servicio. Al confirmar, el perfil nuevo
+-- ya está contado: el cupo se pasa si hay más miembros que el límite.
 create or replace function public.profiles_limite_miembros()
 returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
 declare
-  v_limite bigint := public.limite_modulo('nucleo', 'miembros');
+  v_limite bigint;
   v_n bigint;
 begin
-  if v_limite is null or new.es_servicio then
-    return new;
+  if not exists (select 1 from public.profiles p where p.id = new.id and not p.es_servicio) then
+    return null;
   end if;
   if exists (select 1 from auth.users u
               where u.id = new.id and coalesce(u.raw_app_meta_data ->> 'es_servicio', '') = 'true') then
-    new.es_servicio := true;
-    return new;
+    update public.profiles set es_servicio = true where id = new.id;
+    return null;
+  end if;
+  v_limite := public.limite_modulo('nucleo', 'miembros');
+  if v_limite is null then
+    return null;
   end if;
   -- Dos altas a la vez no pasan las dos con el último cupo
   perform pg_advisory_xact_lock(hashtext('profiles_limite_miembros'));
   select count(*) into v_n from public.profiles p where not p.es_servicio;
-  if v_n >= v_limite then
+  if v_n > v_limite then
     raise exception 'limite_miembros: la instalación admite % miembros', v_limite
       using errcode = 'P0001', hint = 'Sube nucleo.miembros con tools/instalar/modulos.mjs --limites';
   end if;
-  return new;
+  return null;
 end;
 $$;
 
 revoke execute on function public.profiles_limite_miembros() from public, anon, authenticated;
 
 drop trigger if exists profiles_limite_miembros on public.profiles;
-create trigger profiles_limite_miembros
-  before insert on public.profiles
+create constraint trigger profiles_limite_miembros
+  after insert on public.profiles
+  deferrable initially deferred
   for each row execute function public.profiles_limite_miembros();
 
 -- exigir_mfa en instalacion y modulos_instalacion (03-mfa)
@@ -433,6 +461,10 @@ begin
     raise exception '04-instalacion-modulos: falta la fila de instalacion o nucleo activo';
   end if;
 
+  if public.zona_horaria_valida('Bogota') or not public.zona_horaria_valida('America/Bogota') then
+    raise exception '04-instalacion-modulos: zona_horaria_valida no filtra zonas';
+  end if;
+
   if public.tema_valido('{"--pal-base-0": "#FFFFFF"}') or public.tema_valido('{"--otra": "#ffffff"}')
      or public.tema_valido('{"--pal-base-0": "red; x: y"}') or not public.tema_valido('{"--pal-base-0": "#ffffff"}') then
     raise exception '04-instalacion-modulos: tema_valido no filtra claves o valores';
@@ -446,7 +478,8 @@ begin
   end if;
 
   if not exists (select 1 from pg_catalog.pg_trigger
-                  where tgname = 'profiles_limite_miembros' and tgrelid = 'public.profiles'::regclass)
+                  where tgname = 'profiles_limite_miembros' and tgrelid = 'public.profiles'::regclass
+                    and tgdeferrable and tginitdeferred)
      or not exists (select 1 from pg_catalog.pg_trigger
                   where tgname = 'auditar_modulo' and tgrelid = 'public.modulos_instalacion'::regclass) then
     raise exception '04-instalacion-modulos: faltan los triggers profiles_limite_miembros o auditar_modulo';

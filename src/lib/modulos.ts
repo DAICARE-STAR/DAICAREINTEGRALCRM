@@ -427,7 +427,8 @@ export function validarLimites(slug: string, limites: Record<string, unknown>): 
     const valor = limites[clave]
     if (valor === null) continue
     const tipo = m.limites[clave]
-    if (tipo === 'entero' && !(Number.isInteger(valor) && (valor as number) >= 0)) errores.push(`${clave} debe ser un entero no negativo o null`)
+    // isSafeInteger: un número mayor que bigint rompería limite_modulo en cada alta
+    if (tipo === 'entero' && !(Number.isSafeInteger(valor) && (valor as number) >= 0)) errores.push(`${clave} debe ser un entero entre 0 y ${Number.MAX_SAFE_INTEGER} o null`)
     if (tipo === 'lista' && !(Array.isArray(valor) && valor.every((v) => typeof v === 'string'))) errores.push(`${clave} debe ser una lista de textos o null`)
   }
   return { ok: errores.length === 0, errores }

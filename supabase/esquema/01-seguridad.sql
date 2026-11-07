@@ -28,7 +28,9 @@
 --   |                          | secuencias nuevas sin privilegios para anon (87)             |
 --   | permisos_solo_admin()    | las doce claves que solo un administrador otorga o quita     |
 --   | roles_guard_escalada     | quien gestiona roles sin ser admin no otorga lo que no       |
---   |                          | tiene, no toca solo-admin ni roles protegidos ni la función  |
+--   |                          | tiene, no toca solo-admin, el rol admin ni la función, y no  |
+--   |                          | renombra ni borra los protegidos (sí edita sus permisos,     |
+--   |                          | posición y descripción, como en team-portal 63)              |
 --   | security_settings        | interruptores de seguridad (fila única id = 1)               |
 --   | api_rate_limits,         | límites de tasa compartidos (solo service role)              |
 --   | rate_limit_hit()         |                                                              |
