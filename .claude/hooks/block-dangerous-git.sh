@@ -22,15 +22,20 @@ DANGEROUS_PATTERNS=(
   "push .*--delete"
   "push .* \+[^ ]"
   "push [^ ]+ :[^ ]"
+  "push [^;|&]*--force"
+  "push [^;|&]* -f([ ;|&]|$)"
   "git reset --hard"
   "reset --hard"
   "git clean -f"
   "clean -[a-zA-Z]*f"
+  "clean [^;|&]*(-[a-zA-Z]*f|--force)"
   "git branch -D"
   "git checkout \."
   "checkout -- \."
+  "checkout [^;|&]*-- \.([ ;|&]|$)"
   "git restore \."
   "restore --staged \."
+  "restore [^;|&]*\.([ ;|&]|$)"
 )
 
 for pattern in "${DANGEROUS_PATTERNS[@]}"; do
