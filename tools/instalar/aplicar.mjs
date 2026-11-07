@@ -2,9 +2,10 @@
 // SUPABASE_DB_URL en el entorno (nunca como argumento; nunca se imprime).
 //
 // Uso:
-//   node tools/instalar/aplicar.mjs                      aplica supabase/esquema/NN-*.sql en orden
-//   node tools/instalar/aplicar.mjs --hasta 03           solo hasta el número 03
-//   node tools/instalar/aplicar.mjs --archivo <ruta>     un archivo suelto (lo usa modulos.mjs)
+//   node tools/instalar/aplicar.mjs                      aplica el núcleo, supabase/esquema/0*.sql, en orden
+//   node tools/instalar/aplicar.mjs --hasta 03           solo hasta el número 03 (del núcleo)
+//   node tools/instalar/aplicar.mjs --archivo <ruta>     un archivo suelto (lo usa modulos.mjs); los
+//                                                        archivos de módulo (10 en adelante) solo así
 //   node tools/instalar/aplicar.mjs --verificar          corre supabase/esquema/verificar.sql
 //   node tools/instalar/aplicar.mjs --solo-concatenar <salida.sql>
 //                                                        respaldo para el SQL Editor: concatena
@@ -32,6 +33,7 @@ import {
   leerArchivo,
   leerUrlBase,
   listarArchivosEsquema,
+  esNucleo,
   numeroDe,
   ocultarUrl,
   versionProducto,
@@ -107,10 +109,12 @@ export function leerArgumentos(argv) {
   return o
 }
 
-// Archivos a aplicar, ya leídos, en orden
+// Archivos a aplicar, ya leídos, en orden. Sin --archivo, solo el núcleo: el
+// archivo de un módulo se aplica al activarlo, nunca en la corrida general.
 export function seleccionarArchivos(o, carpeta) {
   if (o.archivo) return [leerArchivo(resolve(o.archivo))]
   return listarArchivosEsquema(carpeta)
+    .filter(esNucleo)
     .filter((n) => o.hasta === null || numeroDe(n) <= o.hasta)
     .map((n) => leerArchivo(join(carpeta, n)))
 }

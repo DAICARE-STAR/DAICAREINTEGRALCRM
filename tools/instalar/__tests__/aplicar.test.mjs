@@ -7,7 +7,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { CONSULTA_MFA, DDL_REGISTRO, INSERT_REGISTRO, LLAMADA_MFA, leerArgumentos, main, resumirVerificacion } from '../aplicar.mjs'
-import { listarArchivosEsquema, normalizar, numeroDe, ocultarUrl, sha256 } from '../comun.mjs'
+import { esNucleo, listarArchivosEsquema, normalizar, numeroDe, ocultarUrl, PATRON_ARCHIVO, sha256 } from '../comun.mjs'
+import { MODULOS } from '../../../src/lib/modulos.ts'
 
 // Valores armados al correr: este archivo no lleva ninguno literal
 const CLAVE = ['Zx9', 'pQ!', '4Lm'].join('')
@@ -142,6 +143,34 @@ describe('aplicar.mjs: aplicación', () => {
     const adoptar = await correr(['--adoptar'])
     expect(adoptar.codigo).toBe(2)
     expect(adoptar.creado).toBe(0)
+  })
+
+  it('sin --archivo aplica solo el núcleo 0*.sql: los archivos de módulo no entran ni con --hasta ni al concatenar', async () => {
+    writeFileSync(join(carpeta, '10-calendario.sql'), 'create table if not exists public.eventos (id int);\n')
+    writeFileSync(join(carpeta, '28-sitio-web.sql'), 'grant select on public.paginas to anon;\n')
+    const r = await correr([])
+    expect(r.codigo).toBe(0)
+    expect(aplicadosEn(r.cliente)).toEqual(['00-base.sql', '01-seguridad.sql', '02-auditoria.sql'])
+    expect(r.cliente.ejecutadas.some((e) => e.texto.includes('public.eventos') || e.texto.includes('to anon;'))).toBe(false)
+    const hasta = await correr(['--hasta', '28'])
+    expect(aplicadosEn(hasta.cliente)).toEqual(['00-base.sql', '01-seguridad.sql', '02-auditoria.sql'])
+    const destino = join(carpeta, 'todo.sql')
+    await correr(['--solo-concatenar', destino], { env: {} })
+    expect(readFileSync(destino, 'utf8')).not.toMatch(/10-calendario|28-sitio-web/)
+    // El archivo de un módulo se aplica solo con --archivo, al activarlo
+    const modulo = await correr(['--archivo', join(carpeta, '10-calendario.sql')])
+    expect(aplicadosEn(modulo.cliente)).toEqual(['10-calendario.sql'])
+  })
+
+  it('todo Modulo.sql del registro es un archivo de módulo (10 en adelante), nunca del núcleo', () => {
+    const archivos = MODULOS.map((m) => m.sql).filter(Boolean)
+    expect(archivos.length).toBeGreaterThan(0)
+    for (const a of archivos) {
+      expect(a).toMatch(PATRON_ARCHIVO)
+      expect(esNucleo(a)).toBe(false)
+    }
+    expect(esNucleo('03-mfa.sql')).toBe(true)
+    expect(esNucleo('verificar.sql')).toBe(false)
   })
 
   it('--hasta aplica solo hasta ese número', async () => {

@@ -15,6 +15,10 @@ export const VARIABLE_URL = 'SUPABASE_DB_URL'
 // Archivos del esquema: NN-nombre.sql, con una letra opcional tras el número
 // (01b-seguridad-resumen.sql) para añadir sin renumerar
 export const PATRON_ARCHIVO = /^(\d{2})([a-z]?)-[a-z0-9-]+\.sql$/
+// 00-09 es el núcleo: lo aplica la corrida por defecto. 10 en adelante son
+// archivos de módulo (Modulo.sql del registro): solo se aplican con --archivo,
+// al activar el módulo.
+export const ULTIMO_NUCLEO = 9
 
 // La cadena de conexión viene SOLO del entorno (PP-DEC-11). null si falta.
 export function leerUrlBase(env = process.env) {
@@ -31,6 +35,11 @@ export function sha256(texto) {
 export function numeroDe(nombre) {
   const m = PATRON_ARCHIVO.exec(basename(nombre))
   return m ? Number(m[1]) : null
+}
+
+export function esNucleo(nombre) {
+  const n = numeroDe(nombre)
+  return n !== null && n <= ULTIMO_NUCLEO
 }
 
 // Nombres de los archivos del esquema en orden de aplicación
