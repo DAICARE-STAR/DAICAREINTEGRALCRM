@@ -7,7 +7,7 @@ import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { CONSULTA_HAY_REGISTRO, CONSULTA_MFA, DDL_REGISTRO, INSERT_REGISTRO, LLAMADA_MFA, SOLO_LECTURA, leerArgumentos, main, resumirVerificacion } from '../aplicar.mjs'
+import { BLOQUE_BASE_AJENA, BLOQUE_MFA, bloqueComprobar, bloqueRegistro, CONSULTA_HAY_REGISTRO, CONSULTA_MFA, DDL_REGISTRO, INSERT_REGISTRO, LLAMADA_MFA, SOLO_LECTURA, leerArgumentos, main, resumirVerificacion } from '../aplicar.mjs'
 import { crearCliente, esNucleo, listarArchivosEsquema, normalizar, numeroDe, ocultarUrl, opcionSsl, PATRON_ARCHIVO, sha256 } from '../comun.mjs'
 import { MODULOS } from '../../../src/lib/modulos.ts'
 
@@ -301,6 +301,32 @@ describe('aplicar.mjs: --solo-concatenar', () => {
     expect(texto).not.toContain('02-auditoria.sql')
     expect(texto).toMatch(/ya aplicado con otro sha256/)
     expect(texto).not.toContain('\r')
+  })
+
+  it('niega una base ajena al inicio, comprueba el sha256 antes de cada archivo y llama a aplicar_exigir_mfa() al final', async () => {
+    const destino = join(carpeta, 'todo.sql')
+    await correr(['--solo-concatenar', destino], { env: {} })
+    const texto = readFileSync(destino, 'utf8')
+    const ddl = texto.indexOf(DDL_REGISTRO)
+    const ajena = texto.indexOf(BLOQUE_BASE_AJENA)
+    expect(ddl).toBeGreaterThan(0)
+    expect(ajena).toBeGreaterThan(ddl)
+    let anterior = ajena
+    for (const [nombre, contenido] of Object.entries(ARCHIVOS)) {
+      const sha = sha256(contenido)
+      const comprobar = texto.indexOf(bloqueComprobar(nombre, sha))
+      const cuerpo = texto.indexOf(normalizar(contenido).trim(), comprobar)
+      const registro = texto.indexOf(bloqueRegistro(nombre, sha, '0.1.0'))
+      expect(comprobar).toBeGreaterThan(anterior)
+      expect(cuerpo).toBeGreaterThan(comprobar)
+      expect(registro).toBeGreaterThan(cuerpo)
+      anterior = registro
+    }
+    expect(texto.indexOf(BLOQUE_MFA)).toBeGreaterThan(anterior)
+    expect(texto.trimEnd().endsWith(BLOQUE_MFA)).toBe(true)
+    expect(BLOQUE_MFA).toContain('perform public.aplicar_exigir_mfa()')
+    expect(BLOQUE_MFA).toContain("p.proname = 'aplicar_exigir_mfa'")
+    expect(bloqueRegistro('00-base.sql', 'a'.repeat(64), '0.1.0')).not.toMatch(/raise exception/)
   })
 })
 

@@ -10,8 +10,11 @@
 //                                                        en una transacción read only, sin crear el
 //                                                        registro ni aplicar nada (2 si no hay registro)
 //   node tools/instalar/aplicar.mjs --solo-concatenar <salida.sql>
-//                                                        respaldo para el SQL Editor: concatena
-//                                                        y añade el registro tras cada archivo
+//                                                        respaldo para el SQL Editor: concatena con
+//                                                        la negativa ante base ajena al inicio, la
+//                                                        de sha256 cambiado antes de cada archivo,
+//                                                        el registro después y aplicar_exigir_mfa()
+//                                                        al final
 //   --adoptar                                            reservado (base con tablas previas)
 //
 // Crea el esquema instalador y la tabla instalador.esquema_aplicado(archivo,
@@ -76,14 +79,41 @@ export const INSERT_REGISTRO = `insert into ${TABLA} (archivo, sha256, version_p
 
 const literal = (s) => `'${String(s).replace(/'/g, "''")}'`
 
-// Registro de un archivo para el modo --solo-concatenar: se niega si ya está
-// con otro sha256 y no repite el insert si ya está con el mismo.
-export function bloqueRegistro(archivo, sha, version) {
+// Bloques del modo --solo-concatenar: cada negativa es un raise exception que
+// corta la ejecución antes de lo que sigue.
+
+// Misma negativa que la corrida por consola: tablas en public y ningún
+// archivo registrado es una base ajena.
+export const BLOQUE_BASE_AJENA = `do $$
+begin
+  if not exists (select 1 from ${TABLA})
+     and exists (select 1 from pg_tables where schemaname = 'public') then
+    raise exception 'instalador: la base tiene tablas en public y ningún archivo registrado: no es una base vacía';
+  end if;
+end $$;`
+
+// Va ANTES del texto del archivo: se niega si ya está con otro sha256
+export function bloqueComprobar(archivo, sha) {
   return `do $$
 begin
   if exists (select 1 from ${TABLA} where archivo = ${literal(archivo)} and sha256 <> ${literal(sha)}) then
     raise exception 'instalador: % ya aplicado con otro sha256', ${literal(archivo)};
   end if;
+end $$;`
+}
+
+// Al final, como la corrida por consola: aplicar_exigir_mfa() si existe
+export const BLOQUE_MFA = `do $$
+begin
+  if exists (${CONSULTA_MFA}) then
+    perform public.aplicar_exigir_mfa();
+  end if;
+end $$;`
+
+// Va después del texto del archivo; no repite el insert si ya está
+export function bloqueRegistro(archivo, sha, version) {
+  return `do $$
+begin
   insert into ${TABLA} (archivo, sha256, version_producto)
   values (${literal(archivo)}, ${literal(sha)}, ${literal(version)})
   on conflict (archivo) do nothing;
@@ -126,12 +156,14 @@ export function seleccionarArchivos(o, carpeta) {
 }
 
 export function concatenar(archivos, version) {
-  const partes = ['-- Generado por tools/instalar/aplicar.mjs --solo-concatenar. Pegar entero en el SQL Editor.', DDL_REGISTRO]
+  const partes = ['-- Generado por tools/instalar/aplicar.mjs --solo-concatenar. Pegar entero en el SQL Editor.', DDL_REGISTRO, BLOQUE_BASE_AJENA]
   for (const a of archivos) {
     partes.push(`\n-- ===== ${a.nombre} (sha256 ${a.sha256}) =====`)
+    partes.push(bloqueComprobar(a.nombre, a.sha256))
     partes.push(a.texto.trimEnd())
     partes.push(bloqueRegistro(a.nombre, a.sha256, version))
   }
+  partes.push('\n-- ===== tras el lote =====', BLOQUE_MFA)
   return partes.join('\n') + '\n'
 }
 
