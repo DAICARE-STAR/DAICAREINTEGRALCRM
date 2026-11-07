@@ -2,9 +2,10 @@
 -- Lo corre `node tools/instalar/aplicar.mjs --verificar`: una fila por
 -- comprobación (orden, comprobacion, estado, detalle) con estado OK, DIFIERE,
 -- OMITIDO o AVISO (verificacion.md). Solo lectura. No lleva datos de ninguna
--- instalación. Las comprobaciones del registro de módulos (toda tabla de
--- public es del núcleo o tiene política modulo_*, slugs conocidos) llegan con
--- el esquema 04.
+-- instalación. Las comprobaciones que leen las filas de modulos_instalacion
+-- contra el registro src/lib/modulos.ts (slugs, límites, dependencias) las
+-- hace aplicar.mjs después de esta consulta (comprobarModulos), porque una
+-- consulta suelta no puede nombrar una tabla que quizá no existe todavía.
 with
 tablas as (
   select c.oid, c.relname, c.relrowsecurity
@@ -50,6 +51,37 @@ grants_anon as (
 ),
 aplicados as (
   select count(*) as n from instalador.esquema_aplicado
+),
+-- Tablas del núcleo (00 a 09): siempre activas, sin política modulo_*. Al
+-- llegar 05-09 (N-2) se añaden aquí sus tablas.
+nucleo as (
+  select unnest(array['roles', 'profiles', 'user_roles', 'connectors', 'security_settings',
+                      'api_rate_limits', 'audit_log', 'instalacion', 'modulos_instalacion']) as relname
+),
+sin_modulo as (
+  select t.relname from tablas t
+  where t.relname not in (select relname from nucleo)
+    and not exists (
+      select 1 from pg_policies p
+      where p.schemaname = 'public' and p.tablename = t.relname
+        and p.policyname like 'modulo\_%' and p.permissive = 'RESTRICTIVE'
+    )
+),
+hay_modulos as (
+  select to_regclass('public.modulos_instalacion') is not null as existe
+),
+-- Solo lectura para la API: ningún privilegio distinto de SELECT y ninguna
+-- política permisiva que no sea de lectura
+escritura_modulos as (
+  select 'privilegio ' || lower(g.privilege_type) || ' a ' || g.grantee as motivo
+  from information_schema.role_table_grants g
+  where g.table_schema = 'public' and g.table_name = 'modulos_instalacion'
+    and g.grantee in ('anon', 'authenticated') and g.privilege_type <> 'SELECT'
+  union all
+  select 'política ' || p.policyname
+  from pg_policies p
+  where p.schemaname = 'public' and p.tablename = 'modulos_instalacion'
+    and p.permissive = 'PERMISSIVE' and p.cmd <> 'SELECT'
 )
 select orden, comprobacion, estado, detalle from (
   select 1 as orden,
@@ -96,5 +128,21 @@ select orden, comprobacion, estado, detalle from (
     'registro instalador.esquema_aplicado',
     case when (select n from aplicados) = 0 then 'AVISO' else 'OK' end,
     (select n from aplicados)::text || ' archivo(s) aplicado(s)'
+  union all
+  select 7,
+    'tablas de public del núcleo o con política modulo_* restrictiva',
+    case when (select count(*) from tablas) = 0 then 'OMITIDO'
+         when (select count(*) from sin_modulo) = 0 then 'OK'
+         else 'DIFIERE' end,
+    case when (select count(*) from tablas) = 0 then 'sin tablas en public'
+         else coalesce((select string_agg(relname, ', ' order by relname) from sin_modulo), '') end
+  union all
+  select 8,
+    'modulos_instalacion de solo lectura para anon y authenticated',
+    case when not (select existe from hay_modulos) then 'OMITIDO'
+         when (select count(*) from escritura_modulos) = 0 then 'OK'
+         else 'DIFIERE' end,
+    case when not (select existe from hay_modulos) then 'falta 04-instalacion-modulos.sql'
+         else coalesce((select string_agg(motivo, ', ' order by motivo) from escritura_modulos), '') end
 ) v
 order by orden;

@@ -8,7 +8,9 @@
 //                                                        archivos de módulo (10 en adelante) solo así
 //   node tools/instalar/aplicar.mjs --verificar          solo lectura: corre supabase/esquema/verificar.sql
 //                                                        en una transacción read only, sin crear el
-//                                                        registro ni aplicar nada (2 si no hay registro)
+//                                                        registro ni aplicar nada (2 si no hay registro),
+//                                                        y compara modulos_instalacion con el registro
+//                                                        src/lib/modulos.ts (comprobarModulos)
 //   node tools/instalar/aplicar.mjs --solo-concatenar <salida.sql>
 //                                                        respaldo para el SQL Editor: concatena con
 //                                                        la negativa ante base ajena al inicio, la
@@ -44,6 +46,7 @@ import {
   ocultarUrl,
   versionProducto,
 } from './comun.mjs'
+import { MODULOS, NUCLEO, validarLimites } from '../../src/lib/modulos.ts'
 
 const TABLA = `${ESQUEMA_INSTALADOR}.esquema_aplicado`
 
@@ -75,6 +78,8 @@ export const CONSULTA_MFA = `select 1 as existe from pg_proc p join pg_namespace
 export const LLAMADA_MFA = 'select public.aplicar_exigir_mfa()'
 export const CONSULTA_HAY_REGISTRO = `select to_regclass('${TABLA}') is not null as existe`
 export const SOLO_LECTURA = 'set transaction read only'
+export const CONSULTA_HAY_MODULOS = `select to_regclass('public.modulos_instalacion') is not null as existe`
+export const CONSULTA_FILAS_MODULOS = 'select slug, activo, limites from public.modulos_instalacion order by slug'
 export const INSERT_REGISTRO = `insert into ${TABLA} (archivo, sha256, version_producto) values ($1, $2, $3)`
 
 const literal = (s) => `'${String(s).replace(/'/g, "''")}'`
@@ -178,6 +183,34 @@ export function resumirVerificacion(filas, log) {
   return salida
 }
 
+// Comprobaciones 9 a 11 de --verificar: las filas de modulos_instalacion
+// contra el registro. filas null = la tabla no existe (falta 04).
+export function comprobarModulos(filas, registro = MODULOS) {
+  const fila = (orden, comprobacion, malos) =>
+    filas === null
+      ? { orden, comprobacion, estado: 'OMITIDO', detalle: 'falta 04-instalacion-modulos.sql' }
+      : { orden, comprobacion, estado: malos.length ? 'DIFIERE' : 'OK', detalle: malos.join('; ') }
+  const lista = filas ?? []
+  const conocido = (slug) => registro.find((m) => m.slug === slug && m.estado === 'disponible')
+  const activos = lista.filter((f) => f.activo).map((f) => f.slug)
+  const desconocidos = lista.filter((f) => !conocido(f.slug)).map((f) => f.slug)
+  if (filas !== null && !activos.includes(NUCLEO)) desconocidos.push(`${NUCLEO} no está activo`)
+  const limites = lista
+    .filter((f) => conocido(f.slug))
+    .flatMap((f) => {
+      const v = validarLimites(f.slug, f.limites && typeof f.limites === 'object' ? f.limites : {})
+      return v.ok ? [] : v.errores
+    })
+  const dependencias = activos
+    .filter((s) => conocido(s))
+    .flatMap((s) => conocido(s).depende.filter((d) => d !== NUCLEO && !activos.includes(d)).map((d) => `${s} activo sin ${d}`))
+  return [
+    fila(9, 'modulos_instalacion con slugs del registro y nucleo activo', desconocidos),
+    fila(10, 'límites de modulos_instalacion declarados por el registro', limites),
+    fila(11, 'módulos activos con sus dependencias activas', dependencias),
+  ]
+}
+
 export async function main(argv = process.argv.slice(2), opciones = {}) {
   const {
     env = process.env,
@@ -243,6 +276,8 @@ export async function main(argv = process.argv.slice(2), opciones = {}) {
       await cliente.transaccion(async (tx) => {
         await tx.consultar(SOLO_LECTURA)
         filas = await tx.consultar(archivos[0].texto)
+        const [{ existe: hayModulos } = {}] = await tx.consultar(CONSULTA_HAY_MODULOS)
+        filas = [...filas, ...comprobarModulos(hayModulos ? await tx.consultar(CONSULTA_FILAS_MODULOS) : null)]
       })
       return resumirVerificacion(filas, log)
     }

@@ -7,7 +7,7 @@ import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { BLOQUE_BASE_AJENA, BLOQUE_MFA, bloqueComprobar, bloqueRegistro, CONSULTA_HAY_REGISTRO, CONSULTA_MFA, DDL_REGISTRO, INSERT_REGISTRO, LLAMADA_MFA, SOLO_LECTURA, leerArgumentos, main, resumirVerificacion } from '../aplicar.mjs'
+import { BLOQUE_BASE_AJENA, BLOQUE_MFA, bloqueComprobar, bloqueRegistro, comprobarModulos, CONSULTA_FILAS_MODULOS, CONSULTA_HAY_MODULOS, CONSULTA_HAY_REGISTRO, CONSULTA_MFA, DDL_REGISTRO, INSERT_REGISTRO, LLAMADA_MFA, SOLO_LECTURA, leerArgumentos, main, resumirVerificacion } from '../aplicar.mjs'
 import { crearCliente, esNucleo, listarArchivosEsquema, normalizar, numeroDe, ocultarUrl, opcionSsl, PATRON_ARCHIVO, sha256 } from '../comun.mjs'
 import { MODULOS } from '../../../src/lib/modulos.ts'
 
@@ -32,7 +32,7 @@ beforeEach(() => {
 })
 afterEach(() => rmSync(carpeta, { recursive: true, force: true }))
 
-function clienteFalso({ aplicados = [], tablasPublic = [], tieneMfa = false, fallaEn = null, verificar = [], hayRegistro = true } = {}) {
+function clienteFalso({ aplicados = [], tablasPublic = [], tieneMfa = false, fallaEn = null, verificar = [], hayRegistro = true, filasModulos = null } = {}) {
   const ejecutadas = []
   const consultar = async (texto, params) => {
     ejecutadas.push({ texto, params })
@@ -40,6 +40,8 @@ function clienteFalso({ aplicados = [], tablasPublic = [], tieneMfa = false, fal
     if (texto.includes('from pg_tables')) return tablasPublic.map((t) => ({ tablename: t }))
     if (texto === CONSULTA_MFA) return tieneMfa ? [{ existe: 1 }] : []
     if (texto === CONSULTA_HAY_REGISTRO) return [{ existe: hayRegistro }]
+    if (texto === CONSULTA_HAY_MODULOS) return [{ existe: filasModulos !== null }]
+    if (texto === CONSULTA_FILAS_MODULOS) return filasModulos
     if (texto.startsWith('-- verificar.sql')) return verificar
     if (fallaEn && texto.includes(fallaEn)) throw new Error(`error de sql en ${fallaEn} con ${CADENA} y ${CLAVE}`)
     return []
@@ -346,10 +348,39 @@ describe('aplicar.mjs: --verificar', () => {
     expect(r.codigo).toBe(1)
     expect(r.salida).toContain('DIFIERE comprobación 2')
     const textos = r.cliente.ejecutadas.map((e) => e.texto)
-    expect(textos).toEqual([CONSULTA_HAY_REGISTRO, 'BEGIN', SOLO_LECTURA, '-- verificar.sql de prueba\nselect 1;\n', 'COMMIT', 'END'])
+    expect(textos).toEqual([CONSULTA_HAY_REGISTRO, 'BEGIN', SOLO_LECTURA, '-- verificar.sql de prueba\nselect 1;\n', CONSULTA_HAY_MODULOS, 'COMMIT', 'END'])
+    // Sin 04 las comprobaciones del registro salen OMITIDO
+    expect(r.salida).toContain('OMITIDO modulos_instalacion con slugs del registro y nucleo activo — falta 04-instalacion-modulos.sql')
     expect(textos).not.toContain(DDL_REGISTRO)
     expect(textos).not.toContain(LLAMADA_MFA)
     expect(aplicadosEn(r.cliente)).toEqual([])
+  })
+
+  it('con 04 aplicado lee modulos_instalacion dentro de la misma transacción y la compara con el registro', async () => {
+    const r = await correr(['--verificar'], { verificar: filas(['OK']), filasModulos: [{ slug: 'nucleo', activo: true, limites: { miembros: 10 } }] })
+    expect(r.codigo).toBe(0)
+    const textos = r.cliente.ejecutadas.map((e) => e.texto)
+    expect(textos.indexOf(CONSULTA_FILAS_MODULOS)).toBeLessThan(textos.indexOf('COMMIT'))
+    expect(r.salida).toContain('OK módulos activos con sus dependencias activas')
+  })
+
+  it('comprobarModulos: slugs desconocidos o planeados, nucleo inactivo, límites no declarados y dependencias', () => {
+    const estados = (f) => comprobarModulos(f).map((x) => x.estado)
+    expect(estados(null)).toEqual(['OMITIDO', 'OMITIDO', 'OMITIDO'])
+    expect(estados([{ slug: 'nucleo', activo: true, limites: { miembros: 10 } }])).toEqual(['OK', 'OK', 'OK'])
+    const malas = comprobarModulos([
+      { slug: 'nucleo', activo: true, limites: { miembros: 10, cupo: 3 } },
+      { slug: 'inventario', activo: false, limites: {} },
+      { slug: 'otro', activo: true, limites: {} },
+      { slug: 'cotizador', activo: true, limites: {} },
+      { slug: 'ia', activo: true, limites: { ia_dia_equipo: -1 } },
+    ])
+    expect(malas.map((x) => x.estado)).toEqual(['DIFIERE', 'DIFIERE', 'DIFIERE'])
+    expect(malas[0].detalle).toBe('inventario; otro')
+    expect(malas[1].detalle).toMatch(/cupo/)
+    expect(malas[1].detalle).toMatch(/ia_dia_equipo/)
+    expect(malas[2].detalle).toBe('cotizador activo sin productos')
+    expect(comprobarModulos([])[0].detalle).toBe('nucleo no está activo')
   })
 
   it('--verificar sale con 2 si la base no tiene el esquema del instalador, sin crearlo', async () => {
@@ -364,7 +395,7 @@ describe('aplicar.mjs: --verificar', () => {
     const codigo = real.replace(/^\s*--.*$/gm, '')
     expect(codigo).not.toMatch(/\b(insert|update|delete|create|alter|drop|grant|revoke)\b/i)
     expect(codigo.trim().split(';').filter((s) => s.trim()).length).toBe(1)
-    for (const c of ['RLS', 'exigir_mfa', 'security definer', 'grants a anon', 'esquema instalador', 'esquema_aplicado']) expect(real).toContain(c)
+    for (const c of ['RLS', 'exigir_mfa', 'security definer', 'grants a anon', 'esquema instalador', 'esquema_aplicado', 'modulo_*', 'modulos_instalacion de solo lectura']) expect(real).toContain(c)
     expect(real).toMatch(/'OK'/)
     expect(real).toMatch(/'DIFIERE'/)
     expect(real).toMatch(/'OMITIDO'/)

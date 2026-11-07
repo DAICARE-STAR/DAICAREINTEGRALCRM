@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 
 const CARPETA = fileURLToPath(new URL('../../../supabase/esquema/', import.meta.url))
 const PATRON = /^(\d{2})[a-z]?-[a-z0-9-]+\.sql$/
-const NUCLEO_PR4 = ['00-base.sql', '01-seguridad.sql', '02-auditoria.sql', '03-mfa.sql']
+const NUCLEO_PR4 = ['00-base.sql', '01-seguridad.sql', '02-auditoria.sql', '03-mfa.sql', '04-instalacion-modulos.sql']
 
 const archivos = readdirSync(CARPETA)
   .filter((n) => PATRON.test(n))
@@ -59,7 +59,7 @@ const revocaA = (sql: string, nombre: string, roles: string) =>
   new RegExp(`revoke\\s+execute\\s+on\\s+function\\s+public\\.${nombre}\\s*\\([^;]*\\)\\s+from\\s+${roles}`, 'i').test(sql)
 
 describe('esquema consolidado: archivos', () => {
-  it('el núcleo 00-03 existe con su nombre', () => {
+  it('el núcleo 00-04 existe con su nombre', () => {
     const nombres = archivos.map((a) => a.nombre)
     for (const n of NUCLEO_PR4) expect(nombres).toContain(n)
   })
@@ -196,6 +196,81 @@ describe('esquema consolidado: funciones', () => {
     expect(mfa).not.toMatch(/function\s+public\.aplicar_exigir_mfa\(\)[^$]*security\s+definer/i)
     expect(mfa).toMatch(/revoke\s+execute\s+on\s+function\s+public\.aplicar_exigir_mfa\(\)\s+from\s+public,\s*anon,\s*authenticated,\s*service_role/i)
     expect(mfa).toMatch(/select\s+public\.aplicar_exigir_mfa\(\);/i)
+  })
+})
+
+describe('esquema consolidado: 04-instalacion-modulos', () => {
+  const sql = archivos.find((a) => a.nombre === '04-instalacion-modulos.sql')!.sql
+  const texto04 = archivos.find((a) => a.nombre === '04-instalacion-modulos.sql')!.texto
+  const cuerpo = (nombre: string) => new RegExp(`function\\s+public\\.${nombre}\\([^)]*\\)[\\s\\S]*?\\$\\$([\\s\\S]*?)\\$\\$`, 'i').exec(sql)![1]
+
+  it('modulos_instalacion no tiene políticas ni grants de escritura para la API', () => {
+    const politicas = [...sql.matchAll(/create\s+policy\s+\S+\s+on\s+public\.modulos_instalacion\s+([^;]*);/gi)].map((m) => m[1])
+    expect(politicas.length).toBe(1)
+    expect(politicas[0]).toMatch(/^for\s+select\s+to\s+authenticated/i)
+    expect(sql).toMatch(/revoke\s+all\s+on\s+table\s+public\.modulos_instalacion\s+from\s+anon,\s*authenticated;/i)
+    const grants = [...sql.matchAll(/grant\s+([^;]+?)\s+on\s+table\s+public\.modulos_instalacion\s+to\s+(\w+)/gi)].map((m) => [m[1].toLowerCase(), m[2]])
+    expect(grants).toEqual([['select', 'authenticated'], ['all', 'service_role']])
+    expect(sql).toMatch(/check\s*\(slug <> 'nucleo' or activo\)/i)
+  })
+
+  it('instalacion: fila única, lectura para todos y update solo de un administrador, sin insert ni delete', () => {
+    expect(sql).toMatch(/id int primary key default 1 check \(id = 1\)/i)
+    expect(sql).toMatch(/grant\s+select,\s*update\s+on\s+table\s+public\.instalacion\s+to\s+authenticated/i)
+    expect(sql).not.toMatch(/grant\s+[^;]*(?:insert|delete|all)[^;]*on\s+table\s+public\.instalacion/i)
+    expect(sql).toMatch(/policy\s+instalacion_update\s+on\s+public\.instalacion\s+for\s+update\s+to\s+authenticated\s+using\s+\(\(select public\.is_admin\(\)\)\)\s+with\s+check\s+\(\(select public\.is_admin\(\)\)\)/i)
+    expect(sql).toMatch(/check\s*\(public\.tema_valido\(tema\)\)/i)
+  })
+
+  it.each(['has_modulo', 'puede_ver_app', 'limite_modulo', 'modulos_consumo'])('%s es security definer con search_path, revoke a public y anon y grant a authenticated', (nombre) => {
+    const f = funciones(sql).find((x) => x.nombre === nombre)!
+    expect(f.definer).toBe(true)
+    expect(f.cabecera).toMatch(/set\s+search_path\s*=\s*public,\s*pg_temp/i)
+    expect(revocaA(sql, nombre, 'public,\\s*anon')).toBe(true)
+    expect(sql).toMatch(new RegExp(`grant\\s+execute\\s+on\\s+function\\s+public\\.${nombre}\\s*\\([^;]*\\)\\s+to\\s+authenticated`, 'i'))
+  })
+
+  it('has_modulo da true al núcleo y puede_ver_app v2 exige el módulo activo antes que el permiso', () => {
+    expect(cuerpo('has_modulo')).toMatch(/p_slug = 'nucleo'\s+or exists \(select 1 from public\.modulos_instalacion m where m\.slug = p_slug and m\.activo\)/i)
+    expect(cuerpo('puede_ver_app')).toMatch(/public\.has_modulo\(p_slug\)\s+and \(public\.is_admin\(\) or public\.has_perm\('app_' \|\| p_slug\)\)/i)
+    expect(sql).not.toMatch(/portal_apps/i)
+  })
+
+  it('modulos_consumo es solo para un administrador', () => {
+    expect(cuerpo('modulos_consumo')).toMatch(/if not public\.is_admin\(\) then\s+raise exception[^;]*errcode = '42501'/i)
+  })
+
+  it('aplicar_politica_modulo crea una política restrictiva con has_modulo en un initPlan y solo la ejecuta el dueño', () => {
+    const c = cuerpo('aplicar_politica_modulo')
+    expect(c).toMatch(/create policy %I on %s as restrictive for all to authenticated using \(\(select public\.has_modulo\(%L\)\)\) with check \(\(select public\.has_modulo\(%L\)\)\)/)
+    expect(c).toMatch(/'modulo_' \|\| v_slug/)
+    expect(c).toMatch(/v_slug = 'nucleo'/)
+    expect(funciones(sql).find((f) => f.nombre === 'aplicar_politica_modulo')!.definer).toBe(false)
+    expect(sql).toMatch(/revoke\s+execute\s+on\s+function\s+public\.aplicar_politica_modulo\(regclass, text\[\]\)\s+from\s+public,\s*anon,\s*authenticated,\s*service_role/i)
+  })
+
+  it('tema_valido admite solo las primitivas de public/tema.js con valores #rrggbb en minúscula', () => {
+    const temaJs = readFileSync(fileURLToPath(new URL('../../../public/tema.js', import.meta.url)), 'utf8')
+    const deTemaJs = [...(/var PRIMITIVAS = \[([\s\S]*?)\];/.exec(temaJs)![1].matchAll(/'([^']+)'/g))].map((m) => m[1])
+    // Con el texto entero: el lector sin comentarios corta en el «--» de cada clave
+    const c = /function\s+public\.tema_valido\(p_tema jsonb\)[\s\S]*?\$\$([\s\S]*?)\$\$/i.exec(texto04)![1]
+    const deSql = [...(/array\[([\s\S]*?)\]::text\[\]/.exec(c)![1].matchAll(/'([^']+)'/g))].map((m) => m[1])
+    expect(deSql.length).toBeGreaterThan(20)
+    expect(deSql.sort()).toEqual(deTemaJs.sort())
+    expect(c).toMatch(/jsonb_typeof\(e\.value\) <> 'string'/)
+    expect(c).toContain("!~ '^#[0-9a-f]{6}$'")
+    expect(/function\s+public\.tema_valido\(p_tema jsonb\)\s+returns boolean language sql immutable/i.test(sql)).toBe(true)
+  })
+
+  it('el trigger de miembros no cuenta las cuentas de servicio y la semilla trae nucleo con miembros = 10 (PP-LIM)', () => {
+    const c = cuerpo('profiles_limite_miembros')
+    expect(c).toMatch(/public\.limite_modulo\('nucleo', 'miembros'\)/)
+    expect(c).toMatch(/new\.es_servicio/)
+    expect(c).toMatch(/raw_app_meta_data ->> 'es_servicio'/)
+    expect(c).toMatch(/where not p\.es_servicio/)
+    expect(c).toMatch(/raise exception 'limite_miembros/)
+    expect(sql).toMatch(/create\s+trigger\s+profiles_limite_miembros\s+before\s+insert\s+on\s+public\.profiles/i)
+    expect(sql).toMatch(/values \('nucleo', true, '\{"miembros": 10\}'\)\s+on conflict \(slug\) do nothing/i)
   })
 })
 
