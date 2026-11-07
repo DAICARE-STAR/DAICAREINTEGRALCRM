@@ -1,0 +1,124 @@
+/* Paleta neutra del producto — primitivas --pal-* (capa 1 de 3).
+
+   Grises de base cálida y un acento azul petróleo (PP-DEC-09). Los colores no
+   se usan directo en los componentes: pasan por los semánticos de temas.css
+   (--txt, --acento, --btn-bg…). Las escalas (texto, espaciado, radios,
+   duraciones, curva) sí se usan directo.
+
+   Una instalación puede redefinir las primitivas de color (y solo esas): la
+   lista vive en public/tema.js (PT_PRIMITIVAS) y la base la valida con
+   tema_valido(). Los contrastes de los tres temas los verifica
+   src/lib/__tests__/contraste.test.ts con src/lib/contraste.ts. */
+
+:root {
+  /* Escala de base cálida, de la más clara a la más oscura */
+  --pal-base-0: #FFFFFF;
+  --pal-base-50: #FAF9F7;
+  --pal-base-100: #F2F0EC;
+  --pal-base-200: #E4E1DB;         /* bordes y divisores sobre claro; texto sobre oscuro */
+  --pal-base-300: #AAA49A;         /* texto secundario sobre oscuro */
+  --pal-base-400: #817B6F;
+  --pal-base-500: #625C52;         /* texto secundario sobre claro */
+  --pal-base-700: #38342D;         /* texto sobre claro */
+  --pal-base-800: #2A2723;
+  --pal-base-850: #211F1B;
+  --pal-base-900: #171512;         /* fondo del tema oscuro */
+
+  /* Acento azul petróleo */
+  --pal-acento-200: #A9D9E8;
+  --pal-acento-300: #7CC3DC;       /* acento como texto y gráfico sobre oscuro */
+  --pal-acento-500: #1D6B86;       /* acento como texto y gráfico sobre claro; botón primario */
+  --pal-acento-600: #17566C;       /* hover del botón primario */
+  --pal-acento-700: #0F4254;
+
+  /* Controles: borde de 3:1 o más (WCAG 1.4.11) y placeholder de 4,5:1 o más */
+  --pal-borde-control: #847E72;
+  --pal-placeholder: #6E685D;
+  --pal-placeholder-sobre-oscuro: #9B958A;
+
+  /* Estados sobre claro */
+  --pal-exito: #2D6B3C;
+  --pal-aviso: #8A5200;
+  --pal-error: #B3362C;
+  --pal-info: #2A64A8;
+
+  /* Estados sobre oscuro */
+  --pal-exito-sobre-oscuro: #6CC08B;
+  --pal-aviso-sobre-oscuro: #E0A060;
+  --pal-error-sobre-oscuro: #EE7F76;
+  --pal-info-sobre-oscuro: #7FA9DD;
+
+  /* Tipografía: Roboto sola, autoalojada (PP-DEC-08) */
+  --pal-fuente-display: 'Roboto', 'Segoe UI', system-ui, -apple-system, Arial, sans-serif;
+  --pal-fuente-cuerpo: 'Roboto', 'Segoe UI', system-ui, -apple-system, Arial, sans-serif;
+  --pal-fuente-mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
+
+  /* Escala de texto; el mínimo es 2xs (12 px) */
+  --pal-texto-2xs: .75rem;
+  --pal-texto-xs: .8125rem;
+  --pal-texto-sm: .875rem;
+  --pal-texto-base: .9375rem;
+  --pal-texto-md: 1rem;
+  --pal-texto-lg: 1.125rem;
+  --pal-texto-xl: 1.375rem;
+  --pal-texto-2xl: 1.75rem;
+  --pal-texto-3xl: 2.25rem;
+  --pal-texto-4xl: 3rem;
+  --pal-texto-display: clamp(2.25rem, 1.5rem + 3vw, 4rem);
+
+  --pal-peso-normal: 400;
+  --pal-peso-medio: 500;
+  --pal-peso-semi: 600;
+  --pal-peso-bold: 700;
+
+  --pal-interlinea-titulo: 1.15;
+  --pal-interlinea-ui: 1.4;
+  --pal-interlinea-texto: 1.6;
+
+  --pal-tracking-titulo: .02em;
+  --pal-tracking-boton: .04em;
+  --pal-tracking-eyebrow: .12em;
+
+  /* Espaciado sobre base de 4 px */
+  --pal-esp-1: .25rem;
+  --pal-esp-2: .5rem;
+  --pal-esp-3: .75rem;
+  --pal-esp-4: 1rem;
+  --pal-esp-5: 1.25rem;
+  --pal-esp-6: 1.5rem;
+  --pal-esp-8: 2rem;
+  --pal-esp-10: 2.5rem;
+  --pal-esp-12: 3rem;
+  --pal-esp-16: 4rem;
+  --pal-esp-24: 6rem;
+
+  /* Radios */
+  --pal-radio-xs: 4px;
+  --pal-radio-sm: 6px;
+  --pal-radio-md: 8px;
+  --pal-radio-lg: 12px;
+  --pal-radio-xl: 16px;
+  --pal-radio-pill: 999px;
+
+  /* Sombras cálidas (claro) y sus variantes para fondo oscuro */
+  --pal-sombra-1: 0 1px 2px rgb(23 21 18 / .06), 0 1px 3px rgb(23 21 18 / .10);
+  --pal-sombra-2: 0 8px 24px rgb(23 21 18 / .14);
+  --pal-sombra-3: 0 18px 50px rgb(23 21 18 / .22);
+  --pal-sombra-arriba: 0 -8px 28px rgb(23 21 18 / .14);
+  --pal-sombra-1-oscuro: 0 1px 3px rgb(0 0 0 / .35);
+  --pal-sombra-2-oscuro: 0 8px 24px rgb(0 0 0 / .45);
+  --pal-sombra-3-oscuro: 0 18px 50px rgb(0 0 0 / .55);
+  --pal-sombra-arriba-oscuro: 0 -8px 28px rgb(0 0 0 / .45);
+
+  /* Movimiento */
+  --pal-dur-rapida: 150ms;
+  --pal-dur-media: 220ms;
+  --pal-dur-lenta: 400ms;
+  --pal-curva: cubic-bezier(.2, .7, .2, 1);
+
+  /* Foco y velo de diálogos */
+  --pal-foco-ancho: 2px;
+  --pal-foco-separacion: 2px;
+  --pal-velo: rgb(23 21 18 / .5);
+  --pal-velo-oscuro: rgb(0 0 0 / .6);
+}

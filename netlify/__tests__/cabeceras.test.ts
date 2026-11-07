@@ -101,7 +101,7 @@ describe('404.html', () => {
   it('es estática, sin scripts y con noindex', () => {
     expect(PAGINA_404).not.toMatch(/<script/i)
     expect(PAGINA_404).toMatch(/<meta name="robots" content="noindex/)
-    expect(PAGINA_404).toMatch(/<a href="\/"/)
+    expect(PAGINA_404).toMatch(/<a [^>]*href="\/"/)
   })
 
   it('vite.config.ts la construye como entrada propia', () => {

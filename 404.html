@@ -6,18 +6,17 @@
     <meta name="robots" content="noindex, nofollow" />
     <title>No encontrado · %PORTAL_NOMBRE%</title>
     <!-- Página estática sin scripts: Netlify la sirve con 404 forzado en las
-         rutas internas (netlify.toml). Vite la construye como segunda entrada. -->
+         rutas internas (netlify.toml). Vite la construye como segunda entrada
+         y empaqueta la hoja de tokens; sin tema.js se ve en el tema claro. -->
+    <link rel="stylesheet" href="/src/estilos/base.css" />
     <style>
-      body { margin: 0; font-family: system-ui, sans-serif; }
-      main { min-height: 100vh; display: grid; place-content: center; gap: 1rem; padding: 1rem; text-align: center; }
-      h1 { font-size: 1.375rem; margin: 0; }
-      a { display: inline-block; padding: .5rem 1rem; border: 1px solid currentColor; border-radius: 6px; text-decoration: none; color: inherit; }
+      main { min-height: 100vh; display: grid; place-content: center; gap: var(--pal-esp-4); padding: var(--pal-esp-4); text-align: center; }
     </style>
   </head>
   <body>
     <main>
       <h1>Página no encontrada</h1>
-      <p><a href="/">Ir al inicio</a></p>
+      <p><a class="btn btn-primario" href="/">Ir al inicio</a></p>
     </main>
   </body>
 </html>

@@ -1,0 +1,87 @@
+@import url('paleta.css');
+@import url('fuentes.css');
+
+/* Temas del producto — semánticos por tema sobre las primitivas (capa 2 de 3).
+
+   Tres capas de tokens:
+     1. paleta.css   primitivas --pal-*.
+     2. temas.css    (este archivo) semánticos por tema.
+     3. base.css y los componentes  alias del shell sobre los de acá.
+   Los componentes nunca escriben un color --pal-* directo: usan el semántico.
+   Agregar un tema es agregar un bloque acá (PP-DEC-05).
+
+     claro    Fondo casi blanco: el por defecto.
+     calido   Misma paleta con la superficie un paso más cálida y menos
+              brillante, para jornadas largas.
+     oscuro   Base 900 de fondo con el acento aclarado.
+
+   --acento y --acento-lite son el acento como TEXTO (azul petróleo 500 sobre
+   claro, 300 sobre oscuro). --acento-grafico es el acento para gestos que no
+   son texto (barras, anillos, líneas). --acento-contraste es el texto que va
+   encima de --acento. El botón primario es --btn-bg con --btn-txt y
+   --btn-bg-hover, igual en los tres temas.
+
+   Contrastes verificados por src/lib/__tests__/contraste.test.ts: 4,5:1 en
+   texto y 3:1 en bordes de control, foco y acento gráfico, sin excepciones. */
+
+:root,
+:root[data-theme='claro'] {
+  --bg: var(--pal-base-50); --bg1: var(--pal-base-50); --bg2: var(--pal-base-100);
+  --card: var(--pal-base-0); --card2: var(--pal-base-100);
+  --line: var(--pal-base-200); --line-control: var(--pal-borde-control);
+  --txt: var(--pal-base-700); --txt-strong: var(--pal-base-900); --muted: var(--pal-base-500);
+  --acento: var(--pal-acento-500); --acento-lite: var(--pal-acento-500); --acento-contraste: var(--pal-base-0);
+  --acento-grafico: var(--pal-acento-500);
+  --btn-bg: var(--pal-acento-500); --btn-txt: var(--pal-base-0); --btn-bg-hover: var(--pal-acento-600);
+  --focus: var(--pal-acento-500);
+  --ok: var(--pal-exito); --warn: var(--pal-aviso); --danger: var(--pal-error); --blue: var(--pal-info);
+  --input-bg: var(--pal-base-0); --input-ph: var(--pal-placeholder);
+  --skel: color-mix(in srgb, var(--pal-base-900) 7%, var(--card));
+  --skel-shine: color-mix(in srgb, var(--pal-base-0) 60%, transparent);
+  --shadow-1: var(--pal-sombra-1); --shadow-2: var(--pal-sombra-2); --shadow-3: var(--pal-sombra-3);
+  --shadow-up: var(--pal-sombra-arriba);
+  --overlay: var(--pal-velo);
+  color-scheme: light;
+}
+
+/* Cálido: el fondo y la superficie secundaria se invierten respecto de Claro. */
+:root[data-theme='calido'] {
+  --bg: var(--pal-base-100); --bg1: var(--pal-base-100); --bg2: var(--pal-base-50);
+  --card: var(--pal-base-0); --card2: var(--pal-base-50);
+  --line: var(--pal-base-200); --line-control: var(--pal-borde-control);
+  --txt: var(--pal-base-700); --txt-strong: var(--pal-base-900); --muted: var(--pal-base-500);
+  --acento: var(--pal-acento-500); --acento-lite: var(--pal-acento-500); --acento-contraste: var(--pal-base-0);
+  --acento-grafico: var(--pal-acento-500);
+  --btn-bg: var(--pal-acento-500); --btn-txt: var(--pal-base-0); --btn-bg-hover: var(--pal-acento-600);
+  --focus: var(--pal-acento-500);
+  --ok: var(--pal-exito); --warn: var(--pal-aviso); --danger: var(--pal-error); --blue: var(--pal-info);
+  --input-bg: var(--pal-base-0); --input-ph: var(--pal-placeholder);
+  --skel: color-mix(in srgb, var(--pal-base-900) 7%, var(--card));
+  --skel-shine: color-mix(in srgb, var(--pal-base-0) 60%, transparent);
+  --shadow-1: var(--pal-sombra-1); --shadow-2: var(--pal-sombra-2); --shadow-3: var(--pal-sombra-3);
+  --shadow-up: var(--pal-sombra-arriba);
+  --overlay: var(--pal-velo);
+  color-scheme: light;
+}
+
+/* Oscuro: base 900 de fondo, 850 y 800 como superficies, 700 como borde. Los
+   estados usan su variante sobre oscuro. */
+:root[data-theme='oscuro'] {
+  --bg: var(--pal-base-900); --bg1: var(--pal-base-900); --bg2: var(--pal-base-850);
+  --card: var(--pal-base-850); --card2: var(--pal-base-800);
+  --line: var(--pal-base-700); --line-control: var(--pal-borde-control);
+  --txt: var(--pal-base-200); --txt-strong: var(--pal-base-50); --muted: var(--pal-base-300);
+  --acento: var(--pal-acento-300); --acento-lite: var(--pal-acento-200); --acento-contraste: var(--pal-base-900);
+  --acento-grafico: var(--pal-acento-300);
+  --btn-bg: var(--pal-acento-500); --btn-txt: var(--pal-base-0); --btn-bg-hover: var(--pal-acento-600);
+  --focus: var(--pal-acento-300);
+  --ok: var(--pal-exito-sobre-oscuro); --warn: var(--pal-aviso-sobre-oscuro);
+  --danger: var(--pal-error-sobre-oscuro); --blue: var(--pal-info-sobre-oscuro);
+  --input-bg: var(--pal-base-850); --input-ph: var(--pal-placeholder-sobre-oscuro);
+  --skel: color-mix(in srgb, var(--pal-base-200) 8%, var(--card));
+  --skel-shine: color-mix(in srgb, var(--pal-base-200) 7%, transparent);
+  --shadow-1: var(--pal-sombra-1-oscuro); --shadow-2: var(--pal-sombra-2-oscuro); --shadow-3: var(--pal-sombra-3-oscuro);
+  --shadow-up: var(--pal-sombra-arriba-oscuro);
+  --overlay: var(--pal-velo-oscuro);
+  color-scheme: dark;
+}

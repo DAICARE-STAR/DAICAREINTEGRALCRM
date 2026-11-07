@@ -7,6 +7,7 @@ El producto nace de `C:\Users\enzov\IA\luce-design\team-portal` (solo lectura). 
 | Paso | Fecha | Hash de team-portal | Qué se copió o adaptó |
 |---|---|---|---|
 | 0.1.2 (PR-0) | 2026-11-07 | f3262bc | `tools/seguridad/escanear-secretos.mjs` y `__tests__/escanear-secretos.test.mjs` (adaptados: sin los valores de fábrica de Wazuh ni las rutas permitidas del arnés de servidores). Modelos, no copias: `vite.config.ts` (CSP del shell, origen de Supabase), `netlify.toml` (cabeceras base y 404 forzados de la línea de hardening), `tsconfig.json`, `tsconfig.netlify.json`, `vitest.config.ts`, `.env.example`. |
+| 0.1.4 (PR-2) | 2026-11-07 | f3262bc | Copiados:  y la sección Roboto de  (de ; Jost no viaja). Modelos renombrados con el mapa:  (de , con la paleta neutra PP-DEC-09),  (de ),  (de , más la caché de primitivas),  (de ),  y su prueba (fórmula y pares de ). |
 
 ## Mapa de renombres
 
