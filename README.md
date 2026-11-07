@@ -18,7 +18,7 @@ Verificación: `npm run typecheck`, `npm test`, `npm run build`, `npm run secret
 | `netlify/` | Funciones de servidor y su código común; pruebas de contrato en `__tests__/` |
 | `supabase/esquema/` | Esquema consolidado por dominio que aplica el instalador |
 | `tools/seguridad/` | Escáner de secretos |
-| `tools/instalar/` | Instalador del esquema (`aplicar.mjs`) |
+| `tools/instalar/` | Instalador del esquema (`aplicar.mjs`) y de los módulos de la instalación (`modulos.mjs`) |
 | `docs/` | Origen del código, portes, glosario, flujo entre IA |
 
 ## Estado
