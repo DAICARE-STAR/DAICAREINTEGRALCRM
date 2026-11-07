@@ -4,6 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   CONSULTA_ES_ADMIN,
+  CONSULTA_REGISTRADA,
   CONSULTA_REQUISITOS,
   CONSULTA_ROL_QA,
   CONSULTA_USUARIO,
@@ -23,7 +24,7 @@ const CADENA = `postgresql://postgres.ref:${['Ab3', 'Cd5'].join('')}@aws-0.poole
 const ENV = { SUPABASE_URL: 'https://ref.supabase.co', SUPABASE_SERVICE_ROLE_KEY: CLAVE, SUPABASE_DB_URL: CADENA }
 const correoDe = (rol) => `${rol}@prueba.invalid`
 
-function clienteFalso({ existentes = {}, admins = [], rolQa = null, listo = true } = {}) {
+function clienteFalso({ existentes = {}, admins = [], rolQa = null, listo = true, registradas = [] } = {}) {
   const ejecutadas = []
   const consultar = async (texto, params) => {
     ejecutadas.push({ texto, params })
@@ -33,6 +34,7 @@ function clienteFalso({ existentes = {}, admins = [], rolQa = null, listo = true
       return id ? [{ id }] : []
     }
     if (texto === CONSULTA_ES_ADMIN) return admins.includes(params[0]) ? [{ es: 1 }] : []
+    if (texto === CONSULTA_REGISTRADA) return registradas.includes(`${params[0]}:${params[1]}`) ? [{ es: 1 }] : []
     if (texto === CONSULTA_ROL_QA) return rolQa ? [{ name: rolQa }] : []
     if (texto === INSERT_ROL_QA) return [{ name: 'qa' }]
     return []
@@ -60,10 +62,12 @@ function fetchFalso(respuesta = (cuerpo) => ({ ok: true, status: 200, json: asyn
   return f
 }
 
-// Responde el correo de la cuenta que pide el texto y la contraseña si es oculta
-const terminal = (preguntas) => async (texto, oculto) => {
+// Responde el correo de la cuenta que pide el texto, la contraseña si es
+// oculta y la confirmación de reutilizar una cuenta existente
+const terminal = (preguntas, confirmar = '') => async (texto, oculto) => {
   preguntas.push({ texto, oculto })
   if (oculto) return CONTRASENA
+  if (/Escribe reutilizar/.test(texto)) return confirmar
   return correoDe(/cuenta (\w+)/.exec(texto)[1])
 }
 
@@ -78,7 +82,7 @@ async function correr(config = {}) {
     log: (s) => salida.push(String(s)),
     error: (s) => errores.push(String(s)),
     crearCliente: async () => cliente,
-    preguntar: config.sinTerminal ? null : terminal(preguntas),
+    preguntar: config.sinTerminal ? null : terminal(preguntas, config.confirmar),
     fetch: f,
   })
   const escritas = (texto) => cliente.ejecutadas.filter((e) => e.texto === texto).map((e) => e.params)
@@ -155,16 +159,37 @@ describe('cuentas-prueba.mjs', () => {
     expect(r.escritas(REGISTRAR)).toEqual([])
   })
 
-  it('reutiliza una cuenta existente sin pedir su contraseña y reusa el rol con funcion qa', async () => {
-    const r = await correr({ existentes: { [correoDe('qa')]: 'id-viejo' }, rolQa: 'pruebas' })
+  it('reutiliza una cuenta existente confirmada sin pedir su contraseña y reusa el rol con funcion qa', async () => {
+    const r = await correr({ existentes: { [correoDe('qa')]: 'id-viejo' }, rolQa: 'pruebas', confirmar: 'reutilizar' })
     expect(r.codigo).toBe(0)
     expect(r.preguntas.filter((p) => p.oculto).length).toBe(2)
+    expect(r.preguntas.filter((p) => /Escribe reutilizar/.test(p.texto)).length).toBe(1)
     expect(r.escritas(INSERT_ROL_QA)).toEqual([])
     expect(r.escritas(INSERT_USER_ROL)[0]).toEqual(['id-viejo', 'pruebas'])
   })
 
+  it('una cuenta existente sin confirmar queda sin roles, sin es_servicio y sin registro', async () => {
+    for (const confirmar of ['', 'si', 's']) {
+      const r = await correr({ existentes: { [correoDe('qa')]: 'id-empleado', [correoDe('admin')]: 'id-otro' }, confirmar })
+      expect(r.codigo).toBe(0)
+      expect(r.salida).toContain('OMITIDO cuenta qa: ya existe en Auth y no se confirmó; queda sin cambios')
+      expect(r.salida).toContain('OMITIDO cuenta admin: ya existe en Auth y no se confirmó; queda sin cambios')
+      const tocadas = [...r.escritas(INSERT_USER_ROL), ...r.escritas(MARCAR_SERVICIO), ...r.escritas(REGISTRAR)].flat()
+      expect(tocadas).not.toContain('id-empleado')
+      expect(tocadas).not.toContain('id-otro')
+      expect(r.escritas(REGISTRAR)).toEqual([['miembro', 'id-miembro']])
+    }
+  })
+
+  it('una cuenta ya registrada con ese rol se reutiliza sin preguntar', async () => {
+    const r = await correr({ existentes: { [correoDe('admin')]: 'id-admin-prueba' }, registradas: ['admin:id-admin-prueba'] })
+    expect(r.codigo).toBe(0)
+    expect(r.preguntas.some((p) => /Escribe reutilizar/.test(p.texto))).toBe(false)
+    expect(r.escritas(REGISTRAR)).toContainEqual(['admin', 'id-admin-prueba'])
+  })
+
   it('una cuenta qa o miembro que ya es administradora sale con 1', async () => {
-    const r = await correr({ existentes: { [correoDe('qa')]: 'id-admin-viejo' }, admins: ['id-admin-viejo'] })
+    const r = await correr({ existentes: { [correoDe('qa')]: 'id-admin-viejo' }, admins: ['id-admin-viejo'], confirmar: 'reutilizar' })
     expect(r.codigo).toBe(1)
     expect(r.errores.join('\n')).toMatch(/administradora/)
     expect(r.escritas(REGISTRAR)).toEqual([])

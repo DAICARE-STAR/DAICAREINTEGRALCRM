@@ -7,7 +7,10 @@
 //   node tools/instalar/cuentas-prueba.mjs
 //
 // Pide el correo de cada cuenta. Si ya existe en Auth, la reutiliza sin tocar
-// su contraseña; si no, pide la contraseña sin eco y la crea por la API Admin
+// su contraseña: sin preguntar si ya figura en instalador.cuentas_prueba con
+// ese rol; si no, solo cuando quien instala escribe «reutilizar» (un correo
+// equivocado daría admin, o la marca de servicio, a una cuenta real). Si no
+// existe, pide la contraseña sin eco y la crea por la API Admin
 // de Auth con el correo confirmado. La contraseña solo viaja en el cuerpo de
 // esa llamada: nunca va a la salida, a argv ni al entorno. Después, con la
 // cadena del instalador, asigna los roles, marca qa como cuenta de servicio y
@@ -44,6 +47,7 @@ end $$;`
 
 export const CONSULTA_REQUISITOS = `select to_regclass('public.modulos_instalacion') is not null and to_regnamespace('instalador') is not null as listo`
 export const CONSULTA_USUARIO = 'select id from auth.users where lower(email) = lower($1)'
+export const CONSULTA_REGISTRADA = 'select 1 as es from instalador.cuentas_prueba where rol = $1 and user_id = $2'
 export const CONSULTA_ES_ADMIN = `select 1 as es from public.user_roles where user_id = $1 and role = 'admin'`
 export const CONSULTA_ROL_QA = `select name from public.roles where funcion = 'qa'`
 export const INSERT_ROL_QA = `insert into public.roles as r (name, description, permissions, position, funcion)
@@ -56,6 +60,7 @@ export const REGISTRAR = `insert into instalador.cuentas_prueba (rol, user_id) v
 on conflict (rol) do update set user_id = excluded.user_id, registrado_at = now()`
 
 const CORREO = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/
+const EFECTO = { qa: 'el rol qa y la marca de cuenta de servicio', miembro: 'el registro como cuenta de prueba', admin: 'el rol admin' }
 const INTENTOS = 3
 
 // Pregunta en la terminal; con oculto no se ve lo que se escribe (patrón de
@@ -150,8 +155,15 @@ export async function main(argv = process.argv.slice(2), opciones = {}) {
     for (const rol of ROLES) {
       const correo = await pedirValido(preguntar, `Correo de la cuenta ${rol}: `, false, (v) => CORREO.test(v), 'correo no válido')
       let [{ id } = {}] = await cliente.consultar(CONSULTA_USUARIO, [correo])
-      if (id) {
-        log(`OMITIDO cuenta ${rol}: ya existe en Auth, se reutiliza sin cambiar su contraseña`)
+      if (id && (await cliente.consultar(CONSULTA_REGISTRADA, [rol, id])).length) {
+        log(`OMITIDO cuenta ${rol}: ya registrada como cuenta de prueba, se reutiliza sin cambiar su contraseña`)
+      } else if (id) {
+        const respuesta = await preguntar(`La cuenta ${rol} ya existe en Auth y no es una cuenta de prueba registrada. Escribe reutilizar para darle ${EFECTO[rol]}; otra respuesta la deja sin cambios: `, false)
+        if (respuesta.trim() !== 'reutilizar') {
+          log(`OMITIDO cuenta ${rol}: ya existe en Auth y no se confirmó; queda sin cambios`)
+          continue
+        }
+        log(`OK cuenta ${rol}: se reutiliza sin cambiar su contraseña`)
       } else {
         const contrasena = await pedirValido(preguntar, `Contraseña de la cuenta ${rol}: `, true, (v) => v.length >= 12, 'al menos 12 caracteres')
         id = await crearUsuario({ url: env.SUPABASE_URL.trim(), clave, correo, contrasena, servicio: rol === 'qa', fetch: f })
