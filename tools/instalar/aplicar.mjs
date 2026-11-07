@@ -16,7 +16,8 @@
 // sha256, aplicado_at, version_producto). Aplica cada archivo en su propia
 // transacción; salta los ya aplicados con el mismo sha256 y se niega si cambió
 // el sha256 de uno aplicado (un archivo aplicado no se edita). En una base con
-// tablas en public y sin registro se detiene. Después de cada lote re-ejecuta
+// tablas en public y sin registro se detiene. Después de cada corrida, aunque
+// no hubiera nada pendiente o fallara un archivo, re-ejecuta
 // public.aplicar_exigir_mfa() si existe.
 //
 // Salidas: 0 todo bien, 1 diferencias o fallos, 2 no se pudo (falta la
@@ -220,6 +221,7 @@ export async function main(argv = process.argv.slice(2), opciones = {}) {
     }
     if (cambiados) return 1
 
+    let salida = 0
     for (const a of pendientes) {
       try {
         await cliente.transaccion(async (tx) => {
@@ -229,14 +231,24 @@ export async function main(argv = process.argv.slice(2), opciones = {}) {
         log(`OK ${a.nombre} aplicado (${a.sha256.slice(0, 12)})`)
       } catch (e) {
         error(`DIFIERE ${a.nombre}: ${ocultar(e.message)}`)
-        return 1
+        salida = 1
+        break
       }
     }
 
-    if (pendientes.length && (await cliente.consultar(CONSULTA_MFA)).length) {
-      await cliente.consultar(LLAMADA_MFA)
-      log('OK aplicar_exigir_mfa() re-ejecutada')
+    // Siempre, aunque no hubiera pendientes o un archivo fallara tras otros ya
+    // confirmados: la función es idempotente y así un reintento repara una
+    // llamada fallida o saltada en la corrida anterior.
+    if ((await cliente.consultar(CONSULTA_MFA)).length) {
+      try {
+        await cliente.consultar(LLAMADA_MFA)
+        log('OK aplicar_exigir_mfa() re-ejecutada')
+      } catch (e) {
+        error(`DIFIERE aplicar_exigir_mfa(): ${ocultar(e.message)}`)
+        return 1
+      }
     }
+    if (salida) return salida
 
     if (o.verificar) {
       const verificar = leerArchivo(join(carpeta, 'verificar.sql'))

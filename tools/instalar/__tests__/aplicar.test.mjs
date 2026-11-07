@@ -185,15 +185,36 @@ describe('aplicar.mjs: aplicación', () => {
     expect(aplicadosEn(cliente)).toEqual(['02-auditoria.sql'])
   })
 
-  it('re-ejecuta aplicar_exigir_mfa() tras el lote solo si existe y hubo algo que aplicar', async () => {
+  const llamoMfa = (cliente) => cliente.ejecutadas.some((e) => e.texto === LLAMADA_MFA)
+  const todoAplicado = () => Object.entries(ARCHIVOS).map(([archivo, texto]) => ({ archivo, sha256: sha256(texto) }))
+
+  it('re-ejecuta aplicar_exigir_mfa() tras cada corrida si existe, aunque no haya nada pendiente', async () => {
     const con = await correr([], { tieneMfa: true })
-    expect(con.cliente.ejecutadas.some((e) => e.texto === LLAMADA_MFA)).toBe(true)
+    expect(llamoMfa(con.cliente)).toBe(true)
     expect(con.salida.at(-1)).toMatch(/aplicar_exigir_mfa\(\) re-ejecutada/)
     const sin = await correr([], { tieneMfa: false })
-    expect(sin.cliente.ejecutadas.some((e) => e.texto === LLAMADA_MFA)).toBe(false)
-    const todoAplicado = Object.entries(ARCHIVOS).map(([archivo, texto]) => ({ archivo, sha256: sha256(texto) }))
-    const nada = await correr([], { tieneMfa: true, aplicados: todoAplicado })
-    expect(nada.cliente.ejecutadas.some((e) => e.texto === LLAMADA_MFA)).toBe(false)
+    expect(llamoMfa(sin.cliente)).toBe(false)
+    const nada = await correr([], { tieneMfa: true, aplicados: todoAplicado() })
+    expect(nada.codigo).toBe(0)
+    expect(llamoMfa(nada.cliente)).toBe(true)
+  })
+
+  it('si aplicar_exigir_mfa() falla sale con 1 y el reintento, sin pendientes, la vuelve a llamar', async () => {
+    const primera = await correr([], { tieneMfa: true, fallaEn: 'aplicar_exigir_mfa' })
+    expect(primera.codigo).toBe(1)
+    expect(aplicadosEn(primera.cliente)).toEqual(['00-base.sql', '01-seguridad.sql', '02-auditoria.sql'])
+    expect(primera.errores.at(-1)).toMatch(/^DIFIERE aplicar_exigir_mfa\(\): /)
+    expect(primera.texto).not.toContain(CLAVE)
+    const reintento = await correr([], { tieneMfa: true, aplicados: todoAplicado() })
+    expect(reintento.codigo).toBe(0)
+    expect(llamoMfa(reintento.cliente)).toBe(true)
+  })
+
+  it('si un archivo falla tras otros confirmados, re-ejecuta aplicar_exigir_mfa() igual y sale con 1', async () => {
+    const r = await correr([], { tieneMfa: true, fallaEn: 'public.b' })
+    expect(r.codigo).toBe(1)
+    expect(aplicadosEn(r.cliente)).toEqual(['00-base.sql'])
+    expect(llamoMfa(r.cliente)).toBe(true)
   })
 
   it('un error de sql sale con 1, no sigue con el siguiente archivo y oculta la cadena', async () => {
