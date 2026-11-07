@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { CONSULTA_MFA, DDL_REGISTRO, INSERT_REGISTRO, LLAMADA_MFA, leerArgumentos, main, resumirVerificacion } from '../aplicar.mjs'
+import { CONSULTA_HAY_REGISTRO, CONSULTA_MFA, DDL_REGISTRO, INSERT_REGISTRO, LLAMADA_MFA, SOLO_LECTURA, leerArgumentos, main, resumirVerificacion } from '../aplicar.mjs'
 import { esNucleo, listarArchivosEsquema, normalizar, numeroDe, ocultarUrl, PATRON_ARCHIVO, sha256 } from '../comun.mjs'
 import { MODULOS } from '../../../src/lib/modulos.ts'
 
@@ -31,13 +31,14 @@ beforeEach(() => {
 })
 afterEach(() => rmSync(carpeta, { recursive: true, force: true }))
 
-function clienteFalso({ aplicados = [], tablasPublic = [], tieneMfa = false, fallaEn = null, verificar = [] } = {}) {
+function clienteFalso({ aplicados = [], tablasPublic = [], tieneMfa = false, fallaEn = null, verificar = [], hayRegistro = true } = {}) {
   const ejecutadas = []
   const consultar = async (texto, params) => {
     ejecutadas.push({ texto, params })
     if (texto.includes('from instalador.esquema_aplicado')) return aplicados
     if (texto.includes('from pg_tables')) return tablasPublic.map((t) => ({ tablename: t }))
     if (texto === CONSULTA_MFA) return tieneMfa ? [{ existe: 1 }] : []
+    if (texto === CONSULTA_HAY_REGISTRO) return [{ existe: hayRegistro }]
     if (texto.startsWith('-- verificar.sql')) return verificar
     if (fallaEn && texto.includes(fallaEn)) throw new Error(`error de sql en ${fallaEn} con ${CADENA} y ${CLAVE}`)
     return []
@@ -259,7 +260,10 @@ describe('aplicar.mjs: entorno y argumentos', () => {
   })
 
   it('opciones', () => {
-    expect(leerArgumentos(['--hasta', '03', '--verificar'])).toMatchObject({ hasta: 3, verificar: true })
+    expect(leerArgumentos(['--verificar'])).toMatchObject({ verificar: true })
+    expect(() => leerArgumentos(['--hasta', '03', '--verificar'])).toThrow(/solo lectura/)
+    expect(() => leerArgumentos(['--verificar', '--archivo', 'x.sql'])).toThrow(/solo lectura/)
+    expect(() => leerArgumentos(['--verificar', '--solo-concatenar', 'x.sql'])).toThrow(/solo lectura/)
     expect(leerArgumentos(['--solo-concatenar', 'salida.sql'])).toMatchObject({ concatenar: 'salida.sql' })
     expect(() => leerArgumentos(['--hasta'])).toThrow(/necesita un valor/)
     expect(() => leerArgumentos(['--hasta', '3'])).toThrow(/dos cifras/)
@@ -310,11 +314,22 @@ describe('aplicar.mjs: --verificar', () => {
     expect(resumirVerificacion(filas(['OMITIDO', 'DIFIERE']), () => {})).toBe(1)
   })
 
-  it('corre verificar.sql de la carpeta tras aplicar', async () => {
-    const r = await correr(['--verificar'], { verificar: filas(['OK', 'DIFIERE']) })
+  it('corre verificar.sql de la carpeta en una transacción read only, sin crear el registro ni aplicar nada', async () => {
+    const r = await correr(['--verificar'], { verificar: filas(['OK', 'DIFIERE']), tieneMfa: true })
     expect(r.codigo).toBe(1)
     expect(r.salida).toContain('DIFIERE comprobación 2')
-    expect(r.cliente.ejecutadas.some((e) => e.texto.startsWith('-- verificar.sql'))).toBe(true)
+    const textos = r.cliente.ejecutadas.map((e) => e.texto)
+    expect(textos).toEqual([CONSULTA_HAY_REGISTRO, 'BEGIN', SOLO_LECTURA, '-- verificar.sql de prueba\nselect 1;\n', 'COMMIT', 'END'])
+    expect(textos).not.toContain(DDL_REGISTRO)
+    expect(textos).not.toContain(LLAMADA_MFA)
+    expect(aplicadosEn(r.cliente)).toEqual([])
+  })
+
+  it('--verificar sale con 2 si la base no tiene el esquema del instalador, sin crearlo', async () => {
+    const r = await correr(['--verificar'], { hayRegistro: false })
+    expect(r.codigo).toBe(2)
+    expect(r.errores[0]).toMatch(/^OMITIDO no existe instalador\.esquema_aplicado/)
+    expect(r.cliente.ejecutadas.map((e) => e.texto)).toEqual([CONSULTA_HAY_REGISTRO, 'END'])
   })
 
   it('el verificar.sql real es una sola consulta de solo lectura con las comprobaciones genéricas', () => {

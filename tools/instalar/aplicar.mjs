@@ -6,7 +6,9 @@
 //   node tools/instalar/aplicar.mjs --hasta 03           solo hasta el número 03 (del núcleo)
 //   node tools/instalar/aplicar.mjs --archivo <ruta>     un archivo suelto (lo usa modulos.mjs); los
 //                                                        archivos de módulo (10 en adelante) solo así
-//   node tools/instalar/aplicar.mjs --verificar          corre supabase/esquema/verificar.sql
+//   node tools/instalar/aplicar.mjs --verificar          solo lectura: corre supabase/esquema/verificar.sql
+//                                                        en una transacción read only, sin crear el
+//                                                        registro ni aplicar nada (2 si no hay registro)
 //   node tools/instalar/aplicar.mjs --solo-concatenar <salida.sql>
 //                                                        respaldo para el SQL Editor: concatena
 //                                                        y añade el registro tras cada archivo
@@ -68,6 +70,8 @@ export const CONSULTA_APLICADOS = `select archivo, sha256 from ${TABLA} order by
 export const CONSULTA_TABLAS_PUBLIC = `select tablename from pg_tables where schemaname = 'public' order by tablename`
 export const CONSULTA_MFA = `select 1 as existe from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname = 'aplicar_exigir_mfa'`
 export const LLAMADA_MFA = 'select public.aplicar_exigir_mfa()'
+export const CONSULTA_HAY_REGISTRO = `select to_regclass('${TABLA}') is not null as existe`
+export const SOLO_LECTURA = 'set transaction read only'
 export const INSERT_REGISTRO = `insert into ${TABLA} (archivo, sha256, version_producto) values ($1, $2, $3)`
 
 const literal = (s) => `'${String(s).replace(/'/g, "''")}'`
@@ -107,6 +111,7 @@ export function leerArgumentos(argv) {
     else throw new Error(`Opción desconocida: ${a}`)
   }
   if (o.archivo && o.hasta !== null) throw new Error('--archivo y --hasta no se combinan')
+  if (o.verificar && (o.archivo || o.hasta !== null || o.concatenar)) throw new Error('--verificar es de solo lectura: no se combina con --hasta, --archivo ni --solo-concatenar')
   return o
 }
 
@@ -158,7 +163,7 @@ export async function main(argv = process.argv.slice(2), opciones = {}) {
     return 2
   }
   if (o.ayuda) {
-    log('Uso: node tools/instalar/aplicar.mjs [--hasta NN | --archivo <ruta>] [--verificar] [--solo-concatenar <salida.sql>]')
+    log('Uso: node tools/instalar/aplicar.mjs [--hasta NN | --archivo <ruta>] [--solo-concatenar <salida.sql>] | --verificar')
     return 0
   }
   if (o.adoptar) {
@@ -168,7 +173,7 @@ export async function main(argv = process.argv.slice(2), opciones = {}) {
 
   let archivos
   try {
-    archivos = seleccionarArchivos(o, carpeta)
+    archivos = o.verificar ? [leerArchivo(join(carpeta, 'verificar.sql'))] : seleccionarArchivos(o, carpeta)
   } catch (e) {
     error(`No se pudo leer el esquema: ${e.message}`)
     return 2
@@ -196,6 +201,20 @@ export async function main(argv = process.argv.slice(2), opciones = {}) {
   }
 
   try {
+    if (o.verificar) {
+      const [{ existe } = {}] = await cliente.consultar(CONSULTA_HAY_REGISTRO)
+      if (!existe) {
+        error(`OMITIDO no existe ${TABLA}: la base no tiene el esquema del instalador (--verificar no lo crea)`)
+        return 2
+      }
+      let filas
+      await cliente.transaccion(async (tx) => {
+        await tx.consultar(SOLO_LECTURA)
+        filas = await tx.consultar(archivos[0].texto)
+      })
+      return resumirVerificacion(filas, log)
+    }
+
     await cliente.consultar(DDL_REGISTRO)
     const aplicados = new Map((await cliente.consultar(CONSULTA_APLICADOS)).map((f) => [f.archivo, f.sha256]))
 
@@ -248,14 +267,7 @@ export async function main(argv = process.argv.slice(2), opciones = {}) {
         return 1
       }
     }
-    if (salida) return salida
-
-    if (o.verificar) {
-      const verificar = leerArchivo(join(carpeta, 'verificar.sql'))
-      const filas = await cliente.consultar(verificar.texto)
-      return resumirVerificacion(filas, log)
-    }
-    return 0
+    return salida
   } catch (e) {
     error(`Error: ${ocultar(e.message)}`)
     return 1
