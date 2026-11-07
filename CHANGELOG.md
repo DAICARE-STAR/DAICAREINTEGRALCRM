@@ -4,4 +4,5 @@ Formato: cada commit a `main` es un Paso `Mayor.Fase.Paso — descripción`. La 
 
 ## 0.1 — Arranque (2026-11-07)
 
-- 0.1.1 — Proyecto creado desde la plantilla del sistema IA.
+- 0.1.1 — Proyecto creado desde la plantilla del sistema IA. (33b997a)
+- 0.1.2 — Base técnica: package.json, tsconfigs, Vite con CSP del shell y nombre por VITE_PORTAL_NOMBRE, netlify.toml con cabeceras base y 404 forzados, .env.example clasificado, launch.json (5190 y 4190), escáner de secretos con su prueba, pruebas de contrato de cabeceras y de entorno, AGENTS.md con decisiones PP-DEC-01 a 14, docs/origen.md y docs/portes.md, página mínima.

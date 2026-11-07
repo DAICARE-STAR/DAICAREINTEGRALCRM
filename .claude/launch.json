@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "portal-producto",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 5190
+    },
+    {
+      "name": "portal-producto-build",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "preview:build"],
+      "port": 4190
+    }
+  ]
+}
