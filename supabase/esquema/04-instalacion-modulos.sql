@@ -357,7 +357,8 @@ grant execute on function public.modulos_consumo() to authenticated;
 -- La función invitar-miembro valida antes y responde 409 'limite_miembros';
 -- este trigger es el respaldo para fallar cerrado. No cuentan las cuentas
 -- de servicio: ni las que ya tienen es_servicio ni la que se está creando
--- con app_metadata.es_servicio = true (solo la fija la service role).
+-- con app_metadata.es_servicio = true (solo la fija la service role), que
+-- nace ya con es_servicio para no contar después.
 create or replace function public.profiles_limite_miembros()
 returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
 declare
@@ -369,6 +370,7 @@ begin
   end if;
   if exists (select 1 from auth.users u
               where u.id = new.id and coalesce(u.raw_app_meta_data ->> 'es_servicio', '') = 'true') then
+    new.es_servicio := true;
     return new;
   end if;
   -- Dos altas a la vez no pasan las dos con el último cupo

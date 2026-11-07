@@ -266,11 +266,41 @@ describe('esquema consolidado: 04-instalacion-modulos', () => {
     const c = cuerpo('profiles_limite_miembros')
     expect(c).toMatch(/public\.limite_modulo\('nucleo', 'miembros'\)/)
     expect(c).toMatch(/new\.es_servicio/)
-    expect(c).toMatch(/raw_app_meta_data ->> 'es_servicio'/)
+    expect(c).toMatch(/raw_app_meta_data ->> 'es_servicio', ''\) = 'true'\) then\s+new\.es_servicio := true;/)
     expect(c).toMatch(/where not p\.es_servicio/)
     expect(c).toMatch(/raise exception 'limite_miembros/)
     expect(sql).toMatch(/create\s+trigger\s+profiles_limite_miembros\s+before\s+insert\s+on\s+public\.profiles/i)
     expect(sql).toMatch(/values \('nucleo', true, '\{"miembros": 10\}'\)\s+on conflict \(slug\) do nothing/i)
+  })
+})
+
+describe('supabase/pruebas/rls-simulacion.sql', () => {
+  const sim = readFileSync(fileURLToPath(new URL('../../../supabase/pruebas/rls-simulacion.sql', import.meta.url)), 'utf8').replace(/\r\n?/g, '\n')
+  const bloques = sim.split(/\n(?=-- ============ )/)
+
+  it('va en BEGIN … ROLLBACK y termina con el resultado como error', () => {
+    const codigo = sinComentarios(sim).trim()
+    expect(codigo.startsWith('begin;')).toBe(true)
+    expect(codigo.endsWith('rollback;')).toBe(true)
+    expect(sim).toMatch(/raise exception E'rls-simulacion \(se deshace todo\)/)
+    expect(sinComentarios(sim)).not.toMatch(/\bcommit\b/i)
+  })
+
+  it('tiene las secciones 0 a 7 y la 0 lee instalador.cuentas_prueba', () => {
+    for (let n = 0; n <= 7; n++) expect(sim).toContain(`-- ============ ${n}) `)
+    expect(bloques.find((b) => b.startsWith('-- ============ 0) '))).toMatch(/from instalador\.cuentas_prueba where rol = 'qa'/)
+  })
+
+  it('cada sección después de la 0 se niega a correr suelta', () => {
+    const secciones = bloques.filter((b) => /^-- ============ [1-9]\d*\) /.test(b))
+    expect(secciones.length).toBe(7)
+    for (const s of secciones) expect(s).toMatch(/current_setting\('rls\.txid', true\) is distinct from txid_current\(\)::text then\s+raise exception/)
+  })
+
+  it('no lleva marca, correos ni emojis de una instalación', () => {
+    expect(sim).not.toMatch(/luce/i)
+    expect(sim).not.toMatch(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z0-9.-]+/)
+    expect(sim).not.toMatch(/\p{Extended_Pictographic}/u)
   })
 })
 

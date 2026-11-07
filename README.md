@@ -17,8 +17,9 @@ Verificación: `npm run typecheck`, `npm test`, `npm run build`, `npm run secret
 | `src/` | Shell React: `lib/` lógica pura con pruebas en `__tests__/`, `estilos/` tokens y temas |
 | `netlify/` | Funciones de servidor y su código común; pruebas de contrato en `__tests__/` |
 | `supabase/esquema/` | Esquema consolidado por dominio que aplica el instalador |
+| `supabase/pruebas/` | Simulación de RLS (`rls-simulacion.sql`) sobre las cuentas de `tools/instalar/cuentas-prueba.mjs` |
 | `tools/seguridad/` | Escáner de secretos |
-| `tools/instalar/` | Instalador del esquema (`aplicar.mjs`) y de los módulos de la instalación (`modulos.mjs`) |
+| `tools/instalar/` | Instalador del esquema (`aplicar.mjs`) y de los módulos de la instalación (`modulos.mjs`); cuentas de prueba (`cuentas-prueba.mjs`) |
 | `docs/` | Origen del código, portes, glosario, flujo entre IA |
 
 ## Estado
