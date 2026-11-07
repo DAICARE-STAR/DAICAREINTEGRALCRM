@@ -18,4 +18,5 @@ f3262bc (2026-11-07). Nada que portar: el producto nace en este hash.
 
 | Fecha | Commit de team-portal | Qué arregla | Resultado |
 |---|---|---|---|
-| (ninguno todavía) | | | |
+| 2026-11-07 | b545dfa (migración 87) | Funciones nuevas sin EXECUTE para public y anon | portado en 0.1.12 (01-seguridad.sql §1) |
+| 2026-11-07 | 241e030 (migración 88) | Borrados solo-admin; «gestores actualizan perfiles» con is_admin() | portado en 0.1.12 (01-seguridad.sql §2 y 00-base.sql §7) |
