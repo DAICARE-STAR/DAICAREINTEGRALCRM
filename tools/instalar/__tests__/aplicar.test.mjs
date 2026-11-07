@@ -3,11 +3,12 @@
 // tablas ajenas, --hasta, --archivo, --solo-concatenar, --verificar, y la
 // cadena de conexión nunca aparece en la salida.
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { CONSULTA_HAY_REGISTRO, CONSULTA_MFA, DDL_REGISTRO, INSERT_REGISTRO, LLAMADA_MFA, SOLO_LECTURA, leerArgumentos, main, resumirVerificacion } from '../aplicar.mjs'
-import { esNucleo, listarArchivosEsquema, normalizar, numeroDe, ocultarUrl, PATRON_ARCHIVO, sha256 } from '../comun.mjs'
+import { crearCliente, esNucleo, listarArchivosEsquema, normalizar, numeroDe, ocultarUrl, opcionSsl, PATRON_ARCHIVO, sha256 } from '../comun.mjs'
 import { MODULOS } from '../../../src/lib/modulos.ts'
 
 // Valores armados al correr: este archivo no lleva ninguno literal
@@ -342,5 +343,46 @@ describe('aplicar.mjs: --verificar', () => {
     expect(real).toMatch(/'DIFIERE'/)
     expect(real).toMatch(/'OMITIDO'/)
     expect(real).toMatch(/'AVISO'/)
+  })
+})
+
+describe('comun.mjs: TLS de la conexión', () => {
+  it('opcionSsl exige TLS por defecto y respeta solo los modos que verifican el certificado', () => {
+    expect(opcionSsl(CADENA)).toBe('require')
+    expect(opcionSsl(`${CADENA}?sslmode=prefer`)).toBe('require')
+    expect(opcionSsl(`${CADENA}?sslmode=allow`)).toBe('require')
+    expect(opcionSsl(`${CADENA}?sslmode=verify-full`)).toBe('verify-full')
+    expect(opcionSsl(`${CADENA}?sslmode=verify-ca`)).toBe('verify-ca')
+    expect(opcionSsl('no es una url')).toBe('require')
+    expect(() => opcionSsl(`${CADENA}?sslmode=disable`)).toThrow(/solo se admite contra una base local/)
+    expect(opcionSsl('postgresql://postgres:x@127.0.0.1:54322/postgres?sslmode=disable')).toBe(false)
+    expect(opcionSsl('postgresql://postgres:x@localhost:54322/postgres?sslmode=disable')).toBe(false)
+    expect(opcionSsl('postgresql://postgres:x@127.0.0.1:54322/postgres')).toBe('require')
+  })
+
+  it('crearCliente pide TLS y no sigue en claro si el servidor lo rechaza', async () => {
+    // Servidor que contesta «N» (sin TLS) a la SSLRequest y anota lo que recibe
+    const recibido = []
+    const servidor = createServer((s) => {
+      s.on('data', (d) => {
+        recibido.push(Buffer.from(d))
+        if (recibido.length === 1) s.write('N')
+        else s.destroy()
+      })
+    })
+    await new Promise((r) => servidor.listen(0, '127.0.0.1', r))
+    const { port } = servidor.address()
+    const cliente = await crearCliente(`postgresql://postgres:x@127.0.0.1:${port}/postgres`)
+    try {
+      await expect(cliente.consultar('select 1')).rejects.toThrow()
+    } finally {
+      await cliente.cerrar().catch(() => {})
+      await new Promise((r) => servidor.close(r))
+    }
+    // Lo primero que manda es la SSLRequest (largo 8, código 80877103)
+    expect(recibido[0].readInt32BE(0)).toBe(8)
+    expect(recibido[0].readInt32BE(4)).toBe(80877103)
+    // Y nunca un StartupMessage en claro (protocolo 3.0 = 196608)
+    for (const d of recibido.slice(1)) expect(d.length >= 8 && d.readInt32BE(4) === 196608).toBe(false)
   })
 })

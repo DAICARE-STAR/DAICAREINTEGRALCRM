@@ -85,9 +85,34 @@ export function adaptarPostgres(sql) {
   return envolver(sql)
 }
 
+const HOSTS_LOCALES = new Set(['localhost', '127.0.0.1', '[::1]'])
+
+// Modo TLS de la conexión. postgres.js no cifra por defecto y la cadena del
+// panel de Supabase no trae sslmode, así que se exige TLS siempre: 'require'
+// salvo que la cadena pida verificar el certificado (sslmode=verify-full o
+// verify-ca, contra las CA del sistema). Sin cifrar solo con sslmode=disable
+// explícito contra una base local; contra cualquier otro host se niega.
+export function opcionSsl(url) {
+  let u
+  try {
+    u = new URL(url)
+  } catch {
+    return 'require'
+  }
+  const modo = u.searchParams.get('sslmode')
+  if (modo === 'verify-full' || modo === 'verify-ca') return modo
+  if (modo === 'disable') {
+    if (HOSTS_LOCALES.has(u.hostname)) return false
+    throw new Error('sslmode=disable solo se admite contra una base local: el instalador exige TLS')
+  }
+  return 'require'
+}
+
 export async function crearCliente(url) {
+  const ssl = opcionSsl(url)
   const { default: postgres } = await import('postgres')
   // Una conexión basta: los archivos se aplican en serie. Sin preparar
-  // sentencias, para que la transacción del pooler no las pierda.
-  return adaptarPostgres(postgres(url, { max: 1, prepare: false, onnotice: () => {} }))
+  // sentencias, para que la transacción del pooler no las pierda. ssl va en
+  // las opciones, que mandan sobre el sslmode de la cadena.
+  return adaptarPostgres(postgres(url, { max: 1, prepare: false, ssl, onnotice: () => {} }))
 }
