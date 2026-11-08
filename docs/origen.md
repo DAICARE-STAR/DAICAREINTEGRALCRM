@@ -44,6 +44,7 @@ El producto nace de `C:\Users\enzov\IA\luce-design\team-portal` (solo lectura). 
 - **Pendiente para fases siguientes:** `email.mts` conserva la lista `CUENTAS_SERVICIO` por correo (con direcciones neutras); el producto marca las cuentas de servicio con `profiles.es_servicio` y el cambio va en N-6. Los avisos y husos horarios siguen en `America/Bogota` hasta que lleguen `instalacion.zona_horaria` al código (N-2 y N-3). `revision-seguridad.mts` lee `leads_24h` de `seguridad_resumen()`, que la v2 del producto no trae: sin efecto hasta que se ajuste en N-6. `Layout.tsx` y `CommandPalette.tsx` siguen leyendo `portal_apps` y nombrando rutas de módulo: los rehace N-3.
 - **Ajustes de la revisión (producto-fix, 0.1.23 en adelante):**
   - `member_status` (migración 15) no está en el núcleo 00-09: es del módulo chat (`11-chat.sql`, plan C-2) y figura en sus tablas del registro. El latido de `PresenceContext`, la última conexión de Equipo y la de `ProfileCard` solo la consultan con chat activo; los proyectos de `ProfileCard`, solo con proyectos activo. `tender_notifications` (radar) solo se consulta y se suscribe con licitaciones activo, y la sección Radar no se pinta sin él. Los enlaces `/apps/<slug>` pasan a `/<ruta>` (y el respaldo de un enlace externo, al Inicio). Lo vigila `tablas-modulo.test.ts`.
+  - `uploadSiteImage` ya no sube a `blog` por defecto: cada función nombra su bucket, y `blog` es del módulo sitio-web (`28-sitio-web.sql`), no del núcleo. La lista permitida está en `storage-usos.test.ts` (N-2).
 
 ## Mapa de renombres
 

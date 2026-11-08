@@ -298,9 +298,10 @@ async function compressImage(file: File): Promise<{ blob: Blob; type: string; to
   }
 }
 
-// Sube una imagen al bucket indicado (por defecto `blog`, carpeta indicada)
-// y devuelve su URL pública. Las políticas RLS de storage deciden quién sube.
-async function uploadSiteImage(file: File, folder: string, bucket = 'blog'): Promise<string> {
+// Sube una imagen al bucket indicado (carpeta indicada) y devuelve su URL
+// pública. Las políticas RLS de storage deciden quién sube. Cada uso figura
+// en la lista de storage-usos.test.ts.
+async function uploadSiteImage(file: File, folder: string, bucket: string): Promise<string> {
   if (!BLOG_IMAGE_TYPES.includes(file.type)) {
     throw new Error('Formato no soportado: usa JPG, PNG, WebP, GIF o SVG')
   }
@@ -329,16 +330,17 @@ async function uploadSiteImage(file: File, folder: string, bucket = 'blog'): Pro
   return data.publicUrl
 }
 
+// Bucket blog: del módulo sitio-web (28-sitio-web.sql), no del núcleo
 export function uploadBlogImage(file: File): Promise<string> {
-  return uploadSiteImage(file, new Date().toISOString().slice(0, 10))
+  return uploadSiteImage(file, new Date().toISOString().slice(0, 10), 'blog')
 }
 
 export function uploadBrandLogo(file: File): Promise<string> {
-  return uploadSiteImage(file, 'marcas')
+  return uploadSiteImage(file, 'marcas', 'blog')
 }
 
 export function uploadProjectImage(file: File): Promise<string> {
-  return uploadSiteImage(file, 'proyectos')
+  return uploadSiteImage(file, 'proyectos', 'blog')
 }
 
 // Avatar del usuario: va al bucket avatares, carpeta <userId>/… (la política
