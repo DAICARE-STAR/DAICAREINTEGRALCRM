@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { SLUG_PATTERN, toolPermKey } from '../data'
 import { ICONOS_LINEA, LOGO_DE_PAR, resolverIcono, tieneIconoPropio, type Forma } from '../iconos-apps'
 
-const APPS = ['sitio-web', 'proyectos', 'cotizador', 'licitaciones', 'directorio', 'productos', 'gerencia', 'manuales', 'disenos']
+const APPS = ['sitio-web', 'proyectos', 'cotizador', 'licitaciones', 'directorio', 'productos', 'gerencia', 'manuales', 'disenos', 'chat', 'correo', 'calendario']
 
 // Nombres tal como están en Administración → Herramientas (2026-10-27)
 const HERRAMIENTAS = [

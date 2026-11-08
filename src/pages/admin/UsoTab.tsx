@@ -3,7 +3,7 @@ import Avatar from '../../components/Avatar'
 import InfoI from '../../components/InfoI'
 import CabeceraAdmin from './CabeceraAdmin'
 import { SkeletonFilas, SkeletonTarjetas } from '../../components/Skeleton'
-import { fetchAllApps, fetchApps } from '../../lib/data'
+import { MODULOS } from '../../lib/modulos'
 import { supabase } from '../../lib/supabase'
 import { relativeSeen } from '../../lib/team'
 import {
@@ -66,7 +66,8 @@ export default function UsoTab() {
   const [filas, setFilas] = useState<FilaUso[] | null>(null)
   const [acciones, setAcciones] = useState<FilaAccion[]>([])
   const [perfiles, setPerfiles] = useState<Perfil[]>([])
-  const [apps, setApps] = useState<AppNombre[]>([])
+  // Nombres de los módulos para la clave modulo:<slug> (registro, sin consulta)
+  const [apps] = useState<AppNombre[]>(() => MODULOS.map((m) => ({ slug: m.slug, name: m.nombre })))
   const [servicio, setServicio] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [orden, setOrden] = useState<Orden>('minutos')
@@ -81,11 +82,10 @@ export default function UsoTab() {
     setFilas(null)
     setError(null)
     void (async () => {
-      const [uso, acc, perf, catalogo, svc] = await Promise.all([
+      const [uso, acc, perf, svc] = await Promise.all([
         supabase.rpc('uso_resumen', { p_desde: rango.desde, p_hasta: rango.hasta }),
         supabase.rpc('acciones_resumen', { p_desde: rango.desde, p_hasta: rango.hasta }),
         supabase.from('profiles').select('id, full_name, avatar_url'),
-        fetchAllApps().catch(() => fetchApps()).catch(() => [] as AppNombre[]),
         supabase.rpc('cuentas_servicio_ids').then((r) => (r.error ? [] : ((r.data ?? []) as string[]))),
       ])
       if (cancelado) return
@@ -101,7 +101,6 @@ export default function UsoTab() {
       setFilas((uso.data ?? []) as FilaUso[])
       setAcciones(acc.error ? [] : ((acc.data ?? []) as FilaAccion[]))
       setPerfiles(perf.error ? [] : ((perf.data ?? []) as Perfil[]))
-      setApps((catalogo as AppNombre[]).map((a) => ({ slug: a.slug, name: a.name })))
       setServicio(svc)
     })()
     return () => {

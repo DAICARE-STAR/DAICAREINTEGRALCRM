@@ -4,6 +4,8 @@ import { fetchAllWidgets, fetchRoles, updateWidget } from '../../lib/data'
 import { SkeletonFilas } from '../../components/Skeleton'
 import { logAction } from '../../lib/audit'
 import { esWidgetId } from '../../lib/widgets'
+import { useInstalacion } from '../../context/InstalacionContext'
+import { filtrarWidgets } from '../../lib/modulos'
 import type { PortalWidget, Role } from '../../types'
 import RolesField from './RolesField'
 
@@ -18,6 +20,7 @@ import RolesField from './RolesField'
 
 export default function WidgetsTab() {
   // null = cargando (skeleton), [] = tabla sin sembrar
+  const { activos } = useInstalacion()
   const [widgets, setWidgets] = useState<PortalWidget[] | null>(null)
   const [roleNames, setRoleNames] = useState<string[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -176,7 +179,7 @@ export default function WidgetsTab() {
           </thead>
           <tbody>
             {widgets === null && <SkeletonFilas columnas={5} />}
-            {widgets?.map((w) => (
+            {(widgets && filtrarWidgets(widgets, activos))?.map((w) => (
               <tr key={w.id} className={w.active ? '' : 'row-inactive'}>
                 <td>
                   <strong>{w.name}</strong>

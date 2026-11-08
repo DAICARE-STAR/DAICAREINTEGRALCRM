@@ -449,3 +449,69 @@ export function moduloDeAccion(accion: string): string | undefined {
 export function tablasDe(slug: string): string[] {
   return [...(POR_SLUG.get(slug)?.tablas ?? [])]
 }
+
+// Visibilidad de un módulo (PP-VIS), pura. El núcleo lo ve todo el mundo. Un
+// módulo inactivo o planeado no lo ve nadie, ni un administrador. Activo, lo
+// ve el admin y quien tenga su permiso app_<slug>; un módulo que no declara
+// app_<slug> (una capacidad como ia) lo ve cualquier miembro. Es solo la
+// interfaz: has_modulo y las políticas modulo_* deciden en la base.
+export function puedeVerModulo(
+  slug: string,
+  roles: readonly string[] | null,
+  permisos: readonly string[] | null,
+  activos: readonly string[],
+): boolean {
+  if (slug === NUCLEO) return true
+  const m = POR_SLUG.get(slug)
+  if (!m || m.estado !== 'disponible' || !activos.includes(slug)) return false
+  if ((roles ?? []).includes('admin')) return true
+  const clave = `app_${slug}`
+  if (!m.permisos.some((p) => p.clave === clave)) return true
+  return (permisos ?? []).includes(clave)
+}
+
+// Módulos con pantalla que este usuario ve, en el orden del registro (sin el núcleo)
+export function modulosVisibles(
+  roles: readonly string[] | null,
+  permisos: readonly string[] | null,
+  activos: readonly string[],
+): Modulo[] {
+  return MODULOS.filter((m) => m.slug !== NUCLEO && m.ruta !== null && puedeVerModulo(m.slug, roles, permisos, activos))
+}
+
+// Solo los widgets de módulos activos; un id que ningún módulo declara se
+// descarta (falla cerrado)
+export function filtrarWidgets<T extends { id: string }>(items: readonly T[], activos: readonly string[]): T[] {
+  const permitidos = new Set(widgetsActivos(activos))
+  return items.filter((w) => permitidos.has(w.id))
+}
+
+export type GrupoPermisos = { label: string; keys: string[] }
+
+// Columnas de la matriz de roles agrupadas por módulo activo, con los
+// permisos que declara el registro. Lo del catálogo del shell que ningún
+// módulo declara va en «Otros»; lo de un módulo inactivo no se muestra.
+export function gruposPermisos(activos: readonly string[], catalogo: readonly string[]): GrupoPermisos[] {
+  const grupos: GrupoPermisos[] = MODULOS.filter((m) => m.estado === 'disponible' && estaActivo(activos, m.slug) && m.permisos.length > 0).map(
+    (m) => ({ label: m.nombre, keys: m.permisos.map((p) => p.clave) }),
+  )
+  const declarados = new Set(MODULOS.flatMap((m) => m.permisos.map((p) => p.clave)))
+  const otros = catalogo.filter((k) => !declarados.has(k))
+  if (otros.length) grupos.push({ label: 'Otros', keys: otros })
+  return grupos
+}
+
+export function etiquetaPermiso(clave: string): string | undefined {
+  for (const m of MODULOS) {
+    const p = m.permisos.find((x) => x.clave === clave)
+    if (p) return p.etiqueta
+  }
+  return undefined
+}
+
+// Módulo cuya ruta base contiene esta ruta del shell (sin el núcleo)
+export function moduloDeRuta(pathname: string): Modulo | undefined {
+  const primera = pathname.split('/').filter(Boolean)[0]
+  if (!primera) return undefined
+  return MODULOS.find((m) => m.slug !== NUCLEO && m.ruta === `/${primera.toLowerCase()}`)
+}

@@ -5,9 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 import { logAction } from '../../lib/audit'
 import {
   addUserRole,
-  fetchAllApps,
   fetchAllConnectors,
-  fetchApps,
   fetchConnectors,
   fetchProfiles,
   fetchRoles,
@@ -15,6 +13,7 @@ import {
   toolPermKey,
   updateMemberName,
 } from '../../lib/data'
+import { MODULOS } from '../../lib/modulos'
 import { PERMISSIONS, type Profile, type RoleDef } from '../../types'
 
 function permLabel(key: string): string {
@@ -62,14 +61,8 @@ export default function MembersTab() {
       .catch(() => setRoles([]))
     void (async () => {
       const m: Record<string, string> = {}
-      try {
-        const apps = await fetchAllApps().catch(() => fetchApps())
-        apps.forEach((a) => {
-          m['app_' + a.slug] = 'Ver ' + a.name
-        })
-      } catch {
-        /* sin catálogo de apps */
-      }
+      // Permisos de módulo con su etiqueta del registro
+      MODULOS.forEach((mod) => mod.permisos.forEach((p) => (m[p.clave] = p.etiqueta)))
       try {
         const tools = await fetchAllConnectors().catch(() => fetchConnectors())
         tools.forEach((t) => {

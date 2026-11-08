@@ -31,14 +31,19 @@ import { CabeceraProvider, type DatosCabecera } from '../context/CabeceraContext
 import { NotificationsProvider } from '../context/NotificationsContext'
 import { PresenceProvider } from '../context/PresenceContext'
 import { rutaDeCabecera, type ModuloRuta } from '../lib/cabeceraMarco'
-import { fetchApps, manualesPendientes, visibleForRole } from '../lib/data'
+import { useInstalacion } from '../context/InstalacionContext'
+import { manualesPendientes } from '../lib/data'
+import { moduloDeRuta, modulosVisibles } from '../lib/modulos'
+import { shellDe } from '../modulos'
 import { indiceSiguiente } from '../lib/teclado'
 import { useDialogo } from '../lib/useDialogo'
 import { useEsMovil } from '../lib/useEsMovil'
 import { NOMBRE_PORTAL } from '../lib/instalacion'
-import type { PortalApp } from '../types'
 
 const NAV_STATE_KEY = 'pt_nav_open_v1'
+
+// Módulos que van en «Comunicación» junto a Equipo; el resto, en «Aplicaciones»
+const COMUNICACION = ['chat', 'correo', 'calendario']
 
 // Icono de cada módulo en la cabecera de respaldo del marco: el mismo que
 // pinta su página (24 px)
@@ -153,14 +158,14 @@ function NavSection({
 export default function Layout() {
   const { profile, session, signOut, hasPerm } = useAuth()
   const { pathname } = useLocation()
-  // null = cargando (skeleton en el menú); [] = sin apps o error
-  const [apps, setApps] = useState<PortalApp[] | null>(null)
+  const { activos, cargando: cargandoModulos, tieneModulo } = useInstalacion()
+  const conManuales = tieneModulo('manuales')
   // Aviso persistente hasta confirmar la lectura de los manuales vigentes
   // (la app Manuales avisa por postMessage al confirmar, sin recargar)
   const [manualesPend, setManualesPend] = useState(false)
   useEffect(() => {
     const uid = session?.user?.id
-    if (!uid) return
+    if (!uid || !conManuales) return
     let vivo = true
     const revisar = () => {
       void manualesPendientes(uid).then((p) => {
@@ -176,7 +181,7 @@ export default function Layout() {
       vivo = false
       window.removeEventListener('message', oir)
     }
-  }, [session?.user?.id])
+  }, [session?.user?.id, conManuales])
   // Menú lateral en móvil (≤760px): cerrado por defecto, se abre con la
   // hamburguesa del topbar y se cierra al navegar, con Escape o al tocar el
   // fondo. Cerrado queda inert (ni Tab ni el lector entran); abierto, el
@@ -205,12 +210,6 @@ export default function Layout() {
   const [profileModal, setProfileModal] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const footerRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    fetchApps()
-      .then(setApps)
-      .catch(() => setApps([]))
-  }, [])
 
   // Ctrl+K / Cmd+K abre la búsqueda global desde cualquier página
   useEffect(() => {
@@ -340,13 +339,16 @@ export default function Layout() {
     return () => document.removeEventListener('mousedown', onDocClick)
   }, [])
 
-  const visibleApps = visibleForRole(apps ?? [], profile?.roles ?? null, profile?.permissions ?? null)
+  // Módulos activos que este usuario ve y que traen pantalla (src/modulos)
+  const visibles = modulosVisibles(profile?.roles ?? null, profile?.permissions ?? null, activos).filter((m) => shellDe(m.slug))
+  const deComunicacion = visibles.filter((m) => COMUNICACION.includes(m.slug))
+  const aplicaciones = visibles.filter((m) => !COMUNICACION.includes(m.slug))
+  const rutasDe = (lista: typeof visibles) => lista.map((m) => m.ruta!)
   // Sección del menú que contiene la ruta activa
   const en = (...rutas: string[]) =>
     rutas.some((r) => (r === '/' ? pathname === '/' : pathname === r || pathname.startsWith(`${r}/`)))
   // Con el menú contraído el nombre del enlace solo se ve como tooltip
   const tooltip = (texto: string) => (menuCompacto ? texto : undefined)
-  const canManageSite = hasPerm(['manage_blog', 'manage_brands', 'manage_projects', 'manage_notice', 'manage_leads', 'view_analytics'])
   const isManager = hasPerm([
     'manage_apps',
     'manage_connectors',
@@ -355,14 +357,14 @@ export default function Layout() {
   ])
 
   // Cabecera del marco mientras la página aún no registró la suya: el título
-  // conocido de la ruta (de una app, el de la lista del menú), nunca el de la
+  // conocido de la ruta (de un módulo, el del registro), nunca el de la
   // página anterior. Sin él, el marco muestra un esqueleto.
-  const ruta = rutaDeCabecera(pathname)
+  const moduloActual = moduloDeRuta(pathname)
+  const ruta = moduloActual ? null : rutaDeCabecera(pathname)
   let respaldo: DatosCabecera | null = null
-  if (ruta && 'app' in ruta) {
-    const app = visibleApps.find((a) => a.slug === ruta.app)
-    if (app) respaldo = { titulo: app.name, icono: <AppIcon icon={app.icon} clave={app.slug} size="lg" /> }
-  } else if (ruta) {
+  if (moduloActual && visibles.includes(moduloActual)) {
+    respaldo = { titulo: moduloActual.nombre, icono: <AppIcon icon={null} clave={moduloActual.icono} size="lg" /> }
+  } else if (ruta && !('app' in ruta)) {
     respaldo = { titulo: ruta.titulo, icono: ICONO_MODULO[ruta.modulo] }
   }
 
@@ -490,29 +492,29 @@ export default function Layout() {
             <NavSection
               id="comunicacion"
               title="Comunicación"
-              activa={en('/equipo')}
+              activa={en('/equipo', ...rutasDe(deComunicacion))}
               compacta={menuCompacto}
             >
               <NavLink to="/equipo" title={tooltip('Equipo')}>
                 <IconoEquipo />
                 <span className="nav-label">Equipo</span>
               </NavLink>
+              {deComunicacion.map((m) => (
+                <NavLink key={m.slug} to={m.ruta!} className="nav-app" title={tooltip(m.nombre)}>
+                  <AppIcon icon={null} clave={m.icono} size="sm" />
+                  <span className="nav-app-name">{m.nombre}</span>
+                </NavLink>
+              ))}
             </NavSection>
 
-            {(canManageSite || apps === null || visibleApps.length > 0) && (
+            {(cargandoModulos || aplicaciones.length > 0) && (
               <NavSection
                 id="apps"
                 title="Aplicaciones"
-                activa={en('/sitio-web', '/apps')}
+                activa={en(...rutasDe(aplicaciones))}
                 compacta={menuCompacto}
               >
-                {canManageSite && (
-                  <NavLink to="/sitio-web" className="nav-app" title={tooltip('Sitio web')}>
-                    <AppIcon icon={null} clave="sitio-web" size="sm" />
-                    <span className="nav-app-name">Sitio web</span>
-                  </NavLink>
-                )}
-                {apps === null && (
+                {cargandoModulos && (
                   <Cargando etiqueta="Cargando aplicaciones" anunciar={false}>
                     {[0, 1, 2, 3].map((i) => (
                       <div key={i} className="nav-skel">
@@ -522,15 +524,10 @@ export default function Layout() {
                     ))}
                   </Cargando>
                 )}
-                {visibleApps.map((app) => (
-                  <NavLink
-                    key={app.id}
-                    to={`/apps/${app.slug}`}
-                    className="nav-app"
-                    title={tooltip(app.name)}
-                  >
-                    <AppIcon icon={app.icon} clave={app.slug} size="sm" />
-                    <span className="nav-app-name">{app.name}</span>
+                {aplicaciones.map((m) => (
+                  <NavLink key={m.slug} to={m.ruta!} className="nav-app" title={tooltip(m.nombre)}>
+                    <AppIcon icon={null} clave={m.icono} size="sm" />
+                    <span className="nav-app-name">{m.nombre}</span>
                   </NavLink>
                 ))}
               </NavSection>
@@ -663,8 +660,8 @@ export default function Layout() {
           {/* Cabecera fija del marco: no se desmonta al navegar; la alimenta
               cada página con <CabeceraPagina> */}
           <CabeceraMarco respaldo={respaldo} />
-          {manualesPend && (
-            <NavLink to="/apps/manuales" className="manuales-aviso">
+          {conManuales && manualesPend && (
+            <NavLink to="/manuales" className="manuales-aviso">
               Manuales del portal pendientes de leer — confirma tu lectura aquí
             </NavLink>
           )}
@@ -686,7 +683,7 @@ export default function Layout() {
       {mfaModal && <MfaModal onClose={() => setMfaModal(false)} />}
       {profileModal && <EditProfileModal onClose={() => setProfileModal(false)} />}
       {searchOpen && (
-        <CommandPalette apps={visibleApps} onClose={() => setSearchOpen(false)} />
+        <CommandPalette modulos={visibles} onClose={() => setSearchOpen(false)} />
       )}
     </PresenceProvider>
   )

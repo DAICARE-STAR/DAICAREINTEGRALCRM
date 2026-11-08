@@ -7,15 +7,15 @@ import {
   countRoleMembers,
   createRole,
   deleteRole,
-  fetchAllApps,
   fetchAllConnectors,
-  fetchApps,
   fetchConnectors,
   fetchRoles,
   toolPermKey,
   updateRole,
   validateRoleName,
 } from '../../lib/data'
+import { useInstalacion } from '../../context/InstalacionContext'
+import { etiquetaPermiso, gruposPermisos } from '../../lib/modulos'
 import { PERMISOS_SOLO_ADMIN, PERMISSIONS, type RoleDef } from '../../types'
 
 // Un rol con alguno de estos permisos solo lo elimina un admin
@@ -46,39 +46,13 @@ function errorNombre(err: unknown, porDefecto: string) {
   return porDefecto
 }
 
-// Agrupación visual de la matriz (solo presentación; el catálogo real
-// sigue siendo PERMISSIONS en types.ts)
-const PERM_GROUPS: { label: string; keys: string[] }[] = [
-  {
-    label: 'Operación',
-    keys: ['edit_projects', 'delete_projects', 'edit_crm', 'manage_products', 'view_mail', 'view_billing'],
-  },
-  {
-    label: 'Sitio web',
-    keys: ['manage_blog', 'manage_brands', 'manage_projects', 'manage_notice', 'manage_leads', 'view_analytics'],
-  },
-  { label: 'Radar', keys: ['view_credentials', 'manage_credentials', 'edit_tender_offers', 'delete_tender_offers'] },
-  {
-    label: 'Administración',
-    keys: ['manage_apps', 'manage_connectors', 'manage_members', 'manage_roles'],
-  },
-]
+// Columnas de la matriz: por módulo activo, con los permisos que declara el
+// registro (src/lib/modulos.ts); lo del catálogo PERMISSIONS que ningún
+// módulo declara va en «Otros».
+const CATALOGO = PERMISSIONS.map((p) => p.key)
 
-// Columnas en el orden de los grupos; cualquier permiso futuro que no
-// esté agrupado aparece al final para no perderse de la matriz.
-function orderedPerms() {
-  const grouped = PERM_GROUPS.flatMap((g) => g.keys)
-  const rest = PERMISSIONS.map((p) => p.key).filter((k) => !grouped.includes(k))
-  return rest.length
-    ? [...PERM_GROUPS, { label: 'Otros', keys: rest }]
-    : PERM_GROUPS
-}
-
-// Visibilidad como permiso (reforma roles→permisos): cada app y cada
-// herramienta aporta una columna app_<slug> / herr_<slug>. Marcarla en un
-// rol hace visible esa entrada del menú cuando su "Visible para" incluye
-// la clave del permiso; los roles-visor antiguos siguen funcionando
-// mientras dura la transición.
+// Visibilidad como permiso: cada herramienta aporta una columna herr_<slug>
+// (los módulos, su app_<slug> desde el registro).
 type VisCol = { key: string; label: string }
 
 const DEFAULT_COLOR = '#8A94A6'
@@ -109,15 +83,11 @@ export default function RolesTab() {
     color: DEFAULT_COLOR,
   })
   const [newName, setNewName] = useState('')
-  const [visApps, setVisApps] = useState<VisCol[]>([])
+  const { activos } = useInstalacion()
   const [visTools, setVisTools] = useState<VisCol[]>([])
 
   useEffect(() => {
     // Catálogo completo si el RLS lo permite; si no, el activo (suficiente)
-    fetchAllApps()
-      .catch(() => fetchApps())
-      .then((a) => setVisApps(a.map((x) => ({ key: 'app_' + x.slug, label: x.name }))))
-      .catch(() => setVisApps([]))
     fetchAllConnectors()
       .catch(() => fetchConnectors())
       .then((c) => {
@@ -135,25 +105,27 @@ export default function RolesTab() {
   }, [])
 
   const groups = useMemo(() => {
-    const g = [...orderedPerms()]
-    if (visApps.length) g.push({ label: 'Aplicaciones', keys: visApps.map((x) => x.key) })
+    const g = gruposPermisos(activos, CATALOGO)
     if (visTools.length) g.push({ label: 'Herramientas', keys: visTools.map((x) => x.key) })
     return g
-  }, [visApps, visTools])
+  }, [activos, visTools])
 
   const permInfo = useMemo(() => {
     const m: Record<string, { label: string; description: string }> = {}
     PERMISSIONS.forEach((p) => {
       m[p.key] = { label: p.label, description: p.description }
     })
-    visApps.forEach((x) => {
-      m[x.key] = { label: x.label, description: 'Ver la aplicación ' + x.label }
-    })
+    groups.forEach((g) =>
+      g.keys.forEach((k) => {
+        const etiqueta = etiquetaPermiso(k)
+        if (!m[k] && etiqueta) m[k] = { label: etiqueta, description: etiqueta }
+      })
+    )
     visTools.forEach((x) => {
       m[x.key] = { label: x.label, description: 'Ver la herramienta ' + x.label }
     })
     return m
-  }, [visApps, visTools])
+  }, [groups, visTools])
 
   function load() {
     fetchRoles()

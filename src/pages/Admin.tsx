@@ -4,6 +4,9 @@ import CabeceraPagina from '../components/CabeceraPagina'
 import { IconoAdministracion } from '../components/IconosNav'
 import { SkeletonLineas } from '../components/Skeleton'
 import { useAuth } from '../context/AuthContext'
+import { useInstalacion } from '../context/InstalacionContext'
+import { modulosVisibles } from '../lib/modulos'
+import { shellDe, type PestanaAdmin } from '../modulos'
 import { useTitulo } from '../lib/useTitulo'
 import type { Permission } from '../types'
 
@@ -15,8 +18,8 @@ const RolesTab = lazy(() => import('./admin/RolesTab'))
 const UsoTab = lazy(() => import('./admin/UsoTab'))
 const WidgetsTab = lazy(() => import('./admin/WidgetsTab'))
 
-// Pestañas del núcleo. Aplicaciones, Marcas, Correo e IA llegan con su
-// módulo (docs/origen.md).
+// Pestañas del núcleo; cada módulo activo y visible suma las de su
+// src/modulos/<slug>/rutas.tsx (pestanasAdmin).
 type TabId = 'widgets' | 'connectors' | 'members' | 'roles' | 'uso' | 'registro' | 'novedades'
 
 // Quién ve cada sección: un permiso, solo admin o cualquiera que entre (la
@@ -42,8 +45,12 @@ export default function Admin() {
   const { hasPerm, profile } = useAuth()
   const { seccion } = useParams<{ seccion?: string }>()
   const isAdmin = !!profile?.roles.includes('admin')
-  const puede = (a: Acceso) => a === 'todos' || (a === 'admin' ? isAdmin : hasPerm(a))
-  const visibles = TABS.filter((t) => puede(t.acceso))
+  const { activos } = useInstalacion()
+  const puede = (a: string) => a === 'todos' || (a === 'admin' ? isAdmin : hasPerm(a as Permission))
+  const deModulos: PestanaAdmin[] = modulosVisibles(profile?.roles ?? null, profile?.permissions ?? null, activos).flatMap(
+    (m) => shellDe(m.slug)?.pestanasAdmin ?? [],
+  )
+  const visibles: { id: string; label: string; grupo: string; acceso: string }[] = [...TABS, ...deModulos].filter((t) => puede(t.acceso))
   // Una sección inexistente o que dejó de ser visible (permisos) cae a la
   // primera disponible (Novedades siempre lo está)
   const activa = visibles.find((t) => t.id === seccion)
@@ -88,6 +95,9 @@ export default function Admin() {
             {activa.id === 'uso' && <UsoTab />}
             {activa.id === 'registro' && <AuditTab />}
             {activa.id === 'novedades' && <NovedadesTab />}
+            {deModulos.filter((p) => p.id === activa.id).map((p) => (
+              <p.Componente key={p.id} />
+            ))}
           </Suspense>
         </div>
       </div>

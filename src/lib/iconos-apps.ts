@@ -42,6 +42,10 @@ export const ICONOS_LINEA: Record<string, readonly Forma[]> = {
     p('M12 6.5V20.5'),
   ],
   disenos: [c(12, 4.5, 1.5), p('M11 6L6 20M13 6L18 20'), p('M7.5 15.5A9 9 0 0 0 16.5 15.5')],
+  // Módulos de comunicación: los mismos trazos que IconosNav
+  chat: [p('M8.5 19A8.5 8.5 0 1 0 6 17L3 21Z')],
+  correo: [p('M21 5L12 12.5L3 5H21V19H3V5')],
+  calendario: [r(3, 6, 18, 14, 2), p('M3 11H21'), p('M8 4V8M16 4V8')],
 
   // Herramientas
   herr_titan_mail: [

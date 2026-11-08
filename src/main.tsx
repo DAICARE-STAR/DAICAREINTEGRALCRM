@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router'
 import App from './App'
 import { AuthProvider } from './context/AuthContext'
+import { InstalacionProvider } from './context/InstalacionContext'
 import { iniciarTema } from './lib/theme'
 // Tokens, temas y Roboto autoalojada (src/estilos); después, la hoja del shell
 import './estilos/base.css'
@@ -18,7 +19,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         embebida que avisa su ventana) se desmonta de inmediato */}
     <BrowserRouter useTransitions={false}>
       <AuthProvider>
-        <App />
+        <InstalacionProvider>
+          <App />
+        </InstalacionProvider>
       </AuthProvider>
     </BrowserRouter>
   </React.StrictMode>

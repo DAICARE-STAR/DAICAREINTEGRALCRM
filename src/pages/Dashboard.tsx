@@ -13,6 +13,8 @@ import WidgetBoundary from '../components/WidgetBoundary'
 import { WidgetContext } from '../components/WidgetCard'
 import WorldClockWidget from '../components/WorldClockWidget'
 import { useAuth } from '../context/AuthContext'
+import { useInstalacion } from '../context/InstalacionContext'
+import { filtrarWidgets } from '../lib/modulos'
 import { fetchAllWidgets, visibleForRole } from '../lib/data'
 import { useArrastreWidgets } from '../lib/useArrastreWidgets'
 import { useEsMovil } from '../lib/useEsMovil'
@@ -132,6 +134,7 @@ function BotonOrden({
 
 export default function Dashboard() {
   const { profile, session } = useAuth()
+  const { activos } = useInstalacion()
   const [prefs, setPrefs] = useState<LecturaPrefs>(cargarPrefs)
   const [widgetMenu, setWidgetMenu] = useState(false)
   // Configuración del equipo (Administración → Widgets): undefined =
@@ -233,7 +236,8 @@ export default function Dashboard() {
   // equipo (activo + roles), en el orden administrado y luego el personal.
   // Sin configuración (migración 30 pendiente o error): todos, en el orden
   // del código.
-  const base: { id: WidgetId; label: string }[] = widgetConfig
+  // Solo los widgets de módulos activos (registro, PP-VIS)
+  const base: { id: WidgetId; label: string }[] = filtrarWidgets(widgetConfig
     ? visibleForRole(
         widgetConfig.filter((w) => w.active && esWidgetId(w.id)),
         role,
@@ -242,7 +246,7 @@ export default function Dashboard() {
         id: w.id as WidgetId,
         label: w.name || defWidget(w.id as WidgetId).label,
       }))
-    : WIDGETS.map((w) => ({ id: w.id, label: w.label }))
+    : WIDGETS.map((w) => ({ id: w.id, label: w.label })), activos)
   const disponibles = ordenEfectivo(base.map(conDefinicion), prefs)
   const oculto = (id: string) => prefs.ocultos.includes(id)
   const visibles = disponibles.filter((w) => !oculto(w.id))

@@ -8,38 +8,36 @@
 // últimos 5 minutos. Una pestaña abierta y olvidada no suma. El detalle
 // (día × app) se guarda 90 días y lo ve solo el administrador.
 
+import { moduloDeRuta } from './modulos'
+
 export const TICK_MS = 60_000
 export const UMBRAL_ACTIVIDAD_MS = 5 * 60_000
 // Tope por envío: coincide con el tope de uso_latido() en la base
 export const MAX_MINUTOS_POR_ENVIO = 5
 
-// Secciones del shell con su nombre en el menú (las apps embebidas van
-// como 'app:<slug>' y toman el nombre de portal_apps)
+// Secciones del núcleo con su nombre en el menú (los módulos van como
+// 'modulo:<slug>' y toman el nombre del registro, src/lib/modulos.ts)
 export const NOMBRES_RUTA: Record<string, string> = {
   inicio: 'Inicio',
   herramientas: 'Herramientas',
-  chat: 'Chat',
-  correo: 'Correo',
-  calendario: 'Calendario',
   equipo: 'Equipo',
-  'sitio-web': 'Sitio web',
   admin: 'Administración',
 }
 
 // Clave de uso de una ruta del shell; null si la ruta no se mide (login,
-// 404…). /apps/:slug y /app/:slug son la misma app.
+// 404…). Una ruta de módulo cuenta como 'modulo:<slug>'.
 export function claveDeRuta(pathname: string): string | null {
   const ruta = pathname.replace(/\/+$/, '') || '/'
   if (ruta === '/') return 'inicio'
-  const app = /^\/apps?\/([a-z0-9_-]{1,32})(?:\/|$)/i.exec(ruta)
-  if (app) return 'app:' + app[1].toLowerCase()
+  const modulo = moduloDeRuta(ruta)
+  if (modulo) return 'modulo:' + modulo.slug
   const seccion = /^\/([a-z-]+)(?:\/|$)/.exec(ruta)?.[1]
   return seccion && seccion in NOMBRES_RUTA ? seccion : null
 }
 
 export function nombreApp(clave: string, apps: { slug: string; name: string }[]): string {
-  if (clave.startsWith('app:')) {
-    const slug = clave.slice(4)
+  if (clave.startsWith('modulo:')) {
+    const slug = clave.slice(7)
     return apps.find((a) => a.slug === slug)?.name ?? slug
   }
   return NOMBRES_RUTA[clave] ?? clave

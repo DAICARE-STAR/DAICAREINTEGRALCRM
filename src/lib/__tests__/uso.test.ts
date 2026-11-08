@@ -18,21 +18,21 @@ import {
 // un minuto, cuánto se manda por llamada y cómo se resume para Administración.
 
 describe('claveDeRuta', () => {
-  it('reconoce el inicio, las secciones del menú y las apps embebidas', () => {
+  it('reconoce el inicio, las secciones del núcleo y las rutas de módulo', () => {
     expect(claveDeRuta('/')).toBe('inicio')
     expect(claveDeRuta('')).toBe('inicio')
-    expect(claveDeRuta('/chat')).toBe('chat')
-    expect(claveDeRuta('/sitio-web/')).toBe('sitio-web')
     expect(claveDeRuta('/admin')).toBe('admin')
-    expect(claveDeRuta('/apps/proyectos')).toBe('app:proyectos')
-    expect(claveDeRuta('/apps/Disenos/')).toBe('app:disenos')
-    expect(claveDeRuta('/app/cotizador')).toBe('app:cotizador')
+    expect(claveDeRuta('/equipo')).toBe('equipo')
+    expect(claveDeRuta('/chat')).toBe('modulo:chat')
+    expect(claveDeRuta('/sitio-web/')).toBe('modulo:sitio-web')
+    expect(claveDeRuta('/proyectos/123')).toBe('modulo:proyectos')
+    expect(claveDeRuta('/Disenos/')).toBe('modulo:disenos')
   })
 
   it('no mide el login ni rutas desconocidas', () => {
     expect(claveDeRuta('/login')).toBeNull()
     expect(claveDeRuta('/loquesea')).toBeNull()
-    expect(claveDeRuta('/apps/')).toBeNull()
+    expect(claveDeRuta('/apps/proyectos')).toBeNull()
   })
 })
 
@@ -53,10 +53,10 @@ describe('debeContar', () => {
 
 describe('acumular, listoParaEnviar y cuerpoLatido', () => {
   it('suma minutos y aperturas de la misma app y reinicia al cambiar de app', () => {
-    let p = acumular(null, 'app:proyectos', { apertura: true })
-    p = acumular(p, 'app:proyectos', { minuto: true })
-    p = acumular(p, 'app:proyectos', { minuto: true })
-    expect(p).toEqual({ app: 'app:proyectos', minutos: 2, aperturas: 1 })
+    let p = acumular(null, 'modulo:proyectos', { apertura: true })
+    p = acumular(p, 'modulo:proyectos', { minuto: true })
+    p = acumular(p, 'modulo:proyectos', { minuto: true })
+    expect(p).toEqual({ app: 'modulo:proyectos', minutos: 2, aperturas: 1 })
     expect(acumular(p, 'chat', { minuto: true })).toEqual({ app: 'chat', minutos: 1, aperturas: 0 })
   })
 
@@ -87,14 +87,14 @@ describe('fmtDuracion y rangoPeriodo', () => {
 })
 
 describe('resumirUso', () => {
-  const apps = [{ slug: 'proyectos', name: 'Proyectos' }, { slug: 'cotizador', name: 'Cotizador' }]
+  const apps = [{ slug: 'proyectos', name: 'Proyectos' }, { slug: 'cotizador', name: 'Cotizador' }, { slug: 'chat', name: 'Chat' }]
   const filas = [
-    { user_id: 'ana', app: 'app:proyectos', minutos: 250, aperturas: 4, dias: 3, ultima: '2026-10-09T15:00:00Z' },
-    { user_id: 'ana', app: 'chat', minutos: 50, aperturas: 9, dias: 3, ultima: '2026-10-09T15:00:00Z' },
+    { user_id: 'ana', app: 'modulo:proyectos', minutos: 250, aperturas: 4, dias: 3, ultima: '2026-10-09T15:00:00Z' },
+    { user_id: 'ana', app: 'modulo:chat', minutos: 50, aperturas: 9, dias: 3, ultima: '2026-10-09T15:00:00Z' },
     { user_id: 'ana', app: 'inicio', minutos: 20, aperturas: 3, dias: 3, ultima: '2026-10-09T15:00:00Z' },
-    { user_id: 'ana', app: 'app:cotizador', minutos: 10, aperturas: 1, dias: 3, ultima: '2026-10-09T15:00:00Z' },
-    { user_id: 'bot', app: 'app:proyectos', minutos: 900, aperturas: 1, dias: 1, ultima: '2026-10-08T01:00:00Z' },
-    { user_id: 'jorge', app: 'app:proyectos', minutos: 40, aperturas: 2, dias: 1, ultima: '2026-10-07T12:00:00Z' },
+    { user_id: 'ana', app: 'modulo:cotizador', minutos: 10, aperturas: 1, dias: 3, ultima: '2026-10-09T15:00:00Z' },
+    { user_id: 'bot', app: 'modulo:proyectos', minutos: 900, aperturas: 1, dias: 1, ultima: '2026-10-08T01:00:00Z' },
+    { user_id: 'jorge', app: 'modulo:proyectos', minutos: 40, aperturas: 2, dias: 1, ultima: '2026-10-07T12:00:00Z' },
   ]
   const acciones = [
     { user_id: 'ana', action: 'cotizador.borrador', n: 6 },
@@ -124,8 +124,8 @@ describe('resumirUso', () => {
     expect(r.appMasUsada).toEqual({ nombre: 'Proyectos', minutos: 1190 })
   })
 
-  it('una app sin fila en portal_apps se muestra por su slug', () => {
-    expect(nombreApp('app:gerencia', apps)).toBe('gerencia')
-    expect(nombreApp('calendario', apps)).toBe('Calendario')
+  it('un módulo fuera de la lista se muestra por su slug', () => {
+    expect(nombreApp('modulo:gerencia', apps)).toBe('gerencia')
+    expect(nombreApp('equipo', apps)).toBe('Equipo')
   })
 })
