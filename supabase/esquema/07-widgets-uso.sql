@@ -7,8 +7,8 @@
 -- Origen (team-portal 9d1524b, solo lectura): migraciones 30 y 83
 -- (portal_widgets) y 73 (portal_uso, uso_latido, lecturas de la pestaña Uso
 -- y uso_purgar). Diferencias con team-portal:
---   · La semilla de widgets es la del núcleo en src/lib/modulos.ts (clock,
---     pendientes y cumpleanos); cada módulo siembra los suyos en su
+--   · La semilla de widgets es la del núcleo en src/lib/modulos.ts (clock;
+--     pendientes y cumpleanos, cuando se porten); cada módulo siembra los suyos en su
 --     archivo (reuniones llega con 10-calendario). inicio_checklist() lee
 --     proyectos y llega con ese módulo.
 --   · El día del uso sale de instalacion.zona_horaria, no de una zona fija.
@@ -94,9 +94,7 @@ create policy portal_widgets_gestion on public.portal_widgets
 
 -- Los del núcleo en src/lib/modulos.ts. on conflict: re-ejecutar no pisa lo configurado.
 insert into public.portal_widgets (id, name, description, sort_order) values
-  ('clock', 'Hora mundial', 'Hora local y de otras zonas', 10),
-  ('pendientes', 'Pendientes', 'Lo que tienes por hacer', 20),
-  ('cumpleanos', 'Cumpleaños', 'Cumpleaños del equipo', 30)
+  ('clock', 'Hora mundial', 'Hora local y de otras zonas', 10)
 on conflict (id) do nothing;
 
 -- ============ 2) Uso del portal (73) ============
@@ -276,7 +274,7 @@ begin
     raise exception '07-widgets-uso: EXECUTE de más en uso_purgar o uso_latido';
   end if;
 
-  if (select count(*) from public.portal_widgets where id in ('clock', 'pendientes', 'cumpleanos')) <> 3 then
+  if (select count(*) from public.portal_widgets where id in ('clock')) <> 1 then
     raise exception '07-widgets-uso: faltan los widgets del núcleo';
   end if;
 end $$;

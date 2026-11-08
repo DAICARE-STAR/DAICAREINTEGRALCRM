@@ -152,8 +152,8 @@ describe('helpers puros', () => {
   })
 
   it('widgetsActivos incluye siempre los del núcleo y suma los de los módulos activos', () => {
-    expect(widgetsActivos([])).toEqual(['clock', 'pendientes', 'cumpleanos'])
-    expect(widgetsActivos(['calendario', 'gerencia'])).toEqual(['clock', 'pendientes', 'cumpleanos', 'reuniones', 'facturacion'])
+    expect(widgetsActivos([])).toEqual(['clock'])
+    expect(widgetsActivos(['calendario', 'gerencia'])).toEqual(['clock', 'reuniones', 'facturacion'])
   })
 
   it('accionesDe, moduloDeAccion y tablasDe', () => {

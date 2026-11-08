@@ -45,6 +45,7 @@ El producto nace de `C:\Users\enzov\IA\luce-design\team-portal` (solo lectura). 
 - **Ajustes de la revisión (producto-fix, 0.1.23 en adelante):**
   - `member_status` (migración 15) no está en el núcleo 00-09: es del módulo chat (`11-chat.sql`, plan C-2) y figura en sus tablas del registro. El latido de `PresenceContext`, la última conexión de Equipo y la de `ProfileCard` solo la consultan con chat activo; los proyectos de `ProfileCard`, solo con proyectos activo. `tender_notifications` (radar) solo se consulta y se suscribe con licitaciones activo, y la sección Radar no se pinta sin él. Los enlaces `/apps/<slug>` pasan a `/<ruta>` (y el respaldo de un enlace externo, al Inicio). Lo vigila `tablas-modulo.test.ts`.
   - `uploadSiteImage` ya no sube a `blog` por defecto: cada función nombra su bucket, y `blog` es del módulo sitio-web (`28-sitio-web.sql`), no del núcleo. La lista permitida está en `storage-usos.test.ts` (N-2).
+  - Widgets del núcleo: el registro y la semilla de `07-widgets-uso.sql` quedan en `clock`, lo único que pinta el shell; `pendientes` y `cumpleanos` vuelven a ambos cuando se porten sus widgets (07 no está aplicado en ninguna base). Lo vigila `inicio-widgets.test.ts`.
 
 ## Mapa de renombres
 

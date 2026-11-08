@@ -78,7 +78,9 @@ export const MODULOS: readonly Modulo[] = [
       { clave: 'view_credentials', etiqueta: 'Ver credenciales compartidas' },
       { clave: 'manage_credentials', etiqueta: 'Gestionar credenciales compartidas' },
     ],
-    widgets: ['clock', 'pendientes', 'cumpleanos'],
+    // Solo lo que el shell sabe pintar (src/lib/widgets.ts); pendientes y
+    // cumpleaños llegan cuando se porten sus widgets
+    widgets: ['clock'],
     acciones: ['list-members'],
     // Siempre activo: sus tablas (00 a 09) no llevan política modulo_*
     tablas: [],
