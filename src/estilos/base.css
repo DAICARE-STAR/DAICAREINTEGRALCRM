@@ -1,6 +1,10 @@
 @import url('temas.css');
+@import url('base-shell.css');
 
-/* Base del shell (capa 3): reglas globales sobre los semánticos de temas.css. */
+/* Base (capa 3): reglas globales sobre los semánticos de temas.css. La hoja
+   del shell (src/styles.css) va después y manda; .btn y .btn-primario quedan
+   para las páginas estáticas (404.html). Lectores, salto, foco y skeletons
+   están en base-shell.css. */
 
 * { box-sizing: border-box; }
 
@@ -53,17 +57,6 @@ h1 { font-size: var(--pal-texto-2xl); font-weight: var(--pal-peso-medio); margin
 }
 
 .btn-primario:hover { background: var(--btn-bg-hover); }
-
-.card {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--pal-radio-lg);
-  box-shadow: var(--shadow-1);
-  padding: var(--pal-esp-6);
-}
-
-.muted { color: var(--muted); }
-.acento { color: var(--acento); }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }

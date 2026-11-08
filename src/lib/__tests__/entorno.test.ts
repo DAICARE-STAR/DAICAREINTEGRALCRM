@@ -59,6 +59,8 @@ function variablesDelEjemplo(): Map<string, Entrada> {
 
 const CODIGO = variablesDelCodigo()
 const EJEMPLO = variablesDelEjemplo()
+// Claves públicas por diseño aunque se llamen _KEY: la de Web Push la lee el navegador
+const PUBLICAS_POR_DISENO = new Set(['VAPID_PUBLIC_KEY'])
 const SECRETA_POR_NOMBRE = /(_KEY|_SECRET|_PASS|_PASSWORD|_TOKEN|_DB_URL)$/
 
 describe('.env.example', () => {
@@ -79,8 +81,8 @@ describe('.env.example', () => {
     for (const [nombre, e] of EJEMPLO) {
       if (nombre.startsWith('VITE_')) {
         expect(e.clase, nombre).toBe('PÚBLICA')
-        expect(SECRETA_POR_NOMBRE.test(nombre.replace(/^VITE_/, '')) && nombre !== 'VITE_SUPABASE_ANON_KEY', `${nombre} no puede ir al navegador`).toBe(false)
-      } else if (SECRETA_POR_NOMBRE.test(nombre)) {
+        expect(SECRETA_POR_NOMBRE.test(nombre.replace(/^VITE_/, '')) && nombre !== 'VITE_SUPABASE_ANON_KEY' && !PUBLICAS_POR_DISENO.has(nombre.slice(5)), `${nombre} no puede ir al navegador`).toBe(false)
+      } else if (SECRETA_POR_NOMBRE.test(nombre) && !PUBLICAS_POR_DISENO.has(nombre)) {
         expect(e.clase, nombre).toBe('SECRETA')
       }
     }

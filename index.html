@@ -6,6 +6,12 @@
          en dev bloquearía el script inline de React Fast Refresh -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex, nofollow" />
+    <!-- Iconos neutros de reemplazo (public/brand, PP-PWA); una instalación
+         los cambia por los suyos -->
+    <link rel="icon" type="image/png" sizes="64x64" href="/brand/favicon-64.png" />
+    <link rel="apple-touch-icon" href="/brand/imagotipo-512.png" />
+    <!-- Instalable en el móvil: en iPhone el push solo funciona con el portal
+         en la pantalla de inicio («display»: «standalone» del manifest) -->
     <link rel="manifest" href="/manifest.webmanifest" />
     <!-- Tema antes de pintar: fija data-theme y las primitivas de la
          instalación en caché. Va sin defer y antes de cualquier hoja. -->

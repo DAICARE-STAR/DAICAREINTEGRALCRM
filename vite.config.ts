@@ -51,9 +51,19 @@ function cspDelShell(supabaseUrl: string | undefined): string {
 
 const escaparHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] ?? c)
 
+// Iconos neutros de public/brand (PP-PWA), escritos en el manifest del build
+const ICONOS_MANIFEST = [
+  { src: '/brand/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+  { src: '/brand/imagotipo-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+  { src: '/brand/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+]
+
 function manifest(nombre: string): string {
-  // Los iconos neutros del manifest llegan con el commit de origen (PP-PWA).
-  return JSON.stringify({ name: nombre, short_name: nombre, start_url: '/', display: 'standalone', lang: 'es', icons: [] }, null, 2)
+  return JSON.stringify(
+    { name: nombre, short_name: nombre, start_url: '/', scope: '/', display: 'standalone', lang: 'es', icons: ICONOS_MANIFEST },
+    null,
+    2
+  )
 }
 
 // Nombre del portal en el HTML (%PORTAL_NOMBRE%), manifest con ese nombre y

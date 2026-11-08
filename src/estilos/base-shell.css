@@ -1,0 +1,198 @@
+/* Primitivas de accesibilidad y carga del shell (la importa base.css).
+
+   Solo tokens de temas.css y escalas --pal-* de paleta.css. El marcado de los
+   skeletons es el de src/components/Skeleton.tsx. */
+
+/* ===== Solo para lectores de pantalla ===== */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ===== Saltar al contenido: fuera de pantalla hasta recibir foco ===== */
+.skip-link {
+  position: absolute;
+  top: var(--pal-esp-2);
+  left: -9999px;
+  z-index: 1000;
+  padding: var(--pal-esp-2) var(--pal-esp-4);
+  font-family: var(--pal-fuente-display);
+  font-size: var(--pal-texto-sm);
+  font-weight: var(--pal-peso-semi);
+  color: var(--btn-txt);
+  background: var(--btn-bg);
+  border-radius: var(--pal-radio-md);
+  box-shadow: var(--shadow-2);
+  text-decoration: none;
+}
+.skip-link:focus { left: var(--pal-esp-2); }
+
+/* ===== Anillo de foco =====
+   Todo dentro de :where(): especificidad 0, así cualquier foco propio de una
+   app o del shell lo reemplaza. Los contenedores con tabindex="-1" (cajas de
+   diálogo, main) reciben foco por script y no llevan anillo. */
+:where(a, button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])):where(:focus-visible) {
+  outline: var(--pal-foco-ancho) solid var(--focus);
+  outline-offset: var(--pal-foco-separacion);
+}
+
+/* ===== Skeletons =====
+   .skel-grupo agrupa las piezas de un bloque en carga; con .skel-diferido
+   aparece a los 300 ms, así una carga rápida no parpadea. Cada .skel lleva
+   aria-hidden y el grupo un <span class="sr-only">Cargando</span>. */
+.skel {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  background: var(--skel);
+  border-radius: var(--pal-radio-sm);
+}
+.skel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--skel-shine), transparent);
+  animation: ld-skel 1.4s ease-in-out infinite;
+}
+@keyframes ld-skel {
+  to { transform: translateX(100%); }
+}
+
+.skel-linea { width: 100%; height: .75em; min-height: 10px; }
+.skel-linea:last-child:not(:only-child) { width: 60%; }
+.skel-titulo { width: 45%; height: 1.1em; min-height: 14px; margin-bottom: var(--pal-esp-1); }
+.skel-circulo { flex: none; width: 2rem; height: 2rem; border-radius: 50%; }
+.skel-bloque { width: 100%; height: 4.5rem; border-radius: var(--pal-radio-md); }
+
+.skel-grupo { display: flex; flex-direction: column; gap: var(--pal-esp-2); }
+
+.skel-tarjeta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pal-esp-2);
+  padding: var(--pal-esp-4);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--pal-radio-lg);
+}
+.skel-rejilla {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
+  gap: var(--pal-esp-3);
+}
+
+.skel-fila {
+  display: flex;
+  align-items: center;
+  gap: var(--pal-esp-3);
+  padding: var(--pal-esp-3) 0;
+  border-bottom: 1px solid var(--line);
+}
+.skel-fila > .skel-linea { flex: 1 1 0; width: auto; }
+.skel-fila > .skel-linea:first-of-type { flex-grow: 2; }
+/* En una tabla: una línea por celda */
+.skel-tr td { padding-top: var(--pal-esp-3); padding-bottom: var(--pal-esp-3); }
+
+.skel-tablero {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(200px, 1fr);
+  gap: var(--pal-esp-3);
+  overflow: hidden;
+}
+.skel-columna { display: flex; flex-direction: column; gap: var(--pal-esp-2); }
+
+.skel-kpi {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pal-esp-4);
+}
+.skel-kpi-celda {
+  flex: 1 1 120px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pal-esp-2);
+}
+.skel-kpi-celda .skel-linea { width: 50%; }
+.skel-kpi-celda .skel-bloque { height: 1.75rem; width: 80%; }
+
+.skel-diferido { animation: ld-aparecer var(--pal-dur-media) ease-out 300ms backwards; }
+@keyframes ld-aparecer {
+  from { opacity: 0; }
+}
+
+[aria-busy='true'] { cursor: progress; }
+
+/* ===== Información indispensable (.info-i) =====
+   Un «i» con el texto en title y aria-label (ui.js copia title a aria-label y
+   le da tabindex="0" si falta). Con el ratón se ve el title; con teclado o
+   toque, el globo de abajo, que Escape cierra (ui.js marca data-cerrado).
+   No hereda las mayúsculas ni el tracking de un h2, un th o un rótulo: sin
+   eso el «i» sale «I» y el globo también va en mayúsculas. */
+.info-i {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  margin-left: var(--pal-esp-1);
+  vertical-align: 1px;
+  font-family: var(--pal-fuente-display);
+  font-size: var(--pal-texto-2xs);
+  font-style: italic;
+  font-weight: var(--pal-peso-semi);
+  line-height: 1;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--muted);
+  border: 1px solid var(--line-control);
+  border-radius: 50%;
+  cursor: help;
+  user-select: none;
+}
+.info-i[aria-label]:focus:not([data-cerrado])::after {
+  content: attr(aria-label);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  z-index: 50;
+  width: max-content;
+  max-width: min(280px, 80vw);
+  padding: var(--pal-esp-2) var(--pal-esp-3);
+  transform: translateX(-50%);
+  font-family: var(--pal-fuente-cuerpo);
+  font-size: var(--pal-texto-xs);
+  font-style: normal;
+  font-weight: var(--pal-peso-normal);
+  line-height: var(--pal-interlinea-ui);
+  text-align: left;
+  white-space: normal;
+  color: var(--card);
+  background: var(--txt-strong);
+  border-radius: var(--pal-radio-sm);
+  box-shadow: var(--shadow-2);
+  pointer-events: none;
+}
+
+/* ===== Movimiento reducido ===== */
+@media (prefers-reduced-motion: reduce) {
+  .skel::after { display: none; animation: none; }
+  *,
+  *::before,
+  *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

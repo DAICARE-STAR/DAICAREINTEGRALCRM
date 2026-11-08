@@ -1,0 +1,69 @@
+import { execFileSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { describe, expect, it } from 'vitest'
+
+// El producto nace de una copia neutralizada de team-portal (N-1, 0.1.19):
+// ningún archivo versionado lleva el nombre, el dominio, el proyecto de
+// Supabase, los tokens ni las claves de la empresa de origen. Solo
+// docs/origen.md y tools/origen/ los nombran, porque documentan el renombre,
+// y las pruebas que vigilan el renombre los citan para prohibirlos. La ruta
+// local del repo de origen (regla de portes de AGENTS.md y docs/portes.md)
+// se admite tal cual: no viaja en el build. Se leen los archivos que git conoce (versionados o por versionar, sin los
+// ignorados), así un archivo nuevo entra solo en la revisión.
+
+const RAIZ = fileURLToPath(new URL('../../../', import.meta.url))
+const EXENTOS = [
+  /^docs\/origen\.md$/,
+  /^tools\/origen\//,
+  /^src\/lib\/__tests__\/(contraste|esquema|mapa-renombre|tema-js)\.test\.ts$/,
+]
+const RUTA_ORIGEN = 'C:\\Users\\enzov\\IA\\' + 'lu' + 'ce-design\\team-portal'
+const BINARIO = /\.(png|jpe?g|webp|gif|ico|woff2?|ttf|otf|pdf)$/i
+
+// Cada patrón se escribe partido para que este archivo no se delate a sí mismo
+const PROHIBIDOS: [string, RegExp][] = [
+  ['nombre', new RegExp('lu' + 'ce', 'i')],
+  ['dominio', new RegExp('lu' + 'cedesign', 'i')],
+  ['sitio', new RegExp('ldteam' + 'portal', 'i')],
+  ['proyecto de Supabase', new RegExp('zkddstmh' + 'iarougxhnelq', 'i')],
+  ['primitiva', new RegExp('--' + 'ld-')],
+  ['clave de localStorage', new RegExp("['\"`]" + 'l' + 'd_')],
+  ['tema', new RegExp('mar' + 'fil', 'i')],
+]
+
+function archivos(): string[] {
+  const salida = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], {
+    cwd: RAIZ,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+  })
+  return salida
+    .split('\0')
+    .filter(Boolean)
+    .filter((r) => !BINARIO.test(r) && !EXENTOS.some((e) => e.test(r)))
+}
+
+describe('neutralidad del producto', () => {
+  const lista = archivos()
+
+  it('lee los archivos del repo', () => {
+    expect(lista).toEqual(expect.arrayContaining(['src/App.tsx', 'netlify/lib/email.mts', 'src/styles.css']))
+  })
+
+  it.each(PROHIBIDOS)('ningún archivo contiene el %s de la empresa de origen', (_, patron) => {
+    const hallazgos: string[] = []
+    for (const ruta of lista) {
+      let texto: string
+      try {
+        texto = readFileSync(RAIZ + ruta, 'utf8')
+      } catch {
+        continue // borrado en el árbol de trabajo
+      }
+      texto.split(/\r?\n/).forEach((l, i) => {
+        if (patron.test(l.split(RUTA_ORIGEN).join(''))) hallazgos.push(`${ruta}:${i + 1}`)
+      })
+    }
+    expect(hallazgos).toEqual([])
+  })
+})

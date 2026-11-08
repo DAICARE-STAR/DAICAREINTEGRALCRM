@@ -1,5 +1,5 @@
 {
-  "_nota": "Renombre único al copiar desde team-portal (PP-DEC-05). Cada grupo es biyectivo y cada destino existe en src/estilos/paleta.css, src/estilos/temas.css o public/tema.js; lo vigila src/lib/__tests__/mapa-renombre.test.ts. Las claves ld_* que falten se añaden cuando llegue el código que las usa.",
+  "_nota": "Renombre único al copiar desde team-portal (PP-DEC-05). Cada grupo es biyectivo y cada destino existe en src/estilos/paleta.css, src/estilos/temas.css o public/tema.js; lo vigila src/lib/__tests__/mapa-renombre.test.ts. Las claves ld_* del shell que no son del tema van en «claves» (pt_ más el mismo nombre y versión) y no figuran en tema.js.",
   "primitivas": {
     "--ld-marfil": "--pal-base-50",
     "--ld-hueso": "--pal-base-100",
@@ -102,5 +102,15 @@
     "LD_TEMAS": "PT_TEMAS",
     "ldLeerTema": "ptLeerTema",
     "ldAplicarTema": "ptAplicarTema"
+  },
+  "claves": {
+    "ld_nav_open_v1": "pt_nav_open_v1",
+    "ld_menu_compacto_v1": "pt_menu_compacto_v1",
+    "ld_rail_compacta_v1": "pt_rail_compacta_v1",
+    "ld_rail_desconectados_v1": "pt_rail_desconectados_v1",
+    "ld_clocks_v1": "pt_clocks_v1",
+    "ld_widgets_v1": "pt_widgets_v1",
+    "ld_widgets_v2": "pt_widgets_v2",
+    "ld_widgets_v3": "pt_widgets_v3"
   }
 }

@@ -21,3 +21,5 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      # Informativo, como el resto de la CI: el escáner de secretos sale 0 sin hallazgos
+      - run: npm run secretos

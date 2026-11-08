@@ -14,7 +14,7 @@ const PALETA = primitivasDe(leer('../../estilos/paleta.css'))
 const TEMAS_CSS = leer('../../estilos/temas.css')
 const TEMA_JS = leer('../../../public/tema.js')
 
-const GRUPOS = ['primitivas', 'semanticos', 'temas', 'localStorage', 'globales'] as const
+const GRUPOS = ['primitivas', 'semanticos', 'temas', 'localStorage', 'globales', 'claves'] as const
 
 describe('mapa-renombre.json', () => {
   it.each(GRUPOS)('el grupo %s es biyectivo y no deja ningún origen igual a su destino', (grupo) => {
@@ -57,5 +57,13 @@ describe('mapa-renombre.json', () => {
       expect(TEMA_JS, origen).not.toContain(origen)
     }
     for (const destino of Object.values(MAPA.localStorage)) expect(destino).toMatch(/^pt_[a-z_]+_v\d+$/)
+  })
+
+  it('las claves de localStorage del shell pasan a pt_ con el mismo nombre y versión, sin chocar con las del tema', () => {
+    for (const [origen, destino] of Object.entries(MAPA.claves)) {
+      expect(origen).toMatch(/^ld_[a-z_]+_v\d+$/)
+      expect(destino).toBe(origen.replace(/^ld_/, 'pt_'))
+      expect(Object.values(MAPA.localStorage)).not.toContain(destino)
+    }
   })
 })
