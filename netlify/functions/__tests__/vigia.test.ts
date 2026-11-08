@@ -153,7 +153,7 @@ describe('push-notify', () => {
     expect(vi.mocked(autenticar).mock.calls[0]?.[0]).toBe('jwt')
     expect(vi.mocked(broadcastPush).mock.calls[0]?.[1]).toMatchObject({
       body: 'Nueva coincidencia: Luminarias para colegio',
-      url: '/apps/licitaciones',
+      url: '/licitaciones',
     })
     expect(vi.mocked(auditar).mock.calls[0]?.[1]).toMatchObject({
       userId: 'u-ana',

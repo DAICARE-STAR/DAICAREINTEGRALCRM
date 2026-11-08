@@ -10,6 +10,7 @@ import {
 } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './AuthContext'
+import { useInstalacion } from './InstalacionContext'
 
 // Presencia del equipo vía Supabase Realtime Presence: efímera (no toca la
 // base). Cada pestaña con sesión se une al canal `team-presence` con su
@@ -52,6 +53,7 @@ const META_FRESCA_MS = 3 * CHECK_MS
 
 export function PresenceProvider({ children }: { children: ReactNode }) {
   const { session } = useAuth()
+  const { tieneModulo } = useInstalacion()
   const [presence, setPresence] = useState<TeamPresence>({})
   const [manualAway, setManualAway] = useState(false)
 
@@ -149,7 +151,25 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
       track(away ? 'away' : 'online')
     }, CHECK_MS)
 
-    // Latido de «última vez» (best-effort: sin migración 15 falla silencioso)
+    return () => {
+      window.removeEventListener('pointerdown', onActivity)
+      window.removeEventListener('pointermove', onActivity)
+      window.removeEventListener('keydown', onActivity)
+      window.clearInterval(idleTimer)
+      onActivityRef.current = () => {
+        lastActivityRef.current = Date.now()
+      }
+      channelRef.current = null
+      void supabase.removeChannel(channel)
+    }
+  }, [session])
+
+  // Latido de «última vez» en member_status, tabla del módulo chat
+  // (11-chat.sql): sin el módulo no se escribe.
+  const conChat = tieneModulo('chat')
+  useEffect(() => {
+    if (!session || !conChat) return
+    const userId = session.user.id
     async function heartbeat() {
       await supabase
         .from('member_status')
@@ -158,20 +178,8 @@ export function PresenceProvider({ children }: { children: ReactNode }) {
     }
     void heartbeat()
     const heartbeatTimer = window.setInterval(() => void heartbeat(), HEARTBEAT_MS)
-
-    return () => {
-      window.removeEventListener('pointerdown', onActivity)
-      window.removeEventListener('pointermove', onActivity)
-      window.removeEventListener('keydown', onActivity)
-      window.clearInterval(idleTimer)
-      window.clearInterval(heartbeatTimer)
-      onActivityRef.current = () => {
-        lastActivityRef.current = Date.now()
-      }
-      channelRef.current = null
-      void supabase.removeChannel(channel)
-    }
-  }, [session])
+    return () => window.clearInterval(heartbeatTimer)
+  }, [session, conChat])
 
   // Cambio de ausencia manual → publicar de inmediato
   useEffect(() => {

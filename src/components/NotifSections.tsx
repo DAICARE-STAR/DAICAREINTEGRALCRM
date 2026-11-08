@@ -21,6 +21,7 @@ export default function NotifSections({ onNavigate }: { onNavigate?: () => void 
   const {
     mine,
     radar,
+    conRadar,
     marcarMisLeidas,
     marcarRadarLeidas,
     abrirMiNotif,
@@ -72,8 +73,8 @@ export default function NotifSections({ onNavigate }: { onNavigate?: () => void 
               <Link
                 key={n.id}
                 // Solo rutas del portal: un enlace externo guardado antes del
-                // CHECK de la 63 (NOT VALID) abre Proyectos en su lugar
-                to={esEnlaceInterno(n.link) ? n.link : '/apps/proyectos'}
+                // CHECK de la 63 (NOT VALID) abre el Inicio en su lugar
+                to={esEnlaceInterno(n.link) ? n.link : '/'}
                 className={`rail-notif ${n.read ? 'leida' : ''}`}
                 onClick={() => {
                   if (!n.read) void abrirMiNotif(n)
@@ -91,6 +92,7 @@ export default function NotifSections({ onNavigate }: { onNavigate?: () => void 
         )}
       </div>
 
+      {conRadar && (
       <div className="rail-section">
         <div className="rail-head">
           <span className="rail-title">Radar</span>
@@ -119,7 +121,7 @@ export default function NotifSections({ onNavigate }: { onNavigate?: () => void 
                 key={n.id}
                 // Enlace profundo a la licitación concreta (la app abre su
                 // detalle con ?licitacion=<id>)
-                to={`/apps/licitaciones?licitacion=${encodeURIComponent(n.tender_id)}`}
+                to={`/licitaciones?licitacion=${encodeURIComponent(n.tender_id)}`}
                 className={`rail-notif ${n.read ? 'leida' : ''}`}
                 onClick={() => {
                   if (!n.read) void abrirRadarNotif(n)
@@ -136,6 +138,7 @@ export default function NotifSections({ onNavigate }: { onNavigate?: () => void 
           </div>
         )}
       </div>
+      )}
     </>
   )
 }

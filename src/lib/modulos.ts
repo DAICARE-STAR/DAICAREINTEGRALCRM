@@ -133,7 +133,7 @@ export const MODULOS: readonly Modulo[] = [
     permisos: [{ clave: 'app_chat', etiqueta: 'Ver Chat' }],
     widgets: [],
     acciones: [],
-    tablas: ['chat_channels', 'chat_messages'],
+    tablas: ['chat_channels', 'chat_messages', 'member_status'],
     sql: '11-chat.sql',
     depende: [],
     integra: [],

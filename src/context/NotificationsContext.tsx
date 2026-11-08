@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react'
 import { useAuth } from './AuthContext'
+import { useInstalacion } from './InstalacionContext'
 import { NOMBRE_PORTAL } from '../lib/instalacion'
 import { supabase } from '../lib/supabase'
 
@@ -39,6 +40,8 @@ interface NotificationsValue {
   mine: MiNotif[]
   radar: RadarNotif[]
   unread: number
+  // El radar solo existe con el módulo licitaciones activo
+  conRadar: boolean
   marcarMisLeidas: () => Promise<void>
   marcarRadarLeidas: () => Promise<void>
   abrirMiNotif: (n: MiNotif) => Promise<void>
@@ -52,6 +55,7 @@ const Ctx = createContext<NotificationsValue>({
   mine: [],
   radar: [],
   unread: 0,
+  conRadar: false,
   marcarMisLeidas: async () => {},
   marcarRadarLeidas: async () => {},
   abrirMiNotif: async () => {},
@@ -64,6 +68,8 @@ const BASE_TITLE = NOMBRE_PORTAL
 
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const { profile } = useAuth()
+  // tender_notifications es del módulo licitaciones (27-licitaciones.sql)
+  const conRadar = useInstalacion().tieneModulo('licitaciones')
   const uid = profile?.id ?? null
   const [mine, setMine] = useState<MiNotif[]>([])
   const [radar, setRadar] = useState<RadarNotif[]>([])
@@ -86,6 +92,10 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   }, [uid])
 
   const loadRadar = useCallback(() => {
+    if (!conRadar) {
+      setRadar([])
+      return
+    }
     void supabase
       .from('tender_notifications')
       .select('id, tender_id, title, country, read, created_at')
@@ -93,7 +103,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       .order('created_at', { ascending: false })
       .limit(20)
       .then(({ data }) => setRadar((data as RadarNotif[]) ?? []))
-  }, [])
+  }, [conRadar])
 
   useEffect(() => {
     loadMine()
@@ -108,7 +118,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       window.clearTimeout(radarTimer.current)
       radarTimer.current = window.setTimeout(loadRadar, 400)
     }
-    const channel = supabase
+    let canal = supabase
       .channel('notifs-realtime')
       .on(
         'postgres_changes',
@@ -120,11 +130,14 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         },
         debouncedMine
       )
-      .on(
+    if (conRadar) {
+      canal = canal.on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'tender_notifications' },
         debouncedRadar
       )
+    }
+    const channel = canal
       // Red de seguridad: si el websocket se cae y vuelve (portátil que
       // duerme, wifi que salta), sin esto los avisos llegados mientras
       // tanto no aparecerían hasta recargar la página a mano.
@@ -153,7 +166,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       window.clearTimeout(radarTimer.current)
       void supabase.removeChannel(channel)
     }
-  }, [uid, loadMine, loadRadar])
+  }, [uid, loadMine, loadRadar, conRadar])
 
   const unread = mine.length + radar.length
 
@@ -201,13 +214,14 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   }, [uid])
 
   const historialRadar = useCallback(async (): Promise<RadarNotif[]> => {
+    if (!conRadar) return []
     const { data } = await supabase
       .from('tender_notifications')
       .select('id, tender_id, title, country, read, created_at')
       .order('created_at', { ascending: false })
       .limit(15)
     return (data as RadarNotif[]) ?? []
-  }, [])
+  }, [conRadar])
 
   return (
     <Ctx.Provider
@@ -215,6 +229,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         mine,
         radar,
         unread,
+        conRadar,
         marcarMisLeidas,
         marcarRadarLeidas,
         abrirMiNotif,

@@ -222,7 +222,7 @@ export function renderTenderEmail(items: TenderItem[], portalUrl: string) {
       <table style="width:100%;border-collapse:collapse;">${filas}</table>
       ${resto > 0 ? `<p style="color:#625C52;font-size:12.5px;padding:10px 20px 0;margin:0;">…y ${resto} más en el portal.</p>` : ''}
       <div style="padding:20px;text-align:center;">
-        <a href="${portalUrl}/apps/licitaciones"
+        <a href="${portalUrl}/licitaciones"
            style="display:inline-block;background:#7CC3DC;color:#171512;font-weight:700;font-size:14px;padding:11px 26px;border-radius:8px;text-decoration:none;">
           Abrir el radar
         </a>
@@ -243,7 +243,7 @@ export function renderTenderEmail(items: TenderItem[], portalUrl: string) {
       )
       .join('\n\n') +
     (resto > 0 ? `\n\n…y ${resto} más.` : '') +
-    `\n\nAbrir el radar: ${portalUrl}/apps/licitaciones`
+    `\n\nAbrir el radar: ${portalUrl}/licitaciones`
 
   return { subject, html, text }
 }

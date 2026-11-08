@@ -5,6 +5,7 @@ import { IconoEquipo } from '../components/IconosNav'
 import ProfileCard, { type ProfileCardMember } from '../components/ProfileCard'
 import { SkeletonLista } from '../components/Skeleton'
 import { useAuth } from '../context/AuthContext'
+import { useInstalacion } from '../context/InstalacionContext'
 import { usePresence } from '../context/PresenceContext'
 import { fetchTeamMembers } from '../lib/calendar'
 import { fetchMemberStatuses, relativeSeen } from '../lib/team'
@@ -22,6 +23,8 @@ const ESTADO_LABEL: Record<Estado, string> = {
 export default function Team() {
   useTitulo('Equipo')
   const { profile } = useAuth()
+  // La última conexión vive en member_status, del módulo chat
+  const conChat = useInstalacion().tieneModulo('chat')
   const { presence, manualAway, setManualAway } = usePresence()
   // null = cargando (skeleton); [] = error (con su aviso)
   const [team, setTeam] = useState<TeamMember[] | null>(null)
@@ -41,6 +44,7 @@ export default function Team() {
         setTeam([])
         setError('No se pudo cargar el equipo. ¿Está aplicada la migración 13?')
       })
+    if (!conChat) return
     fetchMemberStatuses()
       .then((s) => {
         setStatuses(s)

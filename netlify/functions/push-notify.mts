@@ -72,7 +72,7 @@ export default async (req: Request) => {
     {
       title: 'Radar de Licitaciones',
       body,
-      url: '/apps/licitaciones',
+      url: '/licitaciones',
       tag: 'licitaciones-inmediato',
     },
     { userIds: destinatarios },

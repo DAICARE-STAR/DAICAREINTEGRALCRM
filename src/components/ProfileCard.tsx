@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router'
+import { useInstalacion } from '../context/InstalacionContext'
 import { usePresence } from '../context/PresenceContext'
 import { supabase } from '../lib/supabase'
 import { relativeSeen } from '../lib/team'
@@ -52,6 +53,9 @@ export default function ProfileCard({
   onClose: () => void
 }) {
   const { presence } = usePresence()
+  const { tieneModulo } = useInstalacion()
+  const conProyectos = tieneModulo('proyectos')
+  const conChat = tieneModulo('chat')
   const [roles, setRoles] = useState<RoleChip[] | null>(null)
   const [projects, setProjects] = useState<MiniProject[] | null>(null)
   const [lastSeen, setLastSeen] = useState<string | null>(null)
@@ -87,8 +91,9 @@ export default function ProfileCard({
         setRoles(chips)
       })
 
-    // Proyectos activos asignados (la tabla es legible para todo el equipo)
-    supabase
+    // Proyectos activos asignados (la tabla es legible para todo el equipo);
+    // projects es del módulo proyectos y member_status del módulo chat
+    if (conProyectos) supabase
       .from('projects')
       .select('id, code, status')
       .eq('assigned_to', member.id)
@@ -108,7 +113,7 @@ export default function ProfileCard({
         )
       })
 
-    supabase
+    if (conChat) supabase
       .from('member_status')
       .select('last_seen_at')
       .eq('user_id', member.id)
@@ -120,7 +125,7 @@ export default function ProfileCard({
     return () => {
       alive = false
     }
-  }, [member.id, member.role])
+  }, [member.id, member.role, conProyectos, conChat])
 
   // Escape, foco inicial y retorno del foco: useDialogo
   useDialogo(cardRef, { alCerrar: onClose })
@@ -192,6 +197,7 @@ export default function ProfileCard({
           </div>
         </div>
 
+        {conProyectos && (
         <div className="profile-pop-sec">
           <span className="profile-pop-title">Proyectos asignados</span>
           {projects === null && <SkeletonLista n={2} avatar={false} lineas={1} />}
@@ -203,7 +209,7 @@ export default function ProfileCard({
               {projects.slice(0, 6).map((pr) => (
                 <Link
                   key={pr.id}
-                  to={`/apps/proyectos?proyecto=${pr.id}`}
+                  to={`/proyectos?proyecto=${pr.id}`}
                   className="profile-pop-project"
                   onClick={onClose}
                   title={pr.status}
@@ -218,6 +224,7 @@ export default function ProfileCard({
             </div>
           )}
         </div>
+        )}
       </div>
     </div>,
     document.body

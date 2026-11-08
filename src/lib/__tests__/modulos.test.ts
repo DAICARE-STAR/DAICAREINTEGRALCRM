@@ -161,7 +161,7 @@ describe('helpers puros', () => {
     expect(moduloDeAccion('create-event')).toBe('calendario')
     expect(moduloDeAccion('list-contacts')).toBe('directorio')
     expect(moduloDeAccion('no-existe')).toBeUndefined()
-    expect(tablasDe('chat')).toEqual(['chat_channels', 'chat_messages'])
+    expect(tablasDe('chat')).toEqual(['chat_channels', 'chat_messages', 'member_status'])
     expect(tablasDe('nada')).toEqual([])
     // Devuelven copias: mutarlas no toca el registro
     accionesDe('calendario').pop()
