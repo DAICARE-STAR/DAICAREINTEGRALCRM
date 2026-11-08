@@ -46,4 +46,15 @@ describe('rutas de los módulos', () => {
     expect(columnas).not.toContain('app_calendario')
     expect(columnas).toContain('manage_members')
   })
+
+  it('los permisos del sitio van con Sitio web y nada de módulo cae en «Otros»', () => {
+    const grupos = gruposPermisos(['sitio-web'], PERMISSIONS.map((p) => p.key))
+    const sitio = grupos.find((g) => g.label === 'Sitio web')?.keys ?? []
+    for (const k of ['manage_projects', 'manage_brands', 'manage_notice', 'view_analytics']) expect(sitio).toContain(k)
+    const otros = grupos.find((g) => g.label === 'Otros')?.keys ?? []
+    expect(otros).not.toContain('edit_tender_offers')
+    expect(otros).not.toContain('delete_tender_offers')
+    const nucleo = grupos.find((g) => g.label === 'Núcleo')?.keys ?? []
+    expect(nucleo).not.toContain('manage_notice')
+  })
 })

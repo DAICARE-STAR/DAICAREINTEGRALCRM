@@ -75,7 +75,6 @@ export const MODULOS: readonly Modulo[] = [
       { clave: 'manage_members', etiqueta: 'Gestionar miembros' },
       { clave: 'manage_roles', etiqueta: 'Gestionar roles y permisos' },
       { clave: 'manage_connectors', etiqueta: 'Gestionar conectores' },
-      { clave: 'manage_notice', etiqueta: 'Publicar avisos' },
       { clave: 'view_credentials', etiqueta: 'Ver credenciales compartidas' },
       { clave: 'manage_credentials', etiqueta: 'Gestionar credenciales compartidas' },
     ],
@@ -168,7 +167,6 @@ export const MODULOS: readonly Modulo[] = [
     estado: 'disponible',
     permisos: [
       { clave: 'app_proyectos', etiqueta: 'Ver Proyectos' },
-      { clave: 'manage_projects', etiqueta: 'Crear y configurar proyectos' },
       { clave: 'edit_projects', etiqueta: 'Editar proyectos' },
       { clave: 'delete_projects', etiqueta: 'Borrar proyectos' },
     ],
@@ -223,7 +221,6 @@ export const MODULOS: readonly Modulo[] = [
     permisos: [
       { clave: 'app_productos', etiqueta: 'Ver Productos' },
       { clave: 'manage_products', etiqueta: 'Gestionar el catálogo' },
-      { clave: 'manage_brands', etiqueta: 'Gestionar marcas' },
     ],
     widgets: [],
     acciones: [],
@@ -286,7 +283,6 @@ export const MODULOS: readonly Modulo[] = [
     permisos: [
       { clave: 'app_gerencia', etiqueta: 'Ver Gerencia' },
       { clave: 'view_billing', etiqueta: 'Ver facturación' },
-      { clave: 'view_analytics', etiqueta: 'Ver indicadores' },
     ],
     widgets: ['facturacion'],
     acciones: ['facturacion-resumen', 'client-projects', 'list-invoices', 'client-invoices', 'facturas-lista', 'facturas-por-tipo', 'resumen-gerencia'],
@@ -303,7 +299,11 @@ export const MODULOS: readonly Modulo[] = [
     icono: 'licitaciones',
     ruta: '/licitaciones',
     estado: 'disponible',
-    permisos: [{ clave: 'app_licitaciones', etiqueta: 'Ver Licitaciones' }],
+    permisos: [
+      { clave: 'app_licitaciones', etiqueta: 'Ver Licitaciones' },
+      { clave: 'edit_tender_offers', etiqueta: 'Editar oportunidades y ofertas' },
+      { clave: 'delete_tender_offers', etiqueta: 'Eliminar oportunidades y ofertas' },
+    ],
     widgets: [],
     acciones: ['crear-oportunidad', 'reporte-oportunidad'],
     tablas: [
@@ -325,7 +325,13 @@ export const MODULOS: readonly Modulo[] = [
     permisos: [
       { clave: 'app_sitio-web', etiqueta: 'Ver Sitio web' },
       { clave: 'manage_blog', etiqueta: 'Gestionar el blog' },
+      // Proyectos de referencia, marcas, aviso y analítica del sitio, como en
+      // el grupo «Sitio web» de team-portal (migraciones 6, 7, 41, 60 y 65)
+      { clave: 'manage_projects', etiqueta: 'Gestionar proyectos de referencia' },
+      { clave: 'manage_brands', etiqueta: 'Gestionar marcas del sitio' },
+      { clave: 'manage_notice', etiqueta: 'Gestionar el aviso del sitio' },
       { clave: 'manage_leads', etiqueta: 'Gestionar contactos del sitio' },
+      { clave: 'view_analytics', etiqueta: 'Ver analítica del sitio' },
     ],
     widgets: [],
     acciones: ['blog-draft', 'lead-reply'],
