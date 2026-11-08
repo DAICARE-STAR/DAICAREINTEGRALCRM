@@ -1,8 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
 
 // Purga diaria del detalle de uso del portal (migración 73): borra las
-// filas de portal_uso de más de 90 días (decisión del usuario, 2026-10-09)
-// con uso_purgar(), que solo la service role puede ejecutar. Una función
+// filas de portal_uso más antiguas que nucleo.retencion_uso_dias (90 si no
+// hay límite, nunca menos de 30; lo decide 07-widgets-uso.sql) con
+// uso_purgar() sin argumentos, que solo la service role puede ejecutar. Una función
 // programada no se puede invocar por HTTP (Netlify responde 403); a mano
 // se corre `select public.uso_purgar();` en el SQL Editor.
 
@@ -15,7 +16,7 @@ export default async () => {
   }
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
 
-  const { data, error } = await admin.rpc('uso_purgar', { p_dias: 90 })
+  const { data, error } = await admin.rpc('uso_purgar')
   if (error) {
     // PGRST202 (PostgREST) o 42883 (Postgres): la función aún no existe.
     // Falla suave: la purga empieza sola cuando se aplique la 73.
@@ -28,7 +29,7 @@ export default async () => {
   }
 
   const borradas = typeof data === 'number' ? data : 0
-  console.log('uso-purga:', borradas, 'fila(s) de más de 90 días borradas')
+  console.log('uso-purga:', borradas, 'fila(s) fuera de la retención borradas')
   return Response.json({ borradas })
 }
 
