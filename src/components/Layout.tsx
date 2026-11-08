@@ -33,7 +33,7 @@ import { PresenceProvider } from '../context/PresenceContext'
 import { rutaDeCabecera, type ModuloRuta } from '../lib/cabeceraMarco'
 import { useInstalacion } from '../context/InstalacionContext'
 import { manualesPendientes } from '../lib/data'
-import { moduloDeRuta, modulosVisibles } from '../lib/modulos'
+import { moduloDeRuta, modulosVisibles, puedeVerModulo } from '../lib/modulos'
 import { shellDe } from '../modulos'
 import { indiceSiguiente } from '../lib/teclado'
 import { useDialogo } from '../lib/useDialogo'
@@ -158,8 +158,10 @@ function NavSection({
 export default function Layout() {
   const { profile, session, signOut, hasPerm } = useAuth()
   const { pathname } = useLocation()
-  const { activos, cargando: cargandoModulos, tieneModulo } = useInstalacion()
-  const conManuales = tieneModulo('manuales')
+  const { activos, cargando: cargandoModulos } = useInstalacion()
+  // Con el permiso, no solo activo: sin app_manuales el enlace del aviso
+  // lleva a «Módulo no disponible» y el aviso no se podría cerrar
+  const conManuales = puedeVerModulo('manuales', profile?.roles ?? null, profile?.permissions ?? null, activos)
   // Aviso persistente hasta confirmar la lectura de los manuales vigentes
   // (la app Manuales avisa por postMessage al confirmar, sin recargar)
   const [manualesPend, setManualesPend] = useState(false)

@@ -45,7 +45,7 @@ export default function Admin() {
   const { hasPerm, profile } = useAuth()
   const { seccion } = useParams<{ seccion?: string }>()
   const isAdmin = !!profile?.roles.includes('admin')
-  const { activos } = useInstalacion()
+  const { activos, cargando } = useInstalacion()
   const puede = (a: string) => a === 'todos' || (a === 'admin' ? isAdmin : hasPerm(a as Permission))
   const deModulos: PestanaAdmin[] = modulosVisibles(profile?.roles ?? null, profile?.permissions ?? null, activos).flatMap(
     (m) => shellDe(m.slug)?.pestanasAdmin ?? [],
@@ -58,6 +58,9 @@ export default function Admin() {
 
   useTitulo(activa ? `Administración — ${activa.label}` : 'Administración')
 
+  // Mientras no llegan los módulos o el perfil, una pestaña de módulo aún no
+  // existe: se espera en lugar de redirigir y perder el enlace
+  if (!activa && (cargando || !profile)) return <SkeletonLineas />
   if (!activa) return <Navigate to={`/admin/${primera}`} replace />
 
   const grupos = [...new Set(visibles.map((t) => t.grupo))].map((nombre) => ({

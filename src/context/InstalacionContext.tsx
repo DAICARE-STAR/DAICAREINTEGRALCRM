@@ -88,6 +88,8 @@ export function InstalacionProvider({ children }: { children: ReactNode }) {
   }, [uid, intento])
 
   const reintentar = useCallback(() => {
+    // activos vuelve a null para que cargando sea true mientras llega la lectura
+    setActivos(null)
     setError(null)
     setIntento((n) => n + 1)
   }, [])

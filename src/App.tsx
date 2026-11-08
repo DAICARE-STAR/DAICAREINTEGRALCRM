@@ -27,7 +27,8 @@ const CON_RUTA = MODULOS.filter((m) => m.slug !== NUCLEO && m.ruta !== null)
 function RutaModulo({ modulo }: { modulo: Modulo }) {
   const { profile } = useAuth()
   const { activos, cargando, error, reintentar } = useInstalacion()
-  if (cargando) return <LogoLoader label="Cargando…" />
+  // Sin perfil todavía, puedeVerModulo daría un falso «no disponible»
+  if (cargando || (!error && !profile)) return <LogoLoader label="Cargando…" />
   if (error) return <ModuloNoDisponible nombre={modulo.nombre} error={error} alReintentar={reintentar} />
   const shell = shellDe(modulo.slug)
   if (!shell || !puedeVerModulo(modulo.slug, profile?.roles ?? null, profile?.permissions ?? null, activos)) {
