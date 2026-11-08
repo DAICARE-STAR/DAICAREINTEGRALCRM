@@ -9,7 +9,7 @@
 -- transacción de la sección 0. Nunca muestra valores de la base: solo
 -- conteos, códigos (SQLSTATE) y nombres de funciones o tablas.
 --
--- Requiere: supabase/esquema 00 a 04 aplicados y las cuentas de prueba de
+-- Requiere: supabase/esquema 00 a 04 aplicados (05 a 09 para las secciones 8 a 11) y las cuentas de prueba de
 -- node tools/instalar/cuentas-prueba.mjs (instalador.cuentas_prueba con qa,
 -- miembro y admin). Sin una cuenta, sus casos salen OMITIDO.
 --
@@ -25,8 +25,15 @@
 --   6) modulos_instalacion: nadie autenticado escribe; módulo de prueba
 --      inactivo cierra puede_ver_app y una tabla con aplicar_politica_modulo
 --   7) límite de miembros por trigger, con las cuentas de servicio exentas
--- Las secciones 8 en adelante llegan con 05-09 (perfiles, avisos, widgets,
--- IA y storage).
+--   8) perfiles: columnas laborales frenadas, enlaces https:// y perfil de
+--      un administrador
+--   9) avisos: nadie inserta por la API, cada quien lee y marca los suyos,
+--      enlace interno; suscripciones push propias
+--  10) uso: latido con topes, lectura solo del administrador, ai_usage y
+--      widgets sin escritura para un miembro
+--  11) storage: avatar propio sí, ajeno no, marca solo admin, anónimo sin
+--      listado, subida por encima del tope rechazada
+-- Las secciones 8 a 11 salen OMITIDO si falta su archivo de 05 a 09.
 -- ============================================================
 
 begin;
@@ -633,6 +640,372 @@ begin
   end;
   set constraints public.profiles_limite_miembros deferred;
   r := r || E'\n' || case when v = '1' then 'OK      ' else 'FALLA   ' end || '7.5   cuenta de servicio sin límite (null) → nace con es_servicio · ' || v;
+
+  perform set_config('rls.res', current_setting('rls.res') || r, true);
+end $$;
+
+-- ============ 8) Perfiles: columnas laborales, enlaces y perfil ajeno ============
+do $$
+declare
+  r text := '';
+  v text;
+  v_n int;
+  v_miembro uuid := nullif(current_setting('rls.miembro'), '')::uuid;
+  v_admin uuid := nullif(current_setting('rls.admin'), '')::uuid;
+begin
+  if current_setting('rls.txid', true) is distinct from txid_current()::text then
+    raise exception 'rls-simulacion: correr el archivo entero de una vez (BEGIN … ROLLBACK), no una sección suelta';
+  end if;
+  if to_regprocedure('public.guard_profile_laboral()') is null then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 8     perfiles · falta 05-perfiles.sql', true);
+    return;
+  end if;
+  if v_miembro is null then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 8     perfiles · falta la cuenta miembro', true);
+    return;
+  end if;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+  set local role authenticated;
+  begin
+    update public.profiles set area = 'prueba-rls', fecha_ingreso = date '2000-01-01', bio = 'prueba-rls' where id = v_miembro;
+    v := 'actualizó';
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  select count(*) into v_n from public.profiles
+   where id = v_miembro and bio = 'prueba-rls'
+     and area is distinct from 'prueba-rls' and fecha_ingreso is distinct from date '2000-01-01';
+  r := r || E'\n' || case when v_n = 1 then 'OK      ' else 'FALLA   ' end
+         || '8.1   miembro cambia su bio, su área y su fecha de ingreso → solo la bio · ' || v || ' / ' || v_n;
+
+  set local role authenticated;
+  begin
+    update public.profiles set enlaces = array['http://ejemplo.test'] where id = v_miembro;
+    v := 'actualizó';
+  exception when others then v := sqlstate;
+  end;
+  r := r || E'\n' || case when v = '23514' then 'OK      ' else 'FALLA   ' end || '8.2   miembro guarda un enlace que no es https:// → 23514 · ' || v;
+
+  if v_admin is null then
+    reset role;
+    r := r || E'\nOMITIDO 8.3-4 perfil del administrador · falta la cuenta admin';
+  else
+    begin
+      update public.profiles set bio = 'prueba-rls' where id = v_admin;
+      get diagnostics v_n = row_count;
+      v := v_n || ' filas';
+    exception when others then v := sqlstate;
+    end;
+    reset role;
+    r := r || E'\n' || case when v in ('0 filas', '42501') then 'OK      ' else 'FALLA   ' end || '8.3   miembro edita el perfil de un administrador → 0 filas · ' || v;
+
+    perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
+    set local role authenticated;
+    begin
+      update public.profiles set area = 'prueba-rls-admin' where id = v_miembro;
+      v := 'actualizó';
+    exception when others then v := sqlstate;
+    end;
+    reset role;
+    select count(*) into v_n from public.profiles where id = v_miembro and area = 'prueba-rls-admin';
+    r := r || E'\n' || case when v_n = 1 then 'OK      ' else 'FALLA   ' end || '8.4   admin cambia el área de un miembro → 1 fila · ' || v || ' / ' || v_n;
+  end if;
+  perform set_config('request.jwt.claims', '', true);
+
+  perform set_config('rls.res', current_setting('rls.res') || r, true);
+end $$;
+
+-- ============ 9) Avisos y suscripciones push ============
+do $$
+declare
+  r text := '';
+  v text;
+  v_n int;
+  v_miembro uuid := nullif(current_setting('rls.miembro'), '')::uuid;
+  v_admin uuid := nullif(current_setting('rls.admin'), '')::uuid;
+begin
+  if current_setting('rls.txid', true) is distinct from txid_current()::text then
+    raise exception 'rls-simulacion: correr el archivo entero de una vez (BEGIN … ROLLBACK), no una sección suelta';
+  end if;
+  if to_regclass('public.user_notifications') is null or to_regclass('public.push_subscriptions') is null then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 9     avisos · falta 06-avisos.sql', true);
+    return;
+  end if;
+  if v_miembro is null or v_admin is null then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 9     avisos · faltan las cuentas miembro o admin', true);
+    return;
+  end if;
+
+  -- Como postgres: un aviso de prueba para cada uno
+  perform public.push_notification(v_miembro, null, 'sistema', 'prueba-rls', '', '/admin');
+  perform public.push_notification(v_admin, null, 'sistema', 'prueba-rls', '', '/admin');
+  begin
+    insert into public.user_notifications (user_id, title, link) values (v_miembro, 'prueba-rls', '//ejemplo.test');
+    v := 'entró';
+  exception when others then v := sqlstate;
+  end;
+  r := r || E'\n' || case when v = '23514' then 'OK      ' else 'FALLA   ' end || '9.1   aviso con enlace externo (//host) → 23514 · ' || v;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+  set local role authenticated;
+  begin
+    insert into public.user_notifications (user_id, title) values (v_admin, 'prueba-rls');
+    v := 'entró';
+  exception when others then v := sqlstate;
+  end;
+  r := r || E'\n' || case when v = '42501' then 'OK      ' else 'FALLA   ' end || '9.2   miembro inserta un aviso para otro → 42501 · ' || v;
+
+  begin
+    perform public.push_notification(v_admin, v_miembro, 'sistema', 'prueba-rls', '', '/');
+    v := 'se ejecutó';
+  exception when others then v := sqlstate;
+  end;
+  r := r || E'\n' || case when v = '42501' then 'OK      ' else 'FALLA   ' end || '9.3   miembro ejecuta push_notification → 42501 · ' || v;
+
+  select count(*) into v_n from public.user_notifications where title = 'prueba-rls';
+  r := r || E'\n' || case when v_n = 1 then 'OK      ' else 'FALLA   ' end || '9.4   miembro lee los avisos de prueba → solo el suyo (1) · ' || v_n;
+
+  begin
+    update public.user_notifications set read = true where title = 'prueba-rls';
+    get diagnostics v_n = row_count;
+    v := v_n || case when v_n = 1 then ' fila' else ' filas' end;
+  exception when others then v := sqlstate;
+  end;
+  r := r || E'\n' || case when v = '1 fila' then 'OK      ' else 'FALLA   ' end || '9.5   miembro marca leídos los avisos de prueba → solo el suyo (1 fila) · ' || v;
+
+  begin
+    update public.user_notifications set title = 'cambiado' where user_id = v_miembro and title = 'prueba-rls';
+    v := 'actualizó';
+  exception when others then v := sqlstate;
+  end;
+  r := r || E'\n' || case when v = '42501' then 'OK      ' else 'FALLA   ' end || '9.6   miembro reescribe el título de su aviso → 42501 · ' || v;
+
+  begin
+    insert into public.push_subscriptions (user_id, endpoint, p256dh, auth)
+    values (v_admin, 'https://push.ejemplo.test/prueba-rls-ajena', 'x', 'x');
+    v := 'entró';
+  exception when others then v := sqlstate;
+  end;
+  begin
+    insert into public.push_subscriptions (endpoint, p256dh, auth)
+    values ('https://push.ejemplo.test/prueba-rls-propia', 'x', 'x');
+    v := v || ' / entró';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  r := r || E'\n' || case when v = '42501 / entró' then 'OK      ' else 'FALLA   ' end || '9.7   miembro suscribe a otro y a sí mismo → 42501 / entró · ' || v;
+  reset role;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
+  set local role authenticated;
+  select count(*) into v_n from public.push_subscriptions where endpoint like 'https://push.ejemplo.test/prueba-rls%';
+  reset role;
+  r := r || E'\n' || case when v_n = 0 then 'OK      ' else 'FALLA   ' end || '9.8   admin lee la suscripción de un miembro → 0 filas · ' || v_n;
+  perform set_config('request.jwt.claims', '', true);
+
+  perform set_config('rls.res', current_setting('rls.res') || r, true);
+end $$;
+
+-- ============ 10) Uso del portal, widgets e IA ============
+do $$
+declare
+  r text := '';
+  v text;
+  v_n int;
+  v_miembro uuid := nullif(current_setting('rls.miembro'), '')::uuid;
+  v_admin uuid := nullif(current_setting('rls.admin'), '')::uuid;
+begin
+  if current_setting('rls.txid', true) is distinct from txid_current()::text then
+    raise exception 'rls-simulacion: correr el archivo entero de una vez (BEGIN … ROLLBACK), no una sección suelta';
+  end if;
+  if to_regclass('public.portal_uso') is null or to_regclass('public.ai_usage') is null then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 10    uso e IA · faltan 07-widgets-uso.sql u 08-ia.sql', true);
+    return;
+  end if;
+  if v_miembro is null then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 10    uso e IA · falta la cuenta miembro', true);
+    return;
+  end if;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+  set local role authenticated;
+  begin
+    perform public.uso_latido('prueba-rls', 99, 99);
+    v := 'se ejecutó';
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  select coalesce(max(u.minutos || ' / ' || u.aperturas), 'sin fila') into v
+    from public.portal_uso u where u.user_id = v_miembro and u.app = 'prueba-rls';
+  r := r || E'\n' || case when v = '5 / 20' then 'OK      ' else 'FALLA   ' end || '10.1  latido inflado (99 / 99) queda en el tope → 5 / 20 · ' || v;
+
+  set local role authenticated;
+  begin
+    select count(*) into v_n from public.portal_uso;
+    v := v_n || ' filas';
+    select count(*) into v_n from public.uso_resumen(current_date - 1, current_date + 1);
+    v := v || ' / ' || v_n || ' filas';
+  exception when others then v := sqlstate;
+  end;
+  r := r || E'\n' || case when v = '0 filas / 0 filas' then 'OK      ' else 'FALLA   ' end || '10.2  miembro lee portal_uso y uso_resumen → 0 filas / 0 filas · ' || v;
+
+  begin
+    insert into public.portal_uso (user_id, dia, app, minutos) values (v_miembro, current_date, 'prueba-rls-2', 600);
+    v := 'entró';
+  exception when others then v := sqlstate;
+  end;
+  begin
+    perform public.uso_purgar(30);
+    v := v || ' / se ejecutó';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  r := r || E'\n' || case when v = '42501 / 42501' then 'OK      ' else 'FALLA   ' end || '10.3  miembro escribe portal_uso y ejecuta uso_purgar → 42501 / 42501 · ' || v;
+
+  begin
+    select count(*) into v_n from public.ai_usage;
+    v := v_n || ' filas';
+  exception when others then v := sqlstate;
+  end;
+  begin
+    insert into public.ai_usage (feature, user_id) values ('prueba-rls', v_miembro);
+    v := v || ' / entró';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  r := r || E'\n' || case when v = '0 filas / 42501' then 'OK      ' else 'FALLA   ' end || '10.4  miembro lee y escribe ai_usage → 0 filas / 42501 · ' || v;
+
+  begin
+    update public.portal_widgets set active = false where id = 'clock';
+    get diagnostics v_n = row_count;
+    v := v_n || ' filas';
+  exception when others then v := sqlstate;
+  end;
+  r := r || E'\n' || case when v in ('0 filas', '42501') then 'OK      ' else 'FALLA   ' end || '10.5  miembro sin manage_apps cambia un widget → 0 filas · ' || v;
+  reset role;
+
+  if v_admin is null then
+    r := r || E'\nOMITIDO 10.6  admin lee el uso · falta la cuenta admin';
+  else
+    perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
+    set local role authenticated;
+    begin
+      select count(*) into v_n from public.uso_resumen(current_date - 1, current_date + 1) where user_id = v_miembro and app = 'prueba-rls';
+      v := v_n || case when v_n = 1 then ' fila' else ' filas' end;
+    exception when others then v := sqlstate;
+    end;
+    reset role;
+    r := r || E'\n' || case when v = '1 fila' then 'OK      ' else 'FALLA   ' end || '10.6  admin lee el uso del miembro en uso_resumen → 1 fila · ' || v;
+  end if;
+
+  perform set_config('request.jwt.claims', '{"role":"anon"}', true);
+  set local role anon;
+  begin
+    perform public.uso_latido('prueba-rls', 1, 1);
+    v := 'se ejecutó';
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  r := r || E'\n' || case when v = '42501' then 'OK      ' else 'FALLA   ' end || '10.7  anónimo ejecuta uso_latido → 42501 · ' || v;
+  perform set_config('request.jwt.claims', '', true);
+
+  perform set_config('rls.res', current_setting('rls.res') || r, true);
+end $$;
+
+-- ============ 11) Storage: avatares, marca, listado y tope de almacenamiento ============
+-- Las filas de storage.objects se insertan directo, como haría la API de
+-- Storage con la sesión del miembro: no se sube ningún archivo.
+do $$
+declare
+  r text := '';
+  v text;
+  v_n int;
+  v_m int;
+  v_miembro uuid := nullif(current_setting('rls.miembro'), '')::uuid;
+  v_admin uuid := nullif(current_setting('rls.admin'), '')::uuid;
+begin
+  if current_setting('rls.txid', true) is distinct from txid_current()::text then
+    raise exception 'rls-simulacion: correr el archivo entero de una vez (BEGIN … ROLLBACK), no una sección suelta';
+  end if;
+  if to_regprocedure('public.almacenamiento_disponible()') is null then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 11    storage · falta 09-storage-base.sql', true);
+    return;
+  end if;
+  if v_miembro is null or v_admin is null then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 11    storage · faltan las cuentas miembro o admin', true);
+    return;
+  end if;
+
+  -- Sin límite durante los casos de permisos; el tope se prueba en 11.6
+  update public.modulos_instalacion set limites = limites || '{"almacenamiento_mb": null}' where slug = 'nucleo';
+  -- Un avatar del administrador, como postgres
+  insert into storage.objects (bucket_id, name, metadata)
+  values ('avatares', v_admin::text || '/prueba-rls.png', '{"size": 10}');
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+  set local role authenticated;
+  begin
+    insert into storage.objects (bucket_id, name, metadata)
+    values ('avatares', v_miembro::text || '/prueba-rls.png', '{"size": 10}');
+    v := 'entró';
+  exception when others then v := sqlstate;
+  end;
+  r := r || E'\n' || case when v = 'entró' then 'OK      ' else 'FALLA   ' end || '11.1  miembro sube a su carpeta de avatares → entró · ' || v;
+
+  begin
+    insert into storage.objects (bucket_id, name, metadata)
+    values ('avatares', v_admin::text || '/prueba-rls-ajeno.png', '{"size": 10}');
+    v := 'entró';
+  exception when others then v := sqlstate;
+  end;
+  r := r || E'\n' || case when v = '42501' then 'OK      ' else 'FALLA   ' end || '11.2  miembro sube a la carpeta de otro → 42501 · ' || v;
+
+  begin
+    insert into storage.objects (bucket_id, name, metadata) values ('marca', 'prueba-rls.png', '{"size": 10}');
+    v := 'entró';
+  exception when others then v := sqlstate;
+  end;
+  r := r || E'\n' || case when v = '42501' then 'OK      ' else 'FALLA   ' end || '11.3  miembro sube a marca → 42501 · ' || v;
+
+  select count(*) into v_n from storage.objects
+   where bucket_id in ('avatares', 'marca') and name not like v_miembro::text || '/%';
+  begin
+    delete from storage.objects where bucket_id = 'avatares' and name = v_admin::text || '/prueba-rls.png';
+    get diagnostics v_m = row_count;
+    v := v_m::text;
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  r := r || E'\n' || case when v_n = 0 and v in ('0', '42501') then 'OK      ' else 'FALLA   ' end
+         || '11.4  miembro lista y borra avatares ajenos → 0 filas / 0 · ' || v_n || ' filas / ' || v;
+
+  perform set_config('request.jwt.claims', '{"role":"anon"}', true);
+  set local role anon;
+  begin
+    select count(*) into v_n from storage.objects where bucket_id in ('avatares', 'marca');
+    v := v_n || ' filas';
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  r := r || E'\n' || case when v in ('0 filas', '42501') then 'OK      ' else 'FALLA   ' end || '11.5  anónimo lista avatares y marca → 0 filas · ' || v;
+
+  -- Tope en 0 MB: ya está lleno con cualquier uso
+  update public.modulos_instalacion set limites = limites || '{"almacenamiento_mb": 0}' where slug = 'nucleo';
+  perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+  set local role authenticated;
+  begin
+    insert into storage.objects (bucket_id, name, metadata)
+    values ('avatares', v_miembro::text || '/prueba-rls-2.png', '{"size": 10}');
+    v := 'entró';
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  r := r || E'\n' || case when v = '42501' then 'OK      ' else 'FALLA   ' end || '11.6  subida con el tope de almacenamiento superado → 42501 · ' || v;
+
+  update public.modulos_instalacion set limites = limites || '{"almacenamiento_mb": null}' where slug = 'nucleo';
+  set local role authenticated;
+  v := public.almacenamiento_disponible()::text;
+  reset role;
+  r := r || E'\n' || case when v = 'true' then 'OK      ' else 'FALLA   ' end || '11.7  sin límite de almacenamiento (null) → true · ' || v;
+  perform set_config('request.jwt.claims', '', true);
 
   perform set_config('rls.res', current_setting('rls.res') || r, true);
 end $$;

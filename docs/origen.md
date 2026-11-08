@@ -13,6 +13,7 @@ El producto nace de `C:\Users\enzov\IA\luce-design\team-portal` (solo lectura). 
 | 0.1.13 (PR-5) | 2026-11-07 | 12b1b72 | Código nuevo: `supabase/esquema/04-instalacion-modulos.sql`. Patrones leídos sin copiar texto: fila única de security_settings (64), política restrictiva de exigir_mfa (43) y puede_ver_app de la 63 (la v2 no lee portal_apps). |
 | 0.1.12 (PR-4) | 2026-11-07 | 12b1b72 | Adaptados al esquema consolidado `supabase/esquema/00-03`: versión final de schema.sql y de las migraciones 2, 3, 9, 13, 18, 19, 27, 31, 35, 43, 63, 64, 71, 84, 87 y 88 para los objetos del núcleo, sin semillas con emoji, sin app demo y sin nombres ni correos de team-portal. Lo de módulos de esas migraciones (radar, bitácora, bóveda, leads del sitio, buckets) queda para el archivo de cada módulo. |
 | 0.1.19 (N-1) | 2026-11-07 | 9d1524b (11 archivos en 5710280) | Commit de origen: copia única del núcleo, neutralizada y renombrada con `tools/origen/renombrar.mjs`. Detalle en § Commit de origen. |
+| 0.1.20 (N-2) | 2026-11-07 | 9d1524b | Adaptados a `supabase/esquema/05-09`: migraciones 12, 19, 20, 24, 27, 28, 30, 36, 47, 63 §4, 73, 83, 84, 89 y 90 para los objetos del núcleo. Sin la 95 (no existe en team-portal: perfil_privado llega en un 05b), sin inicio_checklist, project_reports ni los claim_* (son de módulo). `rls-simulacion.sql` 8 a 11 siguen las secciones 13 y 14 de la de team-portal sin copiar texto. |
 
 ## Commit de origen (0.1.19, N-1)
 
@@ -66,4 +67,9 @@ Nombres de tabla y columna que el producto cambia respecto de team-portal (por d
 | connectors.url | text sin check | check http(s) sin espacios, comillas ni < > | Es el href de «Abrir»: nunca javascript: ni data: |
 | instalacion | no existe (los datos de la empresa viven en el código) | fila única id = 1 con nombre, país, moneda, tema, logos y ajustes | Un producto por cliente necesita sus datos en la base |
 | modulos_instalacion | no existe | slug, activo, limites, activado_en, actualizado_en; solo la escribe el instalador | Módulos a la carta (PP-DEC-04) |
+| user_notifications | project_id y subtask_id; link por defecto '/apps/proyectos'; update de toda la fila propia | sin project_id ni subtask_id (los añade el módulo proyectos); link por defecto '/'; authenticated solo actualiza read | Las dos columnas apuntan a tablas de módulo; marcar leído es lo único que hace el shell |
+| push_notification() | 8 argumentos con proyecto y subtarea | (p_user, p_actor, p_kind, p_title, p_body, p_link) | Igual que user_notifications |
+| avatares | bucket blog, carpeta avatars/<id> | bucket avatares, carpeta <id> | blog es del módulo sitio-web; el bucket propio deja acotar tipo y tamaño |
+| bucket marca | no existe (los logos de las marcas van en blog/marcas) | público, sin SELECT, sube solo un administrador | Logos de la instalación (instalacion.logos) |
+| portal_uso, acciones_resumen | día en America/Bogota | día en instalacion.zona_horaria (zona_instalacion()) | Una instalación por cliente, en su zona |
 | seguridad_resumen() | v2 (71) con leads_24h | v2 sin leads_24h ni portal_apps y portal_credentials en cambios_24h | site_leads y la bóveda no son del núcleo; la v3 (97) llega como archivo nuevo |

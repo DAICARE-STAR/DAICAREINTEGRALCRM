@@ -298,9 +298,9 @@ async function compressImage(file: File): Promise<{ blob: Blob; type: string; to
   }
 }
 
-// Sube una imagen al bucket `blog` (carpeta indicada) y devuelve su URL
-// pública. Las políticas RLS de storage exigen un permiso manage_*.
-async function uploadSiteImage(file: File, folder: string): Promise<string> {
+// Sube una imagen al bucket indicado (por defecto `blog`, carpeta indicada)
+// y devuelve su URL pública. Las políticas RLS de storage deciden quién sube.
+async function uploadSiteImage(file: File, folder: string, bucket = 'blog'): Promise<string> {
   if (!BLOG_IMAGE_TYPES.includes(file.type)) {
     throw new Error('Formato no soportado: usa JPG, PNG, WebP, GIF o SVG')
   }
@@ -320,12 +320,12 @@ async function uploadSiteImage(file: File, folder: string): Promise<string> {
     .slice(-80)
   if (toWebp) clean = clean.replace(/\.(jpe?g|png|webp)$/, '') + '.webp'
   const path = `${folder}/${Date.now()}-${clean}`
-  const { error } = await supabase.storage.from('blog').upload(path, blob, {
+  const { error } = await supabase.storage.from(bucket).upload(path, blob, {
     cacheControl: '31536000',
     contentType: type,
   })
   if (error) throw error
-  const { data } = supabase.storage.from('blog').getPublicUrl(path)
+  const { data } = supabase.storage.from(bucket).getPublicUrl(path)
   return data.publicUrl
 }
 
@@ -341,10 +341,10 @@ export function uploadProjectImage(file: File): Promise<string> {
   return uploadSiteImage(file, 'proyectos')
 }
 
-// Avatar del usuario: va a avatars/<userId>/… (política de storage exige
-// que la carpeta sea la del propio usuario).
+// Avatar del usuario: va al bucket avatares, carpeta <userId>/… (la política
+// de storage de 09-storage-base.sql exige que sea la del propio usuario).
 export function uploadAvatar(file: File, userId: string): Promise<string> {
-  return uploadSiteImage(file, `avatars/${userId}`)
+  return uploadSiteImage(file, userId, 'avatares')
 }
 
 // Actualiza el perfil propio (nombre visible, avatar y/o datos de firma

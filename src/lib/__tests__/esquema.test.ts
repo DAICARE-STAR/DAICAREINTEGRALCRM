@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest'
 const CARPETA = fileURLToPath(new URL('../../../supabase/esquema/', import.meta.url))
 const PATRON = /^(\d{2})[a-z]?-[a-z0-9-]+\.sql$/
 const NUCLEO_PR4 = ['00-base.sql', '01-seguridad.sql', '02-auditoria.sql', '03-mfa.sql', '04-instalacion-modulos.sql']
+const NUCLEO_N2 = ['05-perfiles.sql', '06-avisos.sql', '07-widgets-uso.sql', '08-ia.sql', '09-storage-base.sql']
 
 const archivos = readdirSync(CARPETA)
   .filter((n) => PATRON.test(n))
@@ -59,9 +60,9 @@ const revocaA = (sql: string, nombre: string, roles: string) =>
   new RegExp(`revoke\\s+execute\\s+on\\s+function\\s+public\\.${nombre}\\s*\\([^;]*\\)\\s+from\\s+${roles}`, 'i').test(sql)
 
 describe('esquema consolidado: archivos', () => {
-  it('el núcleo 00-04 existe con su nombre', () => {
+  it('el núcleo 00-09 existe con su nombre', () => {
     const nombres = archivos.map((a) => a.nombre)
-    for (const n of NUCLEO_PR4) expect(nombres).toContain(n)
+    for (const n of [...NUCLEO_PR4, ...NUCLEO_N2]) expect(nombres).toContain(n)
   })
 
   it.each(archivos.map((a) => [a.nombre, a] as const))('%s tiene bloque 0 de requisitos y verificación al final', (_n, a) => {
@@ -292,6 +293,165 @@ describe('esquema consolidado: 04-instalacion-modulos', () => {
   })
 })
 
+describe('esquema consolidado: 05 a 09', () => {
+  const de = (nombre: string) => archivos.find((a) => a.nombre === nombre)!.sql
+  const cuerpoEn = (sql: string, nombre: string) =>
+    new RegExp(`function\\s+public\\.${nombre}\\([^)]*\\)[\\s\\S]*?\\$\\$([\\s\\S]*?)\\$\\$`, 'i').exec(sql)![1]
+  // Políticas de storage.objects: nombre, comando, roles y expresiones
+  const politicasStorage = [...de('09-storage-base.sql').matchAll(/create\s+policy\s+("[^"]+"|\w+)\s+on\s+storage\.objects\s+([^;]*);/gi)]
+    .map((m) => ({ nombre: m[1], resto: m[2].replace(/\s+/g, ' ') }))
+
+  it.each(NUCLEO_N2)('%s llama a aplicar_exigir_mfa() antes de verificar', (nombre) => {
+    const sql = de(nombre)
+    const llamada = sql.search(/select\s+public\.aplicar_exigir_mfa\(\);/i)
+    expect(llamada).toBeGreaterThan(-1)
+    expect(llamada).toBeLessThan(sql.lastIndexOf('do $$'))
+  })
+
+  it('05: columnas de la 90 con sus CHECK y el freno laboral solo deja pasar a admin o manage_members', () => {
+    const sql = de('05-perfiles.sql')
+    for (const c of ['area', 'extension', 'responsable_id', 'fecha_ingreso', 'bio', 'enlaces']) {
+      expect(sql).toMatch(new RegExp(`alter\\s+table\\s+public\\.profiles\\s+add\\s+column\\s+if\\s+not\\s+exists\\s+${c}\\b`, 'i'))
+    }
+    expect(sql).toMatch(/check \(public\.enlaces_validos\(enlaces\)\)/)
+    expect(cuerpoEn(sql, 'enlaces_validos')).toContain("e.url !~ '^https://[^[:space:]]{1,200}$'")
+    expect(/function\s+public\.enlaces_validos\(p_enlaces text\[\]\)\s+returns boolean language sql immutable/i.test(sql)).toBe(true)
+    const guard = cuerpoEn(sql, 'guard_profile_laboral')
+    expect(guard).toMatch(/if not public\.is_admin\(\) and not public\.has_perm\('manage_members'\) then\s+new\.area := old\.area;\s+new\.responsable_id := old\.responsable_id;\s+new\.fecha_ingreso := old\.fecha_ingreso;/)
+    expect(guard).not.toMatch(/new\.bio := old\.bio|new\.enlaces := old\.enlaces/)
+  })
+
+  it('05: la política de la 88 sigue en 00-base con is_admin(id) y 05 la comprueba sin redefinirla', () => {
+    const base = de('00-base.sql')
+    expect(base).toMatch(/policy "gestores actualizan perfiles"[\s\S]*?using \(\(select public\.is_admin\(\)\) or \(\(select public\.has_perm\('manage_members'\)\) and not public\.is_admin\(id\)\)\)\s+with check \(\(select public\.is_admin\(\)\) or \(\(select public\.has_perm\('manage_members'\)\) and not public\.is_admin\(id\)\)\);/)
+    const perfiles = de('05-perfiles.sql')
+    expect(perfiles).not.toMatch(/create\s+policy/i)
+    expect(perfiles).toMatch(/p\.policyname = 'gestores actualizan perfiles'[\s\S]*?p\.qual like '%is_admin\(id\)%' and p\.with_check like '%is_admin\(id\)%'/)
+  })
+
+  it('06: user_notifications sin insert para la API, update solo de read y enlace interno', () => {
+    const sql = de('06-avisos.sql')
+    expect(sql).not.toMatch(/create\s+policy\s+\S+\s+on\s+public\.user_notifications\s+for\s+(?:insert|all)/i)
+    expect(sql).toMatch(/grant select, delete on table public\.user_notifications to authenticated;/)
+    expect(sql).toMatch(/grant update \(read\) on table public\.user_notifications to authenticated;/)
+    expect(sql).not.toMatch(/grant\s+[^;]*insert[^;]*on\s+table\s+public\.user_notifications\s+to\s+authenticated/i)
+    expect(sql).toMatch(/constraint user_notifications_link_interno check \(link = '\/' or link ~ '\^\/\[A-Za-z\]'\)/)
+    for (const cmd of ['select', 'update', 'delete']) {
+      expect(sql).toMatch(new RegExp(`policy\\s+user_notifications_${cmd}\\s+on\\s+public\\.user_notifications\\s+for\\s+${cmd}\\s+to\\s+authenticated\\s+using\\s+\\(user_id = \\(select auth\\.uid\\(\\)\\)`, 'i'))
+    }
+  })
+
+  it('06: push_notification no avisa al actor y solo la ejecutan el dueño y los triggers', () => {
+    const sql = de('06-avisos.sql')
+    expect(cuerpoEn(sql, 'push_notification')).toMatch(/if p_actor is not null and p_user = p_actor then return; end if;/)
+    expect(sql).toMatch(/revoke execute on function public\.push_notification\(uuid, uuid, text, text, text, text\) from public, anon, authenticated;/)
+    expect(sql).not.toMatch(/grant\s+execute\s+on\s+function\s+public\.push_notification/i)
+  })
+
+  it('06: cada quien gestiona solo sus suscripciones push', () => {
+    const sql = de('06-avisos.sql')
+    const politicas = [...sql.matchAll(/create\s+policy\s+(\w+)\s+on\s+public\.push_subscriptions\s+([^;]*);/gi)]
+    expect(politicas.map((m) => m[1]).sort()).toEqual(['push_subscriptions_delete', 'push_subscriptions_insert', 'push_subscriptions_select', 'push_subscriptions_update'])
+    for (const m of politicas) expect(m[2]).toMatch(/user_id = \(select auth\.uid\(\)\)/)
+  })
+
+  it('07: portal_uso solo lo escribe uso_latido, con topes, y solo lo lee un administrador', () => {
+    const sql = de('07-widgets-uso.sql')
+    const grants = [...sql.matchAll(/grant\s+([^;]+?)\s+on\s+table\s+public\.portal_uso\s+to\s+(\w+)/gi)].map((m) => [m[1].toLowerCase(), m[2]])
+    expect(grants).toEqual([['select', 'authenticated'], ['select, insert, update, delete', 'service_role']])
+    expect(sql).toMatch(/policy\s+portal_uso_select\s+on\s+public\.portal_uso\s+for\s+select\s+to\s+authenticated\s+using\s+\(\(select public\.is_admin\(\)\)\)/i)
+    const latido = cuerpoEn(sql, 'uso_latido')
+    expect(latido).toContain('least(greatest(coalesce(p_minutos, 0), 0), 5)')
+    expect(latido).toContain('least(greatest(coalesce(p_aperturas, 0), 0), 20)')
+    expect(latido).toContain('least(u.minutos + excluded.minutos, 1440)')
+    expect(latido).toMatch(/if not public\.mfa_ok\(\) then/)
+    expect(latido).toContain('public.zona_instalacion()')
+    expect(sql).not.toMatch(/'America\/Bogota'\)::date|at time zone 'America\/Bogota'/)
+    expect(sql).toMatch(/revoke execute on function public\.uso_purgar\(int\) from public, anon, authenticated;\s+grant execute on function public\.uso_purgar\(int\) to service_role;/)
+    expect(cuerpoEn(sql, 'uso_purgar')).toMatch(/greatest\(coalesce\(p_dias, [^;]*, 90\), 30\)/)
+  })
+
+  it('07: las lecturas de la pestaña Uso son security invoker', () => {
+    const sql = de('07-widgets-uso.sql')
+    for (const n of ['uso_resumen', 'uso_detalle_usuario', 'acciones_resumen']) {
+      const f = funciones(sql).find((x) => x.nombre === n)!
+      expect(f.definer, n).toBe(false)
+      expect(f.cabecera, n).toMatch(/security\s+invoker/i)
+    }
+  })
+
+  it('07: la semilla de widgets es la del núcleo en src/lib/modulos.ts y la gestión pide manage_apps', async () => {
+    const { MODULOS, NUCLEO } = await import('../modulos')
+    const sql = de('07-widgets-uso.sql')
+    const semilla = /insert\s+into\s+public\.portal_widgets[^;]*;/i.exec(sql)![0]
+    const ids = [...semilla.matchAll(/\('([a-z0-9-]+)',/g)].map((m) => m[1])
+    expect(ids).toEqual([...MODULOS.find((m) => m.slug === NUCLEO)!.widgets])
+    expect(semilla).toMatch(/on conflict \(id\) do nothing/i)
+    expect(sql).toMatch(/policy\s+portal_widgets_gestion\s+on\s+public\.portal_widgets\s+for\s+all\s+to\s+authenticated\s+using\s+\(\(select public\.has_perm\('manage_apps'\)\)\)\s+with\s+check\s+\(\(select public\.has_perm\('manage_apps'\)\)\)/i)
+  })
+
+  it('08: ai_usage sin escritura para la API y solo la lee un administrador', () => {
+    const sql = de('08-ia.sql')
+    const politicas = [...sql.matchAll(/create\s+policy\s+(\w+)\s+on\s+public\.ai_usage\s+([^;]*);/gi)]
+    expect(politicas.length).toBe(1)
+    expect(politicas[0][2]).toMatch(/^for\s+select\s+to\s+authenticated\s+using\s+\(\(select public\.is_admin\(\)\)\)/i)
+    const grants = [...sql.matchAll(/grant\s+([^;]+?)\s+on\s+table\s+public\.ai_usage\s+to\s+(\w+)/gi)].map((m) => [m[1].toLowerCase(), m[2]])
+    expect(grants).toEqual([['select', 'authenticated'], ['all', 'service_role']])
+  })
+
+  it('09: ninguna política de storage.objects va a anon ni a public, y ninguna SELECT con bucket_id a secas', () => {
+    expect(politicasStorage.length).toBeGreaterThan(0)
+    for (const p of politicasStorage) {
+      expect(p.resto, p.nombre).toMatch(/\bto authenticated\b/)
+      expect(p.resto, p.nombre).not.toMatch(/\bto (?:anon|public)\b|,\s*anon\b/)
+      if (/for (?:select|all)\b/.test(p.resto)) {
+        expect(p.resto, p.nombre).not.toMatch(/using \(bucket_id = '[^']+'\)/)
+        expect(p.resto, p.nombre).toMatch(/using \(bucket_id = '[^']+' and /)
+      }
+    }
+    expect(politicasStorage.some((p) => /bucket_id = 'marca'/.test(p.resto) && /for (?:select|all|update|delete)\b/.test(p.resto))).toBe(false)
+  })
+
+  it('09: los avatares solo en la carpeta propia y marca solo para un administrador', () => {
+    const avatares = politicasStorage.filter((p) => /bucket_id = 'avatares'/.test(p.resto))
+    expect(avatares.map((p) => /for (\w+)/.exec(p.resto)![1]).sort()).toEqual(['delete', 'insert', 'select', 'update'])
+    for (const p of avatares) {
+      const clausulas = p.resto.match(/\(bucket_id = 'avatares'[^;]*?::text\)/g) ?? []
+      expect(clausulas.length, p.nombre).toBe(/for update/.test(p.resto) ? 2 : 1)
+      for (const c of clausulas) expect(c).toContain("(storage.foldername(name))[1] = (select auth.uid())::text")
+    }
+    const marca = politicasStorage.filter((p) => /bucket_id = 'marca'/.test(p.resto))
+    expect(marca.length).toBe(1)
+    expect(marca[0].resto).toMatch(/^for insert to authenticated with check \(bucket_id = 'marca' and \(select public\.is_admin\(\)\)\)$/)
+  })
+
+  it('09: el tope de almacenamiento es una política restrictiva de INSERT con almacenamiento_disponible() (PP-ALM)', () => {
+    const sql = de('09-storage-base.sql')
+    const tope = politicasStorage.find((p) => p.nombre === 'tope_almacenamiento')!
+    expect(tope.resto).toBe('as restrictive for insert to authenticated with check ((select public.almacenamiento_disponible()))')
+    const f = funciones(sql).find((x) => x.nombre === 'almacenamiento_disponible')!
+    expect(f.definer).toBe(true)
+    expect(f.cabecera).toMatch(/stable/i)
+    const c = cuerpoEn(sql, 'almacenamiento_disponible')
+    expect(c).toMatch(/when public\.limite_modulo\('nucleo', 'almacenamiento_mb'\) is null then true/)
+    expect(c).toMatch(/from storage\.objects o/)
+    expect(c).toContain("< public.limite_modulo('nucleo', 'almacenamiento_mb')::numeric * 1048576")
+    expect(sql).toMatch(/grant execute on function public\.almacenamiento_disponible\(\) to authenticated;/)
+  })
+
+  it('09: los buckets son públicos y avatares no admite SVG', () => {
+    const insert = /insert\s+into\s+storage\.buckets[^;]*;/i.exec(de('09-storage-base.sql'))![0]
+    expect(insert).toMatch(/\('marca', 'marca', true,/)
+    expect(insert).toMatch(/\('avatares', 'avatares', true, \d+, array\[[^\]]*\]\)/)
+    expect(/\('avatares'[^)]*\]\)/.exec(insert)![0]).not.toContain('svg')
+  })
+
+  it('el shell sube los avatares al bucket avatares, en la carpeta del miembro', () => {
+    const data = readFileSync(fileURLToPath(new URL('../data.ts', import.meta.url)), 'utf8')
+    expect(data).toMatch(/export function uploadAvatar\(file: File, userId: string\): Promise<string> \{\s+return uploadSiteImage\(file, userId, 'avatares'\)/)
+  })
+})
+
 describe('supabase/pruebas/rls-simulacion.sql', () => {
   const sim = readFileSync(fileURLToPath(new URL('../../../supabase/pruebas/rls-simulacion.sql', import.meta.url)), 'utf8').replace(/\r\n?/g, '\n')
   const bloques = sim.split(/\n(?=-- ============ )/)
@@ -304,14 +464,14 @@ describe('supabase/pruebas/rls-simulacion.sql', () => {
     expect(sinComentarios(sim)).not.toMatch(/\bcommit\b/i)
   })
 
-  it('tiene las secciones 0 a 7 y la 0 lee instalador.cuentas_prueba', () => {
-    for (let n = 0; n <= 7; n++) expect(sim).toContain(`-- ============ ${n}) `)
+  it('tiene las secciones 0 a 11 y la 0 lee instalador.cuentas_prueba', () => {
+    for (let n = 0; n <= 11; n++) expect(sim).toContain(`-- ============ ${n}) `)
     expect(bloques.find((b) => b.startsWith('-- ============ 0) '))).toMatch(/from instalador\.cuentas_prueba where rol = 'qa'/)
   })
 
   it('cada sección después de la 0 se niega a correr suelta', () => {
     const secciones = bloques.filter((b) => /^-- ============ [1-9]\d*\) /.test(b))
-    expect(secciones.length).toBe(7)
+    expect(secciones.length).toBe(11)
     for (const s of secciones) expect(s).toMatch(/current_setting\('rls\.txid', true\) is distinct from txid_current\(\)::text then\s+raise exception/)
   })
 
@@ -328,6 +488,21 @@ describe('supabase/pruebas/rls-simulacion.sql', () => {
     expect(s7.match(/set constraints public\.profiles_limite_miembros immediate;/g)?.length).toBe(5)
     expect(s7.match(/set constraints public\.profiles_limite_miembros deferred;/g)?.length).toBe(5)
     expect(s7).toMatch(/update auth\.users set raw_app_meta_data = raw_app_meta_data \|\| '\{"es_servicio": true\}'/)
+  })
+
+  it('las secciones 8 a 11 salen OMITIDO si falta su archivo de 05 a 09', () => {
+    const omite: [number, string][] = [[8, '05-perfiles.sql'], [9, '06-avisos.sql'], [10, '08-ia.sql'], [11, '09-storage-base.sql']]
+    for (const [n, archivo] of omite) {
+      const s = bloques.find((b) => b.startsWith(`-- ============ ${n}) `))!
+      expect(s, String(n)).toContain(`OMITIDO ${n}`)
+      expect(s, String(n)).toContain(archivo)
+    }
+  })
+
+  it('la sección 11 prueba el tope con almacenamiento_mb = 0 y vuelve a null', () => {
+    const s11 = bloques.find((b) => b.startsWith('-- ============ 11) '))!
+    expect(s11).toContain(`'{"almacenamiento_mb": 0}'`)
+    expect(s11.indexOf(`'{"almacenamiento_mb": 0}'`)).toBeLessThan(s11.lastIndexOf(`'{"almacenamiento_mb": null}'`))
   })
 
   it('no lleva marca, correos ni emojis de una instalación', () => {

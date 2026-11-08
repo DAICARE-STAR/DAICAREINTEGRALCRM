@@ -4,8 +4,9 @@
 -- OMITIDO o AVISO (verificacion.md). Solo lectura. No lleva datos de ninguna
 -- instalación. Las comprobaciones que leen las filas de modulos_instalacion
 -- contra el registro src/lib/modulos.ts (slugs, límites, dependencias) las
--- hace aplicar.mjs después de esta consulta (comprobarModulos), porque una
--- consulta suelta no puede nombrar una tabla que quizá no existe todavía.
+-- hace aplicar.mjs después de esta consulta (comprobarModulos, números 9 a
+-- 11; la de storage de aquí es la 12), porque una consulta suelta no puede
+-- nombrar una tabla que quizá no existe todavía.
 with
 tablas as (
   select c.oid, c.relname, c.relrowsecurity
@@ -53,11 +54,12 @@ grants_anon as (
 aplicados as (
   select count(*) as n from instalador.esquema_aplicado
 ),
--- Tablas del núcleo (00 a 09): siempre activas, sin política modulo_*. Al
--- llegar 05-09 (N-2) se añaden aquí sus tablas.
+-- Tablas del núcleo (00 a 09): siempre activas, sin política modulo_*.
 nucleo as (
   select unnest(array['roles', 'profiles', 'user_roles', 'connectors', 'security_settings',
-                      'api_rate_limits', 'audit_log', 'instalacion', 'modulos_instalacion']) as relname
+                      'api_rate_limits', 'audit_log', 'instalacion', 'modulos_instalacion',
+                      'push_subscriptions', 'user_notifications', 'portal_widgets', 'portal_uso',
+                      'ai_usage']) as relname
 ),
 sin_modulo as (
   select t.relname from tablas t
@@ -83,6 +85,19 @@ escritura_modulos as (
   from pg_policies p
   where p.schemaname = 'public' and p.tablename = 'modulos_instalacion'
     and p.permissive = 'PERMISSIVE' and p.cmd <> 'SELECT'
+),
+hay_storage as (
+  select to_regclass('storage.objects') is not null as existe
+),
+-- Una SELECT de storage.objects para anon o con «bucket_id = '…'» a secas
+-- deja listar el bucket entero (los públicos se sirven sin la RLS)
+listado_storage as (
+  select p.policyname
+  from pg_policies p
+  where p.schemaname = 'storage' and p.tablename = 'objects'
+    and p.cmd in ('SELECT', 'ALL') and p.permissive = 'PERMISSIVE'
+    and ('anon' = any (p.roles) or 'public' = any (p.roles)
+         or p.qual ~ '^\(?bucket_id = ''[^'']+''::text\)?$')
 )
 select orden, comprobacion, estado, detalle from (
   select 1 as orden,
@@ -145,5 +160,13 @@ select orden, comprobacion, estado, detalle from (
          else 'DIFIERE' end,
     case when not (select existe from hay_modulos) then 'falta 04-instalacion-modulos.sql'
          else coalesce((select string_agg(motivo, ', ' order by motivo) from escritura_modulos), '') end
+  union all
+  select 12,
+    'storage.objects sin políticas SELECT que listen un bucket',
+    case when not (select existe from hay_storage) then 'OMITIDO'
+         when (select count(*) from listado_storage) = 0 then 'OK'
+         else 'DIFIERE' end,
+    case when not (select existe from hay_storage) then 'no existe storage.objects'
+         else coalesce((select string_agg(policyname, ', ' order by policyname) from listado_storage), '') end
 ) v
 order by orden;
