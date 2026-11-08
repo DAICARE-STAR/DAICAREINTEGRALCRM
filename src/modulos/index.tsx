@@ -39,11 +39,14 @@ export interface ModuloShell {
 
 const archivos = import.meta.glob<{ default: ModuloShell }>('./*/rutas.tsx', { eager: true })
 
-// slug → lo que aporta (la carpeta es el slug)
-export const MODULOS_SHELL: Readonly<Record<string, ModuloShell>> = Object.fromEntries(
-  Object.entries(archivos).map(([ruta, mod]) => [ruta.split('/')[1], mod.default]),
-)
+// slug → lo que aporta (la carpeta es el slug). Pura para probarla con un
+// módulo que solo existe en las pruebas.
+export function componerShell(mods: Record<string, { default: ModuloShell }>): Readonly<Record<string, ModuloShell>> {
+  return Object.fromEntries(Object.entries(mods).map(([ruta, mod]) => [ruta.split('/')[1], mod.default]))
+}
 
-export function shellDe(slug: string): ModuloShell | undefined {
-  return Object.prototype.hasOwnProperty.call(MODULOS_SHELL, slug) ? MODULOS_SHELL[slug] : undefined
+export const MODULOS_SHELL = componerShell(archivos)
+
+export function shellDe(slug: string, shell: Readonly<Record<string, ModuloShell>> = MODULOS_SHELL): ModuloShell | undefined {
+  return Object.prototype.hasOwnProperty.call(shell, slug) ? shell[slug] : undefined
 }
