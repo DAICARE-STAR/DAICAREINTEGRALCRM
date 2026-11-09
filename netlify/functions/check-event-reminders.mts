@@ -11,6 +11,7 @@ import {
   type Asistente,
   type EmailContent,
 } from '../lib/email.mts'
+import { leerModulos, moduloActivo } from '../lib/modulos-instalacion.mts'
 import { broadcastPush } from '../lib/push.mts'
 
 // Recordatorios de reuniones del calendario del equipo. Cada 5 minutos
@@ -171,6 +172,15 @@ export default async () => {
   }
 
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
+
+  // Los recordatorios son del módulo calendario: inactivo, no se reclama nada
+  // (los avisos vencidos esperan a que se reactive). Sin lectura, falla cerrado.
+  const modulos = await leerModulos(admin)
+  if (!modulos) return Response.json({ error: 'No se pudieron leer los módulos' }, { status: 500 })
+  if (!moduloActivo(modulos, 'calendario')) {
+    console.log('check-event-reminders: módulo calendario inactivo, se omite')
+    return Response.json({ omitida: 'modulo_inactivo' })
+  }
 
   const { data: due, error } = await admin.rpc('claim_due_event_reminders')
   if (error) return Response.json({ error: error.message }, { status: 500 })

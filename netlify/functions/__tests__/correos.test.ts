@@ -48,6 +48,13 @@ vi.mock('../../lib/email.mts', async (importOriginal) => {
     }),
   }
 })
+// Módulos de la instalación: calendario activo (el salto con el módulo
+// inactivo se prueba en vigia.test.ts)
+vi.mock('../../lib/modulos-instalacion.mts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../lib/modulos-instalacion.mts')>()),
+  leerModulos: vi.fn(async () => [{ slug: 'nucleo', activo: true, limites: {} }, { slug: 'calendario', activo: true, limites: {} }]),
+}))
+
 vi.mock('../../lib/push.mts', () => ({
   broadcastPush: vi.fn(
     async (_admin: unknown, payload: { tag?: string; body: string; url?: string }, opts?: { userIds?: string[] }) => {

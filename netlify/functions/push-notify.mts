@@ -28,7 +28,7 @@ export default async (req: Request) => {
   if (r.fallo) return respuesta(r.fallo)
   const ctx = r.ctx
 
-  const falta = await exigir(ctx, { apps: ['licitaciones'] }, 'push-notify')
+  const falta = await exigir(ctx, { modulo: 'licitaciones', apps: ['licitaciones'] }, 'push-notify')
   if (falta) return respuesta(falta)
 
   if (!pushConfigured() && !emailConfigured()) {

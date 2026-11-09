@@ -1,4 +1,6 @@
 import { createClient, isAuthRetryableFetchError, type SupabaseClient } from '@supabase/supabase-js'
+import { puedeVerModulo } from '../../src/lib/modulos.ts'
+import { leerModulos, slugsActivos } from './modulos-instalacion.mts'
 
 // Puerta única de autorización de las Netlify Functions. Reemplaza las
 // copias del bloque «getUser + user_roles + permisos» que vivía en cada
@@ -9,7 +11,7 @@ import { createClient, isAuthRetryableFetchError, type SupabaseClient } from '@s
 // - MFA: un miembro con segundo factor verificado solo pasa con sesión aal2,
 //   la misma regla que mfa_ok() aplica en la base (migración 43). La MFA
 //   sigue siendo opcional; esto protege a quien ya la activó.
-// - Requisitos por acción: permiso, visibilidad de app o solo admin.
+// - Requisitos por acción: módulo activo, permiso, visibilidad de app o solo admin.
 //
 // La parte pura (sin red) se prueba en __tests__/autorizacion.test.ts; los
 // efectos reciben el cliente inyectable para poder probarlos con uno falso.
@@ -52,19 +54,19 @@ export type CodigoFallo =
   | 'config'
   | 'auth_lento'
   | 'error_base'
+  | 'modulo_inactivo'
 
 export type FalloAuth = { status: number; error: string; codigo?: CodigoFallo }
 
 // Requisitos de una acción. Dentro de cada lista basta uno; entre permiso y
-// apps se exigen ambos. El admin pasa todo.
+// apps se exigen ambos. El admin pasa todo salvo un módulo inactivo: con
+// modulo, la acción se deniega a todos si ese módulo no está activo (N-6).
 export type Requisitos = {
+  modulo?: string
   permiso?: string | readonly string[]
   apps?: readonly string[]
   soloAdmin?: boolean
 }
-
-// Fila mínima de portal_apps para decidir visibilidad
-export type AppVisible = { slug: string; roles: string[] | null }
 
 export type ResultadoAuth =
   | { ctx: ContextoAuth; fallo?: undefined }
@@ -109,29 +111,19 @@ export function evaluarMfa(e: { tieneFactor: boolean; aal: 'aal1' | 'aal2' }): F
   }
 }
 
-// Misma regla que visibleForRole() de src/lib/data.ts: una app sin roles es
-// de todos; si no, basta un rol o un permiso de visibilidad (app_*) que
-// coincida. El admin ve todas las apps de la lista; una app que no existe (o
-// inactiva) no la ve nadie, ni el admin. Ojo: public.puede_ver_app() de la
-// base da true al admin aunque la app no exista (is_admin() or …). exigir()
-// ya antepone el chequeo de admin; quien llame a esta función directamente
-// debe anteponerlo también.
+// Regla v2 (N-6): una «app» es un módulo del registro. La ve quien cumple
+// puedeVerModulo de src/lib/modulos.ts: módulo disponible y activo, y el
+// admin o quien tenga su permiso app_<slug>. Un módulo inactivo, planeado o
+// desconocido no lo ve nadie, ni el admin. exigir() antepone el chequeo de
+// admin a la lista de apps (no al de modulo); quien llame a esta función
+// directamente decide lo mismo.
 export function puedeVerApp(
-  apps: readonly AppVisible[],
+  activos: readonly string[],
   slug: string,
   roles: string[] | null,
   permisos: string[] | null,
 ): boolean {
-  const app = apps.find((a) => a.slug === slug)
-  if (!app) return false
-  const r = roles ?? []
-  const p = permisos ?? []
-  return (
-    !app.roles ||
-    app.roles.length === 0 ||
-    r.includes('admin') ||
-    app.roles.some((x) => r.includes(x) || p.includes(x))
-  )
+  return puedeVerModulo(slug, roles, permisos, activos)
 }
 
 type Faltante = 'soloAdmin' | 'permiso' | 'apps'
@@ -139,13 +131,13 @@ type Faltante = 'soloAdmin' | 'permiso' | 'apps'
 function faltante(
   ctx: Pick<ContextoAuth, 'roles' | 'permisos' | 'esAdmin'>,
   req: Requisitos,
-  apps: readonly AppVisible[],
+  activos: readonly string[],
 ): Faltante | null {
   if (ctx.esAdmin) return null
   if (req.soloAdmin) return 'soloAdmin'
   const permisos = typeof req.permiso === 'string' ? [req.permiso] : (req.permiso ?? [])
   if (permisos.length > 0 && !permisos.some((p) => ctx.permisos.includes(p))) return 'permiso'
-  if (req.apps?.length && !req.apps.some((s) => puedeVerApp(apps, s, ctx.roles, ctx.permisos))) {
+  if (req.apps?.length && !req.apps.some((s) => puedeVerApp(activos, s, ctx.roles, ctx.permisos))) {
     return 'apps'
   }
   return null
@@ -154,9 +146,9 @@ function faltante(
 export function cumpleRequisitos(
   ctx: Pick<ContextoAuth, 'roles' | 'permisos' | 'esAdmin'>,
   req: Requisitos,
-  apps: readonly AppVisible[] = [],
+  activos: readonly string[] = [],
 ): boolean {
-  return faltante(ctx, req, apps) === null
+  return faltante(ctx, req, activos) === null
 }
 
 // Límite por instancia (el CDN de Netlify aporta la mitigación real).
@@ -342,49 +334,34 @@ export async function autenticar(
   }
 }
 
-// portal_apps cambia poco: se cachea 60 s por instancia. Solo las apps
-// activas, igual que las que el shell muestra (fetchApps).
-const CACHE_APPS_MS = 60_000
-let cacheApps: { hasta: number; apps: AppVisible[] } | null = null
-
-async function appsActivas(admin: SupabaseClient): Promise<AppVisible[] | null> {
-  if (cacheApps && cacheApps.hasta > Date.now()) return cacheApps.apps
-  try {
-    const { data, error } = await admin.from('portal_apps').select('slug, roles').eq('active', true)
-    if (error || !data) {
-      console.error('[seguridad] no se pudieron leer las apps:', error?.message)
-      return null
-    }
-    cacheApps = { hasta: Date.now() + CACHE_APPS_MS, apps: data as AppVisible[] }
-    return cacheApps.apps
-  } catch {
-    return null
-  }
-}
-
 const MENSAJE_FALTANTE: Record<Faltante, string> = {
   soloAdmin: 'Solo un administrador puede hacer esta acción.',
   permiso: 'Tu rol no puede hacer esta acción.',
   apps: 'Tu rol no tiene acceso a esta app.',
 }
 
-// null si el contexto cumple los requisitos; si no, el 403 ya formado.
-// Si no se pueden leer las apps se deniega (nunca se abre por error).
+// null si el contexto cumple los requisitos; si no, el fallo ya formado.
+// Si no se pueden leer los módulos se deniega con 500 (nunca se abre por
+// error). Un módulo inactivo deniega 403 modulo_inactivo también al admin.
 export async function exigir(
   ctx: ContextoAuth,
   req: Requisitos,
   accion?: string,
 ): Promise<FalloAuth | null> {
-  let apps: AppVisible[] = []
-  if (req.apps?.length && !ctx.esAdmin && !req.soloAdmin) {
-    const activas = await appsActivas(ctx.admin)
-    if (!activas) {
+  let activos: string[] = []
+  if (req.modulo || (req.apps?.length && !ctx.esAdmin && !req.soloAdmin)) {
+    const filas = await leerModulos(ctx.admin)
+    if (!filas) {
       const f: FalloAuth = { status: 500, error: 'Error verificando los permisos', codigo: 'error_base' }
       return denegado(f, ctx.userId, accion)
     }
-    apps = activas
+    activos = slugsActivos(filas)
+    if (req.modulo && !activos.includes(req.modulo)) {
+      const f: FalloAuth = { status: 403, error: 'Este módulo no está activo en la instalación.', codigo: 'modulo_inactivo' }
+      return denegado(f, ctx.userId, accion)
+    }
   }
-  const falta = faltante(ctx, req, apps)
+  const falta = faltante(ctx, req, activos)
   if (!falta) return null
   return denegado({ status: 403, error: MENSAJE_FALTANTE[falta], codigo: 'sin_permiso' }, ctx.userId, accion)
 }

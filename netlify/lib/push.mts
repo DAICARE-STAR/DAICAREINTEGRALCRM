@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import webpush from 'web-push'
-import { puedeVerApp, type AppVisible } from './autorizacion.mts'
+import { puedeVerApp } from './autorizacion.mts'
+import { leerModulos, slugsActivos } from './modulos-instalacion.mts'
 import { esCuentaServicio } from './email.mts'
 
 // Envío de Web Push a las suscripciones de una lista de miembros. Lo
@@ -139,31 +140,32 @@ type FilaMiembro = {
 
 // Destinatarios de los avisos de una app (AU-DEC-04 (1)): los miembros que
 // la ven, con la misma regla que puedeVerApp (roles y permisos app_* de
-// cada rol; app inactiva = nadie), más los admins siempre. Sin las
+// cada rol; módulo inactivo = nadie, ni los admins), más los admins. Sin las
 // cuentas de servicio ni los suspendidos (lectura de Auth memorizada, la
 // misma que reutiliza broadcastPush; si falla, sin esa exclusión). null si
-// no se pudieron leer las apps o los miembros: quien llama no avisa a nadie.
+// no se pudieron leer los módulos o los miembros: quien llama no avisa a nadie.
 export async function idsQueVenApp(admin: SupabaseClient, slug: string): Promise<string[] | null> {
-  const [apps, miembros, excluidos] = await Promise.all([
-    admin.from('portal_apps').select('slug, roles').eq('active', true),
+  const [modulos, miembros, excluidos] = await Promise.all([
+    leerModulos(admin),
     admin.from('profiles').select('id, user_roles ( role, roles ( permissions ) )'),
     idsSinAviso(admin),
   ])
-  if (apps.error || miembros.error || !apps.data || !miembros.data) {
+  if (!modulos || miembros.error || !miembros.data) {
     console.error('push: destinatarios no disponibles, sin aviso', {
       app: slug,
-      codigo: apps.error?.code ?? miembros.error?.code ?? null,
+      codigo: miembros.error?.code ?? null,
     })
     return null
   }
-  const activas = apps.data as AppVisible[]
+  const activos = slugsActivos(modulos)
+  if (!activos.includes(slug)) return []
   return (miembros.data as FilaMiembro[])
     .filter((m) => {
       if (excluidos?.has(m.id)) return false
       const filas = m.user_roles ?? []
       const roles = filas.map((f) => f.role)
       const permisos = [...new Set(filas.flatMap((f) => f.roles?.permissions ?? []))]
-      return roles.includes('admin') || puedeVerApp(activas, slug, roles, permisos)
+      return puedeVerApp(activos, slug, roles, permisos)
     })
     .map((m) => m.id)
 }

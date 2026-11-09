@@ -130,7 +130,7 @@ describe('push-notify', () => {
     vi.mocked(exigir).mockResolvedValueOnce(FALLO_403)
     const res = await pushNotify(post('/api/push-notify', 'jwt'))
     expect(res.status).toBe(403)
-    expect(vi.mocked(exigir).mock.calls[0]?.[1]).toEqual({ apps: ['licitaciones'] })
+    expect(vi.mocked(exigir).mock.calls[0]?.[1]).toEqual({ modulo: 'licitaciones', apps: ['licitaciones'] })
     expect(limiteBase).not.toHaveBeenCalled()
     expect(broadcastPush).not.toHaveBeenCalled()
     expect(broadcastEmail).not.toHaveBeenCalled()

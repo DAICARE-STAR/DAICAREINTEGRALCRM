@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { auditar, autenticar, limiteBase, respuesta, tokenDeCabecera } from '../lib/autorizacion.mts'
+import { auditar, autenticar, exigir, limiteBase, respuesta, tokenDeCabecera } from '../lib/autorizacion.mts'
 import { resumenError } from '../lib/errores.mts'
 import {
   destinoAviso,
@@ -193,6 +193,9 @@ export default async (req: Request) => {
   if (r.fallo) return respuesta(r.fallo)
   const { ctx } = r
   const admin = ctx.admin
+  // Los eventos son del módulo calendario: inactivo, 403 modulo_inactivo
+  const sinModulo = await exigir(ctx, { modulo: 'calendario' }, 'notify-event')
+  if (sinModulo) return respuesta(sinModulo)
 
   let parsed: z.infer<typeof bodySchema>
   try {

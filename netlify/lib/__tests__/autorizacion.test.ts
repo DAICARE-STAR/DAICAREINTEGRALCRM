@@ -24,9 +24,9 @@ import {
   respuesta,
   respuestaV1,
   tokenDeCabecera,
-  type AppVisible,
   type ContextoAuth,
 } from '../autorizacion.mts'
+import { reiniciarCacheModulos } from '../modulos-instalacion.mts'
 
 // ── Utilidades ──────────────────────────────────────────────────────────
 
@@ -49,8 +49,8 @@ type OpcionesFalso = {
   getUser?: () => Promise<unknown>
   perfil?: Perfil | null
   errorPerfil?: { code: string; message: string }
-  apps?: AppVisible[]
-  errorApps?: boolean
+  modulos?: { slug: string; activo: boolean; limites?: Record<string, unknown> }[]
+  errorModulos?: boolean
   rpc?: { data: unknown; error: unknown } | Error
   errorInsert?: { code: string } | Error
 }
@@ -97,18 +97,13 @@ function clienteFalso(o: OpcionesFalso = {}) {
         },
       }
     }
-    if (tabla === 'portal_apps') {
+    if (tabla === 'modulos_instalacion') {
       return {
-        select: (columnas: string) => {
+        select: async (columnas: string) => {
           selects.push([tabla, columnas])
-          return {
-            eq: async (columna: string, valor: unknown) => {
-              eqs.push([tabla, columna, valor])
-              return o.errorApps
-                ? { data: null, error: { message: 'caída' } }
-                : { data: o.apps ?? [], error: null }
-            },
-          }
+          return o.errorModulos
+            ? { data: null, error: { code: 'XX000', message: 'caída' } }
+            : { data: o.modulos ?? [], error: null }
         },
       }
     }
@@ -218,62 +213,30 @@ describe('evaluarMfa (matriz 2×2)', () => {
   })
 })
 
-describe('puedeVerApp (misma regla que visibleForRole)', () => {
-  const apps: AppVisible[] = [
-    { slug: 'libre', roles: null },
-    { slug: 'vacia', roles: [] },
-    { slug: 'ventas', roles: ['comercial'] },
-    { slug: 'radar', roles: ['app_licitaciones'] },
-  ]
+describe('puedeVerApp (regla v2: módulo activo y app_<slug>)', () => {
+  const activos = ['nucleo', 'licitaciones', 'ia']
 
-  it('una app con roles null o vacíos es de todos, incluso sin roles', () => {
-    expect(puedeVerApp(apps, 'libre', null, null)).toBe(true)
-    expect(puedeVerApp(apps, 'vacia', [], [])).toBe(true)
+  it('módulo activo: lo ve quien tiene app_<slug> y el admin', () => {
+    expect(puedeVerApp(activos, 'licitaciones', ['x'], ['app_licitaciones'])).toBe(true)
+    expect(puedeVerApp(activos, 'licitaciones', ['x'], ['edit_crm'])).toBe(false)
+    expect(puedeVerApp(activos, 'licitaciones', ['admin'], [])).toBe(true)
+    expect(puedeVerApp(activos, 'licitaciones', null, null)).toBe(false)
   })
 
-  it('basta el nombre de un rol', () => {
-    expect(puedeVerApp(apps, 'ventas', ['comercial'], [])).toBe(true)
-    expect(puedeVerApp(apps, 'ventas', ['proyectos'], [])).toBe(false)
+  it('un módulo sin app_<slug> (ia) lo ve cualquier miembro', () => {
+    expect(puedeVerApp(activos, 'ia', [], [])).toBe(true)
   })
 
-  it('basta la clave de permiso app_*', () => {
-    expect(puedeVerApp(apps, 'radar', ['proyectos'], ['app_licitaciones'])).toBe(true)
-    expect(puedeVerApp(apps, 'radar', ['proyectos'], ['edit_crm'])).toBe(false)
-  })
-
-  it('el admin ve todas las apps restringidas', () => {
-    expect(puedeVerApp(apps, 'ventas', ['admin'], [])).toBe(true)
-    expect(puedeVerApp(apps, 'radar', ['admin'], null)).toBe(true)
-  })
-
-  it('sin roles ni permisos no ve las restringidas', () => {
-    expect(puedeVerApp(apps, 'ventas', null, null)).toBe(false)
-  })
-
-  it('una app inexistente no la ve nadie', () => {
-    expect(puedeVerApp(apps, 'fantasma', ['comercial'], ['app_fantasma'])).toBe(false)
-    expect(puedeVerApp(apps, 'fantasma', ['admin'], [])).toBe(false)
-  })
-
-  // Regla fijada: a diferencia de public.puede_ver_app() (is_admin() or …),
-  // aquí el admin no ve una app fuera de la lista de activas. exigir()
-  // antepone el chequeo de admin; un consumidor directo debe hacer lo mismo.
-  it('el admin no ve una app inactiva; exigir sí lo deja pasar', async () => {
-    const activas = apps.filter((a) => a.slug !== 'radar')
-    expect(puedeVerApp(activas, 'radar', ['admin'], [])).toBe(false)
-    const f = clienteFalso({ apps: activas })
-    const ctx = ctxDe(f.cliente, { roles: ['admin'], esAdmin: true, permisos: [] })
-    expect(cumpleRequisitos(ctx, { apps: ['radar'] }, activas)).toBe(true)
-    expect(await exigir(ctx, { apps: ['radar'] })).toBeNull()
+  it('inactivo, planeado o desconocido: nadie, ni el admin', () => {
+    expect(puedeVerApp(activos, 'directorio', ['admin'], ['app_directorio'])).toBe(false)
+    expect(puedeVerApp([...activos, 'inventario'], 'inventario', ['admin'], [])).toBe(false)
+    expect(puedeVerApp(activos, 'fantasma', ['admin'], ['app_fantasma'])).toBe(false)
   })
 })
 
 describe('cumpleRequisitos', () => {
   const miembro = { roles: ['comercial'], permisos: ['edit_crm', 'app_licitaciones'], esAdmin: false }
-  const apps: AppVisible[] = [
-    { slug: 'directorio', roles: ['gerencia'] },
-    { slug: 'licitaciones', roles: ['app_licitaciones'] },
-  ]
+  const activos = ['nucleo', 'directorio', 'licitaciones']
 
   it('sin requisitos basta estar autenticado', () => {
     expect(cumpleRequisitos(miembro, {})).toBe(true)
@@ -291,14 +254,14 @@ describe('cumpleRequisitos', () => {
   })
 
   it('apps: basta ver una', () => {
-    expect(cumpleRequisitos(miembro, { apps: ['directorio', 'licitaciones'] }, apps)).toBe(true)
-    expect(cumpleRequisitos(miembro, { apps: ['directorio'] }, apps)).toBe(false)
+    expect(cumpleRequisitos(miembro, { apps: ['directorio', 'licitaciones'] }, activos)).toBe(true)
+    expect(cumpleRequisitos(miembro, { apps: ['directorio'] }, activos)).toBe(false)
   })
 
   it('permiso y apps juntos se exigen ambos', () => {
-    expect(cumpleRequisitos(miembro, { permiso: 'edit_crm', apps: ['directorio'] }, apps)).toBe(false)
-    expect(cumpleRequisitos(miembro, { permiso: 'edit_crm', apps: ['licitaciones'] }, apps)).toBe(true)
-    expect(cumpleRequisitos(miembro, { permiso: 'view_billing', apps: ['licitaciones'] }, apps)).toBe(false)
+    expect(cumpleRequisitos(miembro, { permiso: 'edit_crm', apps: ['directorio'] }, activos)).toBe(false)
+    expect(cumpleRequisitos(miembro, { permiso: 'edit_crm', apps: ['licitaciones'] }, activos)).toBe(true)
+    expect(cumpleRequisitos(miembro, { permiso: 'view_billing', apps: ['licitaciones'] }, activos)).toBe(false)
   })
 
   it('soloAdmin rechaza a quien no es admin', () => {
@@ -538,22 +501,17 @@ describe('autenticar', () => {
 // ── exigir ──────────────────────────────────────────────────────────────
 
 describe('exigir', () => {
-  // La caché de apps dura 60 s por instancia: cada prueba corre 5 min
-  // después de la anterior (en el pasado, para que la caché no alcance a
-  // las pruebas con reloj real).
-  let instante = Date.UTC(2020, 0, 1)
-  beforeEach(() => {
-    instante += 300_000
-    vi.useFakeTimers({ now: instante })
-  })
+  beforeEach(() => reiniciarCacheModulos())
 
-  const apps: AppVisible[] = [
-    { slug: 'directorio', roles: ['gerencia'] },
-    { slug: 'licitaciones', roles: ['app_licitaciones'] },
+  const modulos = [
+    { slug: 'nucleo', activo: true },
+    { slug: 'directorio', activo: true },
+    { slug: 'licitaciones', activo: true },
+    { slug: 'calendario', activo: false },
   ]
 
-  it('sin requisitos pasa y no lee las apps', async () => {
-    const f = clienteFalso({ apps })
+  it('sin requisitos pasa y no lee los módulos', async () => {
+    const f = clienteFalso({ modulos })
     expect(await exigir(ctxDe(f.cliente), {})).toBeNull()
     expect(f.from).not.toHaveBeenCalled()
   })
@@ -564,45 +522,79 @@ describe('exigir', () => {
     expect(r).toMatchObject({ status: 403, codigo: 'sin_permiso' })
   })
 
-  it('soloAdmin → 403 sin leer las apps', async () => {
-    const f = clienteFalso({ apps })
+  it('soloAdmin → 403 sin leer los módulos', async () => {
+    const f = clienteFalso({ modulos })
     const r = await exigir(ctxDe(f.cliente), { soloAdmin: true, apps: ['licitaciones'] })
     expect(r).toMatchObject({ status: 403, codigo: 'sin_permiso' })
     expect(f.from).not.toHaveBeenCalled()
   })
 
-  it('apps: lee portal_apps y aplica puedeVerApp', async () => {
-    const f = clienteFalso({ apps })
+  it('apps: lee modulos_instalacion y aplica puedeVerApp', async () => {
+    const f = clienteFalso({ modulos })
     expect(await exigir(ctxDe(f.cliente), { apps: ['directorio', 'licitaciones'] })).toBeNull()
-    expect(f.from).toHaveBeenCalledWith('portal_apps')
-    // Solo las apps activas, con slug y roles
-    expect(f.selects).toEqual([['portal_apps', 'slug, roles']])
-    expect(f.eqs).toEqual([['portal_apps', 'active', true]])
+    expect(f.selects).toEqual([['modulos_instalacion', 'slug, activo, limites']])
     const r = await exigir(ctxDe(f.cliente), { apps: ['directorio'] })
     expect(r).toMatchObject({ status: 403, codigo: 'sin_permiso' })
   })
 
-  it('las apps se cachean 60 s', async () => {
-    const f = clienteFalso({ apps })
+  it('los módulos se cachean 60 s', async () => {
+    vi.useFakeTimers({ now: Date.UTC(2020, 0, 1) })
+    const f = clienteFalso({ modulos })
     await exigir(ctxDe(f.cliente), { apps: ['licitaciones'] })
     await exigir(ctxDe(f.cliente), { apps: ['licitaciones'] })
     expect(f.from).toHaveBeenCalledTimes(1)
     vi.advanceTimersByTime(61_000)
     await exigir(ctxDe(f.cliente), { apps: ['licitaciones'] })
     expect(f.from).toHaveBeenCalledTimes(2)
+    vi.useRealTimers()
   })
 
-  it('el admin no necesita leer las apps', async () => {
-    const f = clienteFalso({ apps })
+  it('el admin no necesita leer los módulos para apps', async () => {
+    const f = clienteFalso({ modulos })
     const ctx = ctxDe(f.cliente, { roles: ['admin'], esAdmin: true, permisos: [] })
     expect(await exigir(ctx, { apps: ['fantasma'], permiso: 'view_billing' })).toBeNull()
     expect(f.from).not.toHaveBeenCalled()
   })
 
-  it('si no se pueden leer las apps se deniega (500), nunca se abre', async () => {
-    const f = clienteFalso({ errorApps: true })
+  it('si no se pueden leer los módulos se deniega (500), nunca se abre', async () => {
+    const f = clienteFalso({ errorModulos: true })
     const r = await exigir(ctxDe(f.cliente), { apps: ['licitaciones'] })
     expect(r).toMatchObject({ status: 500, codigo: 'error_base' })
+  })
+})
+
+describe('exigir con modulo', () => {
+  beforeEach(() => reiniciarCacheModulos())
+  const modulos = [
+    { slug: 'nucleo', activo: true },
+    { slug: 'licitaciones', activo: true },
+    { slug: 'calendario', activo: false },
+  ]
+
+  it('módulo activo pasa al resto de requisitos', async () => {
+    const f = clienteFalso({ modulos })
+    expect(await exigir(ctxDe(f.cliente), { modulo: 'licitaciones' })).toBeNull()
+    expect(await exigir(ctxDe(f.cliente), { modulo: 'nucleo' })).toBeNull()
+    const r = await exigir(ctxDe(f.cliente), { modulo: 'licitaciones', permiso: 'view_billing' })
+    expect(r).toMatchObject({ status: 403, codigo: 'sin_permiso' })
+  })
+
+  it('módulo inactivo o sin fila → 403 modulo_inactivo', async () => {
+    const f = clienteFalso({ modulos })
+    expect(await exigir(ctxDe(f.cliente), { modulo: 'calendario' })).toMatchObject({ status: 403, codigo: 'modulo_inactivo' })
+    expect(await exigir(ctxDe(f.cliente), { modulo: 'chat' })).toMatchObject({ status: 403, codigo: 'modulo_inactivo' })
+  })
+
+  it('lectura fallida → 500 error_base', async () => {
+    const f = clienteFalso({ errorModulos: true })
+    expect(await exigir(ctxDe(f.cliente), { modulo: 'licitaciones' })).toMatchObject({ status: 500, codigo: 'error_base' })
+  })
+
+  it('el admin con el módulo inactivo también queda denegado', async () => {
+    const f = clienteFalso({ modulos })
+    const ctx = ctxDe(f.cliente, { roles: ['admin'], esAdmin: true, permisos: [] })
+    expect(await exigir(ctx, { modulo: 'calendario' })).toMatchObject({ status: 403, codigo: 'modulo_inactivo' })
+    expect(await exigir(ctx, { modulo: 'calendario', soloAdmin: true })).toMatchObject({ codigo: 'modulo_inactivo' })
   })
 })
 

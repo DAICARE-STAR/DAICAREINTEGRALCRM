@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { leerModulos, limiteDe, moduloActivo } from '../lib/modulos-instalacion.mts'
 import { esCuentaServicio, escHtml, nombrePortal, sendEmailTo, teamEmails, type EmailContent } from '../lib/email.mts'
 
 // Revisión diaria de seguridad. Lee la foto de seguridad_resumen()
@@ -44,6 +45,16 @@ export type Hallazgo = { titulo: string; items: string[] }
 
 export const UMBRAL_LEADS_24H = 30
 export const UMBRAL_REVELACIONES_24H = 20
+export const UMBRAL_CONSUMO = 0.8
+
+// Uso de un límite entero de un módulo (N-6): avisa por encima del 80 %
+export type Consumo = { modulo: string; clave: string; uso: number; limite: number }
+
+export function consumoAlto(c: readonly Consumo[]): string[] {
+  return c
+    .filter((x) => x.limite > 0 ? x.uso / x.limite > UMBRAL_CONSUMO : x.uso > 0)
+    .map((x) => `${x.modulo}.${x.clave}: ${x.uso} de ${x.limite}`)
+}
 
 // Claves reveladas en 24 h por persona (correo, o el id si no se resolvió)
 export type Revelaciones = { usuario: string; n: number }[]
@@ -88,8 +99,11 @@ function nombreCambio(accion: string): string {
 }
 
 // Parte pura: qué del resumen amerita aviso. Tolera claves ausentes.
-export function hallazgosDe(r: ResumenSeguridad, revelaciones: Revelaciones = []): Hallazgo[] {
+export function hallazgosDe(r: ResumenSeguridad, revelaciones: Revelaciones = [], consumo: readonly Consumo[] = []): Hallazgo[] {
   const h: Hallazgo[] = []
+
+  const alto = consumoAlto(consumo)
+  if (alto.length) h.push({ titulo: 'Consumo por encima del 80 % del límite', items: alto })
 
   const servicio = textos(r.admins).filter((email) => esCuentaServicio(email))
   if (servicio.length) h.push({ titulo: 'Cuentas de servicio con rol admin', items: servicio })
@@ -272,6 +286,19 @@ async function destinatariosAdmin(admin: SupabaseClient): Promise<{ ids: string[
   return { ids, correos }
 }
 
+// Miembros contra nucleo.miembros (modulos_consumo() exige un administrador
+// y aquí corre la service role). Si algo falla, sin medición.
+async function consumoMiembros(admin: SupabaseClient, modulos: Awaited<ReturnType<typeof leerModulos>>): Promise<Consumo[]> {
+  const limite = modulos ? limiteDe(modulos, 'nucleo', 'miembros') : null
+  if (limite === null) return []
+  const { count, error } = await admin.from('profiles').select('id', { count: 'exact', head: true }).eq('es_servicio', false)
+  if (error || count === null) {
+    console.warn('revision-seguridad: no se pudo contar los miembros', { codigo: error?.code ?? null })
+    return []
+  }
+  return [{ modulo: 'nucleo', clave: 'miembros', uso: count, limite }]
+}
+
 export default async () => {
   const supabaseUrl = process.env.SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -294,7 +321,14 @@ export default async () => {
   }
 
   const resumen = (data ?? {}) as ResumenSeguridad
-  const hallazgos = hallazgosDe(resumen, await revelacionesPorUsuario(admin))
+  // Lo de un módulo inactivo no se revisa: los leads son de sitio-web. Sin
+  // lectura de módulos se revisa todo lo demás y no se mide el consumo.
+  const modulos = await leerModulos(admin)
+  if (!modulos || !moduloActivo(modulos, 'sitio-web')) {
+    if (resumen.leads_24h !== undefined) console.log('revision-seguridad: sitio-web inactivo o sin leer, se omiten los leads')
+    delete resumen.leads_24h
+  }
+  const hallazgos = hallazgosDe(resumen, await revelacionesPorUsuario(admin), await consumoMiembros(admin, modulos))
   if (hallazgos.length === 0) {
     console.log('revision-seguridad: sin novedades')
     return Response.json({ hallazgos: 0 })

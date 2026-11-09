@@ -12,6 +12,7 @@ vi.mock('web-push', () => ({
 
 import webpush from 'web-push'
 import { broadcastPush, idsQueVenApp } from '../push.mts'
+import { reiniciarCacheModulos } from '../modulos-instalacion.mts'
 
 type Sub = { id: string; user_id: string; endpoint: string; p256dh: string; auth: string }
 type Miembro = { id: string; user_roles: { role: string; roles: { permissions: string[] } | null }[] }
@@ -21,16 +22,15 @@ type Datos = {
   usuarios?: { id: string; email: string; banned_until?: string }[]
   authCaido?: boolean
   authColgado?: boolean
-  apps?: { slug: string; roles: string[] | null; active?: boolean }[]
+  modulos?: { slug: string; activo: boolean; limites?: Record<string, unknown> }[]
   miembros?: Miembro[]
-  errorApps?: boolean
+  errorModulos?: boolean
   errorMiembros?: boolean
 }
 
 function cliente(d: Datos) {
   const pedidos: string[][] = []
   const borrados: string[] = []
-  const filtrosApps: [string, unknown][] = []
   const admin = {
     from: vi.fn((tabla: string) => {
       if (tabla === 'push_subscriptions') {
@@ -49,17 +49,10 @@ function cliente(d: Datos) {
           }),
         }
       }
-      if (tabla === 'portal_apps') {
+      if (tabla === 'modulos_instalacion') {
         return {
-          select: () => ({
-            // Filtra de verdad: una app desactivada solo sale si se omite el eq
-            eq: async (col: string, valor: unknown) => {
-              filtrosApps.push([col, valor])
-              if (d.errorApps) return { data: null, error: { code: '42P01' } }
-              const filas = (d.apps ?? []).filter((a) => ({ active: true, ...a } as Record<string, unknown>)[col] === valor)
-              return { data: filas, error: null }
-            },
-          }),
+          select: async () =>
+            d.errorModulos ? { data: null, error: { code: '42P01' } } : { data: d.modulos ?? [], error: null },
         }
       }
       return {
@@ -85,7 +78,6 @@ function cliente(d: Datos) {
     admin: admin as unknown as SupabaseClient,
     pedidos,
     borrados,
-    filtrosApps,
     from: admin.from,
     listUsers: admin.auth.admin.listUsers,
   }
@@ -100,6 +92,7 @@ const USUARIOS = [
 ]
 
 beforeEach(() => {
+  reiniciarCacheModulos()
   vi.stubEnv('VAPID_PUBLIC_KEY', 'publica')
   vi.stubEnv('VAPID_PRIVATE_KEY', 'privada')
 })
@@ -218,55 +211,49 @@ describe('idsQueVenApp (AU-DEC-04)', () => {
     { id: 'u-sin-roles', user_roles: [] },
   ]
 
-  it('quien ve la app por rol o por permiso app_*, más los admins', async () => {
-    const c = cliente({ apps: [{ slug: 'licitaciones', roles: ['comercial', 'app_licitaciones'] }], miembros: MIEMBROS })
-    expect(await idsQueVenApp(c.admin, 'licitaciones')).toEqual(['u-comercial', 'u-permiso', 'u-admin'])
-    expect(c.filtrosApps).toEqual([['active', true]])
+  const LIC = [{ slug: 'licitaciones', activo: true }]
+
+  it('regla v2: quien tiene app_licitaciones, más los admins', async () => {
+    const c = cliente({ modulos: LIC, miembros: MIEMBROS })
+    expect(await idsQueVenApp(c.admin, 'licitaciones')).toEqual(['u-permiso', 'u-admin'])
   })
 
-  it('app desactivada (active false): solo los admins', async () => {
-    const c = cliente({ apps: [{ slug: 'licitaciones', roles: [], active: false }], miembros: MIEMBROS })
-    expect(await idsQueVenApp(c.admin, 'licitaciones')).toEqual(['u-admin'])
+  it('módulo inactivo o sin fila: nadie, ni los admins', async () => {
+    const c = cliente({ modulos: [{ slug: 'licitaciones', activo: false }], miembros: MIEMBROS })
+    expect(await idsQueVenApp(c.admin, 'licitaciones')).toEqual([])
+    reiniciarCacheModulos()
+    const d = cliente({ modulos: [], miembros: MIEMBROS })
+    expect(await idsQueVenApp(d.admin, 'licitaciones')).toEqual([])
   })
 
   it('sin las cuentas de servicio ni los suspendidos, y broadcastPush reutiliza esa lectura de Auth', async () => {
     const c = cliente({
-      apps: [{ slug: 'licitaciones', roles: [] }],
-      miembros: [...MIEMBROS, miembro('u-dev', ['admin', []]), miembro('u-susp', ['comercial', []])],
+      modulos: LIC,
+      miembros: [...MIEMBROS, miembro('u-dev', ['admin', []]), miembro('u-susp', ['x', ['app_licitaciones']])],
       usuarios: [...USUARIOS, { id: 'u-susp', email: 'susp@empresa.test', banned_until: '2999-01-01T00:00:00Z' }],
       subs: [sub('s1', 'u-admin')],
     })
     const ids = await idsQueVenApp(c.admin, 'licitaciones')
-    expect(ids).toEqual(MIEMBROS.map((m) => m.id))
+    expect(ids).toEqual(['u-permiso', 'u-admin'])
     await broadcastPush(c.admin, AVISO, { userIds: ids ?? [] })
     expect(c.listUsers).toHaveBeenCalledTimes(1)
   })
 
   it('si Auth falla, los destinatarios salen sin esa exclusión (no se bloquea el aviso)', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    const c = cliente({ apps: [{ slug: 'licitaciones', roles: [] }], miembros: MIEMBROS, authCaido: true })
-    expect(await idsQueVenApp(c.admin, 'licitaciones')).toEqual(MIEMBROS.map((m) => m.id))
+    const c = cliente({ modulos: LIC, miembros: MIEMBROS, authCaido: true })
+    expect(await idsQueVenApp(c.admin, 'licitaciones')).toEqual(['u-permiso', 'u-admin'])
   })
 
-  it('app sin roles: la ve todo el equipo', async () => {
-    const c = cliente({ apps: [{ slug: 'licitaciones', roles: [] }], miembros: MIEMBROS })
-    expect(await idsQueVenApp(c.admin, 'licitaciones')).toEqual(MIEMBROS.map((m) => m.id))
-  })
-
-  it('app inactiva o inexistente: solo los admins', async () => {
-    const c = cliente({ apps: [{ slug: 'otra', roles: [] }], miembros: MIEMBROS })
-    expect(await idsQueVenApp(c.admin, 'licitaciones')).toEqual(['u-admin'])
-  })
-
-  it('si no puede leer las apps devuelve null (quien llama no avisa)', async () => {
+  it('si no puede leer los módulos devuelve null (quien llama no avisa)', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    const c = cliente({ errorApps: true, miembros: MIEMBROS })
+    const c = cliente({ errorModulos: true, miembros: MIEMBROS })
     expect(await idsQueVenApp(c.admin, 'licitaciones')).toBeNull()
   })
 
   it('si no puede leer los miembros devuelve null y registra el código', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const c = cliente({ apps: [{ slug: 'licitaciones', roles: [] }], errorMiembros: true })
+    const c = cliente({ modulos: LIC, errorMiembros: true })
     expect(await idsQueVenApp(c.admin, 'licitaciones')).toBeNull()
     expect(error.mock.calls[0]?.[1]).toEqual({ app: 'licitaciones', codigo: '42501' })
   })
