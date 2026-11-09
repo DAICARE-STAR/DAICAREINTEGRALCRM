@@ -10,6 +10,23 @@ ERP modular para pymes nacido del Team Portal: shell React, Supabase y Netlify F
 
 Verificación: `npm run typecheck`, `npm test`, `npm run build`, `npm run secretos` (escáner de secretos; sale 0 sin hallazgos).
 
+## Instalación por cliente
+
+Una instalación por cliente: su proyecto Supabase y su sitio Netlify (PP-DEC-01). Lo hace quien instala, en su PC; las variables y su clase están en `docs/instalacion/variables.md` y la lista de control en `docs/seguridad/04-checklist-despliegue.md`.
+
+1. Crear el proyecto Supabase del cliente (plan Free sirve para empezar).
+2. En Auth: cerrar el registro público y activar TOTP.
+3. Poner `SUPABASE_DB_URL`, `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` en el `.env` local (nunca como argumento).
+4. `npm run instalar` (aplica 00 a 09) y `node tools/instalar/aplicar.mjs --verificar`: ninguna línea DIFIERE.
+5. `node tools/instalar/cuentas-prueba.mjs` y correr `supabase/pruebas/rls-simulacion.sql` en el SQL Editor: ninguna FALLA.
+6. Activar los módulos contratados: `node tools/instalar/modulos.mjs --listar` y `--activar <slug>` (`docs/modulos.md` lista los que hay).
+7. Crear el sitio Netlify desde el repo y cargar las variables (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_PORTAL_NOMBRE`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `VAPID_SUBJECT`, `GEMINI_MODEL`, `IA_MODELO_BLOG_DRAFT`, `IA_MODELO_LEAD_REPLY`). `URL` la pone Netlify.
+8. Generar las claves VAPID con `npx web-push generate-vapid-keys` y cargar `VITE_VAPID_PUBLIC_KEY`, `VAPID_PUBLIC_KEY` y `VAPID_PRIVATE_KEY`.
+9. Invitar al primer administrador desde Auth (o con `invitar-miembro` una vez haya uno) y darle el rol admin.
+10. Con ese administrador, configurar la Instalación en Administración: datos de la empresa, logos y tema.
+
+Solo en el PC de quien instala, para los scripts de verificación: `CLAUDE_DEV_EMAIL`, `CLAUDE_DEV_PASSWORD` y `PORTAL_URL`. Para una demostración, `supabase/esquema/datos/demo-nucleo.sql` (solo datos, marcados «[demo]») se corre a mano después del paso 4.
+
 ## Estructura
 
 | Ruta | Qué contiene |
@@ -21,7 +38,8 @@ Verificación: `npm run typecheck`, `npm test`, `npm run build`, `npm run secret
 | `tools/seguridad/` | Escáner de secretos |
 | `tools/instalar/` | Instalador del esquema (`aplicar.mjs`) y de los módulos de la instalación (`modulos.mjs`); cuentas de prueba (`cuentas-prueba.mjs`) |
 | `tools/origen/` | Mapa de renombre y `renombrar.mjs`, el script de un solo uso del commit de origen |
-| `docs/` | Origen del código, portes, glosario, flujo entre IA |
+| `docs/` | Origen del código, portes, glosario, flujo entre IA, instalación, seguridad y `modulos.md` (generado por `tools/producto/documentar-modulos.mjs`) |
+| `GUIA-UI.md` | Reglas de interfaz y componentes compartidos |
 
 ## Estado
 
