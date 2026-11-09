@@ -1,7 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
 
-const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
+// Una variable vacía (VITE_SUPABASE_URL= en el .env o en Netlify) cuenta como
+// ausente: con '' el cliente lanzaba al crearse y la app no llegaba al aviso
+// de configuración pendiente.
+const valor = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined)
+const url = valor(import.meta.env.VITE_SUPABASE_URL)
+const anonKey = valor(import.meta.env.VITE_SUPABASE_ANON_KEY)
 
 export const supabaseConfigured = Boolean(url && anonKey)
 
