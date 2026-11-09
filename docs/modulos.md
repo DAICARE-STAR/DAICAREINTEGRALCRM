@@ -13,7 +13,7 @@ Generado por `tools/producto/documentar-modulos.mjs` desde `src/lib/modulos.ts`.
 | disenos | Diseños | disponible | /disenos | proyectos | — | — | app_disenos | — |
 | manuales | Manuales | disponible | /manuales | — | — | — | app_manuales | 13-manuales.sql |
 | productos | Productos | disponible | /productos | — | cambio | — | app_productos, manage_products | 22-catalogo.sql |
-| directorio | Directorio | disponible | /directorio | — | crm | — | app_directorio, edit_crm | — |
+| crm | CRM | disponible | /crm | — | crm | — | app_crm, edit_crm, ver_salud, edit_salud | 21-crm.sql |
 | cotizador | Cotizador | disponible | /cotizador | productos | — | — | app_cotizador | 23-cotizador.sql |
 | gerencia | Gerencia | disponible | /gerencia | proyectos | facturacion | — | app_gerencia, view_billing | 26-gerencia.sql |
 | licitaciones | Licitaciones | disponible | /licitaciones | — | licitaciones | fuentes | app_licitaciones, edit_tender_offers, delete_tender_offers | 27-licitaciones.sql |

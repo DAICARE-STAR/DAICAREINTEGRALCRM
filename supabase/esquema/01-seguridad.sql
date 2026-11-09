@@ -26,7 +26,7 @@
 --   |--------------------------|--------------------------------------------------------------|
 --   | privilegios por defecto  | funciones nuevas sin EXECUTE para public ni anon; tablas y   |
 --   |                          | secuencias nuevas sin privilegios para anon (87)             |
---   | permisos_solo_admin()    | las doce claves que solo un administrador otorga o quita     |
+--   | permisos_solo_admin()    | las catorce claves que solo un administrador otorga o quita  |
 --   | roles_guard_escalada     | quien gestiona roles sin ser admin no otorga lo que no       |
 --   |                          | tiene, no toca solo-admin, el rol admin ni la función, y no  |
 --   |                          | renombra ni borra los protegidos (sí edita sus permisos,     |
@@ -78,7 +78,8 @@ create or replace function public.permisos_solo_admin()
 returns text[] language sql immutable set search_path = public, pg_temp as $$
   select array['manage_roles', 'manage_members', 'manage_apps', 'manage_connectors',
                'view_credentials', 'manage_credentials', 'view_mail', 'view_billing',
-               'bot_asistente', 'ia_worker', 'delete_projects', 'delete_tender_offers']::text[];
+               'bot_asistente', 'ia_worker', 'delete_projects', 'delete_tender_offers',
+               'ver_salud', 'edit_salud']::text[];
 $$;
 
 revoke execute on function public.permisos_solo_admin() from public, anon;
@@ -314,8 +315,8 @@ notify pgrst, 'reload schema';
 do $$
 declare v text;
 begin
-  if cardinality(public.permisos_solo_admin()) <> 12 then
-    raise exception '01-seguridad: permisos_solo_admin() no tiene las doce claves';
+  if cardinality(public.permisos_solo_admin()) <> 14 then
+    raise exception '01-seguridad: permisos_solo_admin() no tiene las catorce claves';
   end if;
 
   select string_agg(p.oid::regprocedure::text, ', ') into v

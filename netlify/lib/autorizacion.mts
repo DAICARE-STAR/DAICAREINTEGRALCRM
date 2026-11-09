@@ -17,7 +17,7 @@ import { leerModulos, slugsActivos } from './modulos-instalacion.mts'
 // efectos reciben el cliente inyectable para poder probarlos con uno falso.
 
 // Permisos que solo un admin otorga (lista única): igual a
-// permisos_solo_admin() de la migración 88 y a src/types.ts.
+// permisos_solo_admin() de 01-seguridad.sql y a src/types.ts.
 export const PERMISOS_SOLO_ADMIN: readonly string[] = [
   'manage_roles',
   'manage_members',
@@ -31,6 +31,8 @@ export const PERMISOS_SOLO_ADMIN: readonly string[] = [
   'ia_worker',
   'delete_projects',
   'delete_tender_offers',
+  'ver_salud',
+  'edit_salud',
 ]
 
 export type ContextoAuth = {

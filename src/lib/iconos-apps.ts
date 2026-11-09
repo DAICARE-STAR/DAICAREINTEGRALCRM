@@ -34,7 +34,7 @@ export const ICONOS_LINEA: Record<string, readonly Forma[]> = {
     p('M14.5 11H11A1.5 1.5 0 0 0 11 14H13A1.5 1.5 0 0 1 13 17H9.5M12 9.5V18.5'),
   ],
   licitaciones: [p('M21 12A9 9 0 1 1 12 3'), p('M16.5 12A4.5 4.5 0 1 1 12 7.5'), p('M12 12L18.5 5.5')],
-  directorio: [r(3, 4, 18, 16, 2), c(9, 9, 2), p('M6 17A3 3 0 0 1 12 17M15 10H18M15 14H18')],
+  crm: [r(3, 4, 18, 16, 2), c(9, 9, 2), p('M6 17A3 3 0 0 1 12 17M15 10H18M15 14H18')],
   productos: [p('M12 3L20 7.5V16.5L12 21L4 16.5V7.5Z'), p('M4 7.5L12 12L20 7.5'), p('M12 12V21')],
   gerencia: [p('M4 21V15H8V21M10 21V10H14V21M16 21V5H20V21'), p('M3 21H21')],
   manuales: [

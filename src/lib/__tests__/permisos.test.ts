@@ -12,11 +12,13 @@ import { describe, expect, it } from 'vitest'
 const RAIZ = fileURLToPath(new URL('../../../', import.meta.url))
 const SEGURIDAD = readFileSync(RAIZ + 'supabase/esquema/01-seguridad.sql', 'utf8')
 
-// Las doce claves de la migración 88 de team-portal
-const DOCE = [
+// Las doce claves de la migración 88 de team-portal y las dos de salud del
+// CRM (PP-DEC-19)
+const SOLO_ADMIN = [
   'manage_roles', 'manage_members', 'manage_apps', 'manage_connectors',
   'view_credentials', 'manage_credentials', 'view_mail', 'view_billing',
   'bot_asistente', 'ia_worker', 'delete_projects', 'delete_tender_offers',
+  'ver_salud', 'edit_salud',
 ]
 
 // Lista de permisos_solo_admin() leída como texto: quita comentarios, toma
@@ -49,10 +51,10 @@ const ordenada = (l: readonly string[]) => [...l].sort()
 const SQL = listaSqlSoloAdmin(SEGURIDAD)
 
 describe('permisos_solo_admin() de 01-seguridad.sql', () => {
-  it('se lee y tiene las doce claves de la 88, sin repetir', () => {
+  it('se lee y tiene las catorce claves, sin repetir', () => {
     expect(SQL).not.toBeNull()
     expect(new Set(SQL).size).toBe(SQL!.length)
-    expect(ordenada(SQL!)).toEqual(ordenada(DOCE))
+    expect(ordenada(SQL!)).toEqual(ordenada(SOLO_ADMIN))
   })
 
   it('cada clave tiene la forma verbo_objeto', () => {

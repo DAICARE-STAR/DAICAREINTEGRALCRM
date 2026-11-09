@@ -237,24 +237,28 @@ export const MODULOS: readonly Modulo[] = [
     limites: {},
   },
   {
-    slug: 'directorio',
-    nombre: 'Directorio',
-    icono: 'directorio',
-    ruta: '/directorio',
+    // CRM nativo (PP-DEC-18): cuentas (personas atendidas y empresas),
+    // contactos, actividades e historial en tablas propias. Los datos de salud
+    // de una persona van cifrados y aparte, con permisos solo-admin y MFA
+    // (PP-DEC-19). El conector 'crm' queda como hueco para un CRM externo.
+    slug: 'crm',
+    nombre: 'CRM',
+    icono: 'crm',
+    ruta: '/crm',
     estado: 'disponible',
     permisos: [
-      { clave: 'app_directorio', etiqueta: 'Ver Directorio' },
-      { clave: 'edit_crm', etiqueta: 'Editar contactos y empresas' },
+      { clave: 'app_crm', etiqueta: 'Ver CRM' },
+      { clave: 'edit_crm', etiqueta: 'Editar cuentas, contactos y actividades' },
+      { clave: 'ver_salud', etiqueta: 'Ver datos de salud' },
+      { clave: 'edit_salud', etiqueta: 'Editar datos de salud' },
     ],
     widgets: [],
-    acciones: [
-      'search-companies', 'list-contacts', 'get-contact', 'get-company', 'create-contact', 'update-contact', 'set-contact-company',
-      'list-companies', 'company-contacts', 'contact-companies', 'delete-contact', 'create-company', 'update-company', 'delete-company',
-      'allies-by-country', 'ensure-crm-properties', 'sync-company-portal',
+    acciones: [],
+    tablas: [
+      'crm_cuentas', 'crm_contactos', 'crm_actividades', 'crm_campos_def', 'crm_cambios', 'crm_vinculos_externos',
+      'crm_salud', 'crm_consentimientos', 'crm_accesos_salud',
     ],
-    // Los datos viven en el CRM del conector; sin tablas propias
-    tablas: [],
-    sql: null,
+    sql: '21-crm.sql',
     depende: [],
     integra: [],
     conectores: ['crm'],
@@ -272,7 +276,7 @@ export const MODULOS: readonly Modulo[] = [
     tablas: ['quote_drafts', 'crm_clients'],
     sql: '23-cotizador.sql',
     depende: ['productos'],
-    integra: ['directorio'],
+    integra: ['crm'],
     conectores: [],
     limites: {},
   },
@@ -347,7 +351,7 @@ export const MODULOS: readonly Modulo[] = [
   // Módulos ERP previstos (fases 0.7 a 0.11), solo en el producto
   planeado('inventario', 'Inventario', ['productos']),
   planeado('compras', 'Compras', ['inventario']),
-  planeado('ventas', 'Ventas', ['cotizador', 'inventario'], ['directorio']),
+  planeado('ventas', 'Ventas', ['cotizador', 'inventario'], ['crm']),
   planeado('facturacion', 'Facturación', ['ventas', 'compras'], [], ['facturacion']),
   planeado('cartera', 'Cartera', ['facturacion']),
   planeado('contabilidad', 'Contabilidad', ['facturacion', 'cartera', 'inventario']),

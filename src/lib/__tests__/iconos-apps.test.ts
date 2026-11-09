@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { SLUG_PATTERN, toolPermKey } from '../data'
 import { ICONOS_LINEA, LOGO_DE_PAR, resolverIcono, tieneIconoPropio, type Forma } from '../iconos-apps'
 
-const APPS = ['sitio-web', 'proyectos', 'cotizador', 'licitaciones', 'directorio', 'productos', 'gerencia', 'manuales', 'disenos', 'chat', 'correo', 'calendario']
+const APPS = ['sitio-web', 'proyectos', 'cotizador', 'licitaciones', 'crm', 'productos', 'gerencia', 'manuales', 'disenos', 'chat', 'correo', 'calendario']
 
 // Nombres tal como están en Administración → Herramientas (2026-10-27)
 const HERRAMIENTAS = [
@@ -61,7 +61,7 @@ describe('ICONOS_LINEA', () => {
 
 describe('resolverIcono', () => {
   it('el icono propio manda sobre el campo Icono', () => {
-    expect(resolverIcono('directorio', '/icons/directorio.svg').tipo).toBe('linea')
+    expect(resolverIcono('crm', '/icons/crm.svg').tipo).toBe('linea')
     expect(resolverIcono(toolPermKey('Envia'), '/icons/envia.svg').tipo).toBe('linea')
   })
 

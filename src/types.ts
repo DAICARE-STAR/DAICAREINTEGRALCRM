@@ -68,7 +68,17 @@ export const PERMISSIONS = [
   {
     key: 'edit_crm',
     label: 'Editar CRM',
-    description: 'Crear y editar contactos de HubSpot desde el Directorio CRM (ver es libre)',
+    description: 'Crear y editar cuentas, contactos y actividades del CRM (ver exige Ver CRM)',
+  },
+  {
+    key: 'ver_salud',
+    label: 'Ver datos de salud',
+    description: 'Leer la historia de salud de las personas atendidas, con segundo factor activo; cada lectura queda registrada',
+  },
+  {
+    key: 'edit_salud',
+    label: 'Editar datos de salud',
+    description: 'Registrar y corregir la historia de salud de una persona con consentimiento vigente, con segundo factor activo',
   },
   {
     key: 'edit_projects',
@@ -130,6 +140,8 @@ export const PERMISOS_SOLO_ADMIN: readonly string[] = [
   'ia_worker',
   'delete_projects',
   'delete_tender_offers',
+  'ver_salud',
+  'edit_salud',
 ]
 
 export interface RoleDef {

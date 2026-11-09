@@ -159,7 +159,8 @@ describe('helpers puros', () => {
   it('accionesDe, moduloDeAccion y tablasDe', () => {
     expect(accionesDe('calendario')).toContain('create-event')
     expect(moduloDeAccion('create-event')).toBe('calendario')
-    expect(moduloDeAccion('list-contacts')).toBe('directorio')
+    expect(moduloDeAccion('list-contacts')).toBeUndefined()
+    expect(tablasDe('crm')).toContain('crm_salud')
     expect(moduloDeAccion('no-existe')).toBeUndefined()
     expect(tablasDe('chat')).toEqual(['chat_channels', 'chat_messages', 'member_status'])
     expect(tablasDe('nada')).toEqual([])

@@ -36,7 +36,7 @@ const CUENTA_QA = 'claude-qa@empresa.test'
 // ejecutarse de verdad: esos casos solo corren con una cuenta sin ellos
 export const SENSIBLES = ['manage_connectors', 'manage_leads', 'manage_credentials', 'view_credentials', 'view_mail', 'view_billing', 'edit_crm', 'manage_roles', 'manage_members', 'bot_asistente', 'ia_worker']
 // Apps que abren lecturas del CRM o el Radar: si la cuenta las ve, ese caso no es un negativo
-const APPS = ['directorio', 'cotizador', 'proyectos', 'licitaciones', 'gerencia']
+const APPS = ['crm', 'cotizador', 'proyectos', 'licitaciones', 'gerencia']
 // 404 de PostgREST por función o tabla inexistente: la migración no está aplicada
 const NO_APLICADA = new Set(['PGRST202', 'PGRST205', '42883', '42P01'])
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -407,7 +407,7 @@ function casosFunciones(ctx) {
 
     // (1) claude-qa sin permisos: 403 sin_permiso, nunca 404 ni 502
     qa('F1.1', 'list-contacts con claude-qa → 403 · sin_permiso', async () => {
-      const ve = ['directorio', 'cotizador', 'proyectos', 'licitaciones'].filter((a) => ctx.perfil.apps[a] !== false)
+      const ve = ['crm', 'cotizador', 'proyectos', 'licitaciones'].filter((a) => ctx.perfil.apps[a] !== false)
       if (ve.length) return omitido(`la cuenta ve ${ve.join(', ')} (o no se pudo saber): leer el CRM le corresponde`)
       return sinPermiso(await proxy('list-contacts', 'hubspot'))
     }),
