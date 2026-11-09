@@ -229,3 +229,16 @@ describe('modulos.mjs: cadena de conexión', () => {
     expect(r.texto).not.toContain(encodeURIComponent(CLAVE))
   })
 })
+
+// postgres.js serializa con JSON.stringify todo parámetro cuyo tipo inferido
+// es jsonb: un texto JSON llegaría doblemente codificado (una cadena, no un
+// objeto) y el check de limites lo rechaza. Por eso el parámetro viaja como
+// text y la base lo convierte. Visto en la primera instalación real (0.2.7).
+describe('parámetros jsonb de modulos.mjs', () => {
+  it('los límites viajan como text y se convierten en la base', () => {
+    for (const q of [INSERT_MODULO, ACTIVAR_MODULO, FUSIONAR_LIMITES]) {
+      expect(q).toContain('$2::text::jsonb')
+      expect(q).not.toMatch(/\$2::jsonb/)
+    }
+  })
+})

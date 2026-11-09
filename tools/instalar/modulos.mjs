@@ -36,10 +36,10 @@ export const LIMITES_POR_DEFECTO = {
 export const CONSULTA_HAY_TABLA = `select to_regclass('public.modulos_instalacion') is not null as existe`
 export const CONSULTA_FILAS = 'select slug, activo, limites from public.modulos_instalacion order by slug'
 export const CONSULTA_APLICADO = `select 1 as aplicado from instalador.esquema_aplicado where archivo = $1`
-export const INSERT_MODULO = 'insert into public.modulos_instalacion (slug, activo, limites) values ($1, true, $2::jsonb)'
-export const ACTIVAR_MODULO = 'update public.modulos_instalacion set activo = true, limites = limites || $2::jsonb where slug = $1'
+export const INSERT_MODULO = 'insert into public.modulos_instalacion (slug, activo, limites) values ($1, true, $2::text::jsonb)'
+export const ACTIVAR_MODULO = 'update public.modulos_instalacion set activo = true, limites = limites || $2::text::jsonb where slug = $1'
 export const DESACTIVAR_MODULO = 'update public.modulos_instalacion set activo = false where slug = $1'
-export const FUSIONAR_LIMITES = 'update public.modulos_instalacion set limites = limites || $2::jsonb where slug = $1'
+export const FUSIONAR_LIMITES = 'update public.modulos_instalacion set limites = limites || $2::text::jsonb where slug = $1'
 
 export function leerArgumentos(argv) {
   const o = { accion: null, slug: null, limites: null, cascada: false }
