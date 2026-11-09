@@ -1,0 +1,63 @@
+/* CRM: tabla en escritorio, tarjetas en móvil */
+.crm-tarjetas {
+  display: none;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.crm-tarjeta {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-bottom: 8px;
+}
+.crm-tarjeta a {
+  font-weight: 600;
+}
+.crm-mas {
+  display: flex;
+  justify-content: center;
+  margin: 12px 0;
+}
+.crm-form {
+  display: grid;
+  gap: 10px;
+}
+.crm-form label {
+  display: grid;
+  gap: 4px;
+}
+.crm-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+.crm-lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.crm-lista > li {
+  border-bottom: 1px solid var(--border);
+  padding: 8px 0;
+}
+.crm-datos {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 16px;
+}
+.crm-datos dt {
+  color: var(--text-muted);
+}
+.crm-datos dd {
+  margin: 0;
+}
+@media (max-width: 760px) {
+  .crm-tabla {
+    display: none;
+  }
+  .crm-tarjetas {
+    display: block;
+  }
+}

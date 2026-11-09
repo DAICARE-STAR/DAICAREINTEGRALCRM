@@ -31,9 +31,16 @@ const fuentes = archivos(SRC).map((ruta) => ({ rel: relative(SRC, ruta).split(se
 const data = fuentes.find((f) => f.rel === 'lib/data.ts')!.texto
 
 describe('usos de storage en src', () => {
-  it('solo data.ts toca storage, y solo con upload y getPublicUrl', () => {
+  // Excepción: el bucket privado crm-consentimientos (21-crm.sql) sube y
+  // firma URL desde la capa de datos del CRM, sin URL pública
+  it('solo data.ts y la capa de datos del CRM tocan storage', () => {
     const usos = fuentes.flatMap((f) => [...f.texto.matchAll(/\.storage\s*\.from\(([^)]*)\)\s*\.(\w+)/g)].map((m) => `${f.rel}: ${m[1]}.${m[2]}`))
-    expect(usos.sort()).toEqual(['lib/data.ts: bucket.getPublicUrl', 'lib/data.ts: bucket.upload'])
+    expect(usos.sort()).toEqual([
+      'lib/data.ts: bucket.getPublicUrl',
+      'lib/data.ts: bucket.upload',
+      'modulos/crm/lib/datos.ts: BUCKET_CONSENTIMIENTOS.createSignedUrl',
+      'modulos/crm/lib/datos.ts: BUCKET_CONSENTIMIENTOS.upload',
+    ])
   })
 
   it('cada llamada a uploadSiteImage nombra un bucket permitido desde su función', () => {
