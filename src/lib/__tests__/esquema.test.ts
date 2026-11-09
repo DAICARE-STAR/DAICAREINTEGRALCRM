@@ -237,8 +237,17 @@ describe('esquema consolidado: 04-instalacion-modulos', () => {
 
   it('has_modulo da true al núcleo y puede_ver_app v2 exige el módulo activo antes que el permiso', () => {
     expect(cuerpo('has_modulo')).toMatch(/p_slug = 'nucleo'\s+or exists \(select 1 from public\.modulos_instalacion m where m\.slug = p_slug and m\.activo\)/i)
-    expect(cuerpo('puede_ver_app')).toMatch(/public\.has_modulo\(p_slug\)\s+and \(public\.is_admin\(\) or public\.has_perm\('app_' \|\| p_slug\)\)/i)
+    expect(cuerpo('puede_ver_app')).toMatch(/p_slug = 'nucleo'\s+or \(public\.has_modulo\(p_slug\)\s+and \(public\.is_admin\(\) or public\.has_perm\('app_' \|\| p_slug\) or p_slug = any \(array\[[^\]]*\]\)\)\)/i)
     expect(sql).not.toMatch(/portal_apps/i)
+  })
+
+  it('puede_ver_app deja pasar los mismos módulos sin app_<slug> que puedeVerModulo', async () => {
+    const { MODULOS } = await import('../modulos')
+    const sinApp = MODULOS.filter((m) => m.slug !== 'nucleo' && m.estado === 'disponible' && !m.permisos.some((p) => p.clave === `app_${m.slug}`))
+      .map((m) => m.slug)
+      .sort()
+    const lista = /p_slug = any \(array\[([^\]]*)\]\)/.exec(cuerpo('puede_ver_app'))![1]
+    expect([...lista.matchAll(/'([^']+)'/g)].map((m) => m[1]).sort()).toEqual(sinApp)
   })
 
   it('limite_modulo acota el número al rango de bigint antes del cast', () => {

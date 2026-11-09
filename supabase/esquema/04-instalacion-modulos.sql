@@ -30,7 +30,7 @@
 --   | modulos_instalacion        | un módulo por fila con activo y limites; solo lectura      |
 --   |                            | para authenticated; la escribe el instalador               |
 --   | has_modulo(slug)           | true para nucleo o si la fila está activa                  |
---   | puede_ver_app(slug) v2     | has_modulo y (admin o permiso app_<slug>)                  |
+--   | puede_ver_app(slug) v2     | núcleo, o has_modulo y (admin, app_<slug> o sin app_<slug>) |
 --   | limite_modulo(slug, clave) | límite entero de un módulo; null = sin límite              |
 --   | aplicar_politica_modulo    | política restrictiva modulo_<slug> en una tabla de módulo; |
 --   |                            | solo el dueño (archivos de módulo 10 en adelante)          |
@@ -270,10 +270,14 @@ revoke execute on function public.has_modulo(text) from public, anon;
 grant execute on function public.has_modulo(text) to authenticated, service_role;
 
 -- v2: sin portal_apps. Un módulo inactivo no lo ve nadie, ni un administrador.
+-- La misma regla que puedeVerModulo (src/lib/modulos.ts): el núcleo lo ve
+-- todo miembro y un módulo que no declara app_<slug> (la lista, comprobada
+-- contra el registro en esquema.test.ts) también, si está activo.
 create or replace function public.puede_ver_app(p_slug text)
 returns boolean language sql stable security definer set search_path = public, pg_temp as $$
-  select public.has_modulo(p_slug)
-     and (public.is_admin() or public.has_perm('app_' || p_slug));
+  select p_slug = 'nucleo'
+      or (public.has_modulo(p_slug)
+          and (public.is_admin() or public.has_perm('app_' || p_slug) or p_slug = any (array['ia'])));
 $$;
 
 revoke execute on function public.puede_ver_app(text) from public, anon;

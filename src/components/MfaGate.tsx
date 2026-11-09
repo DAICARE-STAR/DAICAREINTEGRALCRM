@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { NOMBRE_PORTAL } from '../lib/instalacion'
+import { leerLogosCache, logoDe, NOMBRE_PORTAL } from '../lib/instalacion'
 
 // Segundo paso del inicio de sesión: la sesión de contraseña existe pero
 // el usuario tiene verificación en dos pasos activa. Hasta validar el
@@ -31,7 +31,7 @@ export default function MfaGate() {
   return (
     <div className="login-wrap">
       <form className="login-card" onSubmit={submit}>
-        <img className="login-logo" src="/brand/logo-banner-transp-440.png" alt={NOMBRE_PORTAL} width={200} height={100} />
+        <img className="login-logo" src={logoDe(leerLogosCache(), 'banner_440')} alt={NOMBRE_PORTAL} width={200} height={100} />
         <h1>Verificación en dos pasos</h1>
         <p className="muted">
           Ingresa el código de 6 dígitos de tu aplicación de autenticación.

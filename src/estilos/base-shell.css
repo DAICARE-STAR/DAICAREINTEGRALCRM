@@ -44,6 +44,13 @@
   outline-offset: var(--pal-foco-separacion);
 }
 
+/* Un input .sr-only dentro de un label con aspecto de botón (subir archivo):
+   el anillo del input queda recortado, así que lo lleva el label. */
+:where(label:has(> input.sr-only:focus-visible)) {
+  outline: var(--pal-foco-ancho) solid var(--focus);
+  outline-offset: var(--pal-foco-separacion);
+}
+
 /* ===== Skeletons =====
    .skel-grupo agrupa las piezas de un bloque en carga; con .skel-diferido
    aparece a los 300 ms, así una carga rápida no parpadea. Cada .skel lleva

@@ -146,8 +146,9 @@ export default function TemaInstalacion({
         </ul>
       )}
 
+      {/* La primaria de la vista es «Guardar» de InstalacionTab (GUIA-UI) */}
       <div className="form-actions">
-        <button className="btn-primary" type="button" disabled={bloqueado || guardando} onClick={() => void guardar()}>
+        <button className="btn-ghost" type="button" disabled={bloqueado || guardando} onClick={() => void guardar()}>
           {guardando ? 'Guardando…' : 'Guardar tema'}
         </button>
         <button className="btn-ghost" type="button" onClick={() => setPropias({})}>

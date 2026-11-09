@@ -108,16 +108,24 @@ function fechaLarga(iso: string): string {
   }
 }
 
-// Correos del equipo. Con userIds solo devuelve esos usuarios (ej.
-// invitados a una reunión); sin él, todos los miembros del portal.
+// Correos del equipo sin cuentas de servicio. Con userIds solo devuelve esos
+// usuarios (ej. invitados a una reunión); sin él, todos los miembros del portal.
 export async function teamEmails(
   admin: SupabaseClient,
   userIds?: string[],
 ): Promise<string[]> {
   const { data, error } = await admin.auth.admin.listUsers({ page: 1, perPage: 200 })
   if (error || !data) return []
+  // Cuentas de servicio por profiles.es_servicio, con la lista fija de
+  // respaldo: si la lectura falla, los avisos salen igual excluyendo la lista.
+  const servicio = await admin.from('profiles').select('id').eq('es_servicio', true)
+  if (servicio.error || !servicio.data) {
+    console.warn('teamEmails: no se pudieron leer las cuentas de servicio', servicio.error?.code ?? null)
+  }
+  const idsServicio = new Set(((servicio.data ?? []) as { id: string }[]).map((p) => p.id))
   return data.users
     .filter((u) => !userIds || userIds.includes(u.id))
+    .filter((u) => !idsServicio.has(u.id))
     .map((u) => u.email ?? '')
     .filter((e) => e && !esCuentaServicio(e))
 }

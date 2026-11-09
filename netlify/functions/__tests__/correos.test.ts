@@ -459,7 +459,7 @@ function montarCorrida(eventos: EventRow[], asistentes: Asistentes = {}, extra: 
     rpc: { data: eventos, error: null },
     tablas: (c) => {
       if (c.tabla === 'event_attendees') return { data: asistentes[c.filtros.event_id as string] ?? [] }
-      if (c.tabla === 'profiles') return { data: EQUIPO.map((u) => ({ id: u.id })) }
+      if (c.tabla === 'profiles') return { data: c.filtros.es_servicio === true ? [] : EQUIPO.map((u) => ({ id: u.id })) }
       if (c.tabla === 'user_notifications' && c.accion === 'insert') {
         inserciones.push(c.valores as { user_id: string; body: string }[])
         return { error: null }
@@ -491,7 +491,7 @@ describe('recordatorios programados', () => {
       rpc: { data: [mantSin, mantRsvp, mantCon, abierta], error: null },
       tablas: (c) => {
         if (c.tabla === 'event_attendees') return { data: asistentes[c.filtros.event_id as string] }
-        if (c.tabla === 'profiles') return { data: EQUIPO.map((u) => ({ id: u.id })) }
+        if (c.tabla === 'profiles') return { data: c.filtros.es_servicio === true ? [] : EQUIPO.map((u) => ({ id: u.id })) }
         if (c.tabla === 'user_notifications' && c.accion === 'insert') {
           avisos.push(...(c.valores as { user_id: string; body: string }[]))
           return { error: null }
@@ -549,7 +549,7 @@ describe('recordatorios programados', () => {
               ? { error: { code: '57014', message: 'canceling statement due to statement timeout' } }
               : { data: [] }
           }
-          if (c.tabla === 'profiles') return { data: EQUIPO.map((u) => ({ id: u.id })) }
+          if (c.tabla === 'profiles') return { data: c.filtros.es_servicio === true ? [] : EQUIPO.map((u) => ({ id: u.id })) }
           if (c.tabla === 'user_notifications' && c.accion === 'insert') {
             avisos.push(...(c.valores as { body: string }[]))
             return { error: null }

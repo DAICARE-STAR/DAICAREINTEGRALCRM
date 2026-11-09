@@ -124,6 +124,12 @@ export function InstalacionProvider({ children }: { children: ReactNode }) {
       l.href = favicon
     })
   }, [favicon])
+  const imagotipo = logoDe(logos, 'imagotipo')
+  useEffect(() => {
+    document.querySelectorAll<HTMLLinkElement>('link[rel="apple-touch-icon"]').forEach((l) => {
+      l.href = imagotipo
+    })
+  }, [imagotipo])
 
   const lista = activos ?? []
   const valor: EstadoInstalacion = {
