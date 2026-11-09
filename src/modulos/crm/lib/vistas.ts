@@ -22,11 +22,11 @@ export function pestanasCuenta(tipo: TipoCuenta, verSalud: boolean): { id: Pesta
   return base
 }
 
-/** El vigente es el más reciente de su tipo, otorgado y sin revocar (como crm_salud_guardar). */
+/** El vigente es el registrado más reciente de su tipo (created_at, hora del servidor; empata por id), otorgado y sin revocar, como crm_salud_guardar. La fecha del documento no decide. */
 export function consentimientoVigente(lista: Consentimiento[], tipo: Consentimiento['tipo']): boolean {
   const ultimo = lista
     .filter((c) => c.tipo === tipo)
-    .sort((a, b) => (a.fecha === b.fecha ? b.created_at.localeCompare(a.created_at) : b.fecha.localeCompare(a.fecha)))[0]
+    .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id))[0]
   return !!ultimo && ultimo.otorgado && ultimo.revocado_en === null
 }
 

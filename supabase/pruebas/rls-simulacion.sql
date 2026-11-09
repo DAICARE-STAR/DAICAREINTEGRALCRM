@@ -34,9 +34,11 @@
 --  11) storage: avatar propio sí, ajeno no, marca solo admin, anónimo sin
 --      listado, subida por encima del tope rechazada
 --  12) crm: lectura con app_crm, alta con edit_crm, borrado de miembro,
---      historial, actividad ajena, catálogos, campos y módulo inactivo
---  13) salud: permiso explícito, aal2, registro de accesos, consentimiento
---      y crm_salud cerrada a la API
+--      historial, actividad ajena, catálogos, campos, módulo inactivo,
+--      actividades que siguen a su contacto y supresión al borrar
+--  13) salud: permiso explícito, aal2, registro de accesos, consentimiento,
+--      crm_salud cerrada a la API, consentimientos sin borrado y vigente por
+--      created_at, cuenta con salud o consentimientos que no se borra
 -- Las secciones 8 a 11 salen OMITIDO si falta su archivo de 05 a 09; la 12
 -- y la 13, si falta 21-crm.sql.
 -- ============================================================
@@ -1146,6 +1148,44 @@ begin
 
   perform set_config('request.jwt.claims', '', true);
   update public.modulos_instalacion set activo = true where slug = 'crm';
+
+  -- 12.8 Un contacto que cambia de cuenta se lleva sus actividades
+  declare
+    v_otra uuid;
+    v_contacto uuid;
+    v_act2 uuid;
+  begin
+    perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
+    insert into public.crm_cuentas (tipo, nombre) values ('empresa', 'Prueba RLS destino') returning id into v_otra;
+    insert into public.crm_contactos (cuenta_id, nombre) values (v_cuenta, 'Prueba RLS contacto') returning id into v_contacto;
+    insert into public.crm_actividades (tipo, contacto_id, asunto) values ('nota', v_contacto, 'Prueba RLS') returning id into v_act2;
+    update public.crm_contactos set cuenta_id = v_otra where id = v_contacto;
+    select count(*) into v_n from public.crm_actividades where id = v_act2 and cuenta_id = v_otra;
+    v := v_n::text;
+  exception when others then v := sqlstate;
+  end;
+  r := r || E'\n' || case when v = '1' then 'OK      ' else 'FALLA   ' end || '12.8  contacto movido arrastra sus actividades → 1 · ' || v;
+
+  -- 12.9 Supresión: borrar una cuenta deja una sola fila de borrado sin datos
+  -- y quita sus vínculos externos
+  declare
+    v_sup uuid;
+  begin
+    perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
+    insert into public.crm_cuentas (tipo, nombre, notas) values ('persona', 'Prueba RLS supresión', 'dato personal') returning id into v_sup;
+    update public.crm_cuentas set notas = 'otro dato' where id = v_sup;
+    insert into public.crm_vinculos_externos (entidad, entidad_id, origen, id_externo) values ('cuenta', v_sup, 'prueba', 'x1');
+    set local role authenticated;
+    delete from public.crm_cuentas where id = v_sup;
+    reset role;
+    select count(*) || '/' || count(*) filter (where operacion = 'delete' and antes is null and despues is null and autor_id = v_admin)
+           || '/' || (select count(*) from public.crm_vinculos_externos where entidad = 'cuenta' and entidad_id = v_sup)
+      into v from public.crm_cambios where entidad = 'cuenta' and entidad_id = v_sup;
+  exception when others then reset role; v := sqlstate;
+  end;
+  r := r || E'\n' || case when v = '1/1/0' then 'OK      ' else 'FALLA   ' end || '12.9  borrado de cuenta: historial suprimido y vínculos fuera → 1/1/0 · ' || v;
+
+  perform set_config('request.jwt.claims', '', true);
   perform set_config('rls.crm_cuenta', v_cuenta::text, true);
   perform set_config('rls.res', current_setting('rls.res') || r, true);
 end $$;
@@ -1260,6 +1300,76 @@ begin
     reset role;
     r := r || E'\n' || case when v = '42501' then 'OK      ' else 'FALLA   ' end || '13.7  admin sin ver_salud lee salud → 42501 · ' || v;
   end if;
+
+  -- 13.8 Consentimientos: fecha futura, revocación sellada y nadie los borra
+  perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal2')::text, true);
+  set local role authenticated;
+  begin
+    insert into public.crm_consentimientos (cuenta_id, tipo, otorgado, medio, version_texto, fecha)
+    values (v_cuenta, 'tratamiento_datos', true, 'digital', 'prueba-rls', current_date + 30);
+    v_hint := 'entró';
+  exception when others then get stacked diagnostics v_hint = pg_exception_hint;
+  end;
+  begin
+    insert into public.crm_consentimientos (cuenta_id, tipo, otorgado, medio, version_texto)
+    values (v_cuenta, 'tratamiento_datos', true, 'digital', 'prueba-rls');
+    update public.crm_consentimientos set revocado_en = '2000-01-01' where cuenta_id = v_cuenta and tipo = 'tratamiento_datos';
+    select count(*) into v_n from public.crm_consentimientos
+     where cuenta_id = v_cuenta and tipo = 'tratamiento_datos' and revocado_por = v_miembro and revocado_en > now() - interval '1 hour';
+    v := v_n::text;
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
+  set local role authenticated;
+  begin
+    delete from public.crm_consentimientos where cuenta_id = v_cuenta;
+    get diagnostics v_n = row_count;
+    v := v || ' / ' || v_n || ' filas';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  reset role;
+  r := r || E'\n' || case when v_hint = 'crm_consentimiento_fecha' and v = '1 / 42501' then 'OK      ' else 'FALLA   ' end
+       || '13.8  fecha futura, revocar sellado y admin borra consentimientos → crm_consentimiento_fecha / 1 / 42501 · '
+       || coalesce(v_hint, 'null') || ' / ' || v;
+
+  -- 13.9 El vigente es el último registrado aunque otro tenga fecha mayor
+  perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal2')::text, true);
+  set local role authenticated;
+  begin
+    insert into public.crm_consentimientos (cuenta_id, tipo, otorgado, medio, version_texto, fecha)
+    values (v_cuenta, 'datos_salud', false, 'digital', 'prueba-rls', current_date - 365);
+    perform public.crm_salud_guardar(v_cuenta, '{"alergias": ["prueba"]}');
+    v_hint := 'guardó';
+  exception when others then get stacked diagnostics v_hint = pg_exception_hint;
+  end;
+  reset role;
+  r := r || E'\n' || case when v_hint = 'salud_sin_consentimiento' then 'OK      ' else 'FALLA   ' end
+       || '13.9  negación registrada después con fecha vieja manda → salud_sin_consentimiento · ' || coalesce(v_hint, 'null');
+
+  -- 13.10 Borrar la cuenta como admin: con salud, luego con consentimientos
+  perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
+  set local role authenticated;
+  begin
+    delete from public.crm_cuentas where id = v_cuenta;
+    v := 'borró';
+  exception when others then get stacked diagnostics v = pg_exception_hint;
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  delete from public.crm_salud where cuenta_id = v_cuenta;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
+  set local role authenticated;
+  begin
+    delete from public.crm_cuentas where id = v_cuenta;
+    v := v || ' / borró';
+  exception when others then get stacked diagnostics v_hint = pg_exception_hint; v := v || ' / ' || v_hint;
+  end;
+  reset role;
+  select count(*) into v_n from public.crm_consentimientos where cuenta_id = v_cuenta;
+  r := r || E'\n' || case when v = 'crm_cuenta_con_salud / crm_cuenta_con_consentimientos' and v_n > 0 then 'OK      ' else 'FALLA   ' end
+       || '13.10 admin borra persona con salud y luego con consentimientos → crm_cuenta_con_salud / crm_cuenta_con_consentimientos · '
+       || v || ' / ' || v_n;
 
   perform set_config('request.jwt.claims', '', true);
   perform set_config('rls.res', current_setting('rls.res') || r, true);

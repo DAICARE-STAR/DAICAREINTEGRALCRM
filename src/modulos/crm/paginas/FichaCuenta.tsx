@@ -250,7 +250,7 @@ export default function FichaCuenta() {
           <ConsentimientosPanel
             lista={consent}
             puedeRegistrar={puedeEditar}
-            puedeRevocar={esAdmin || editSalud}
+            puedeRevocar={esAdmin || editSalud || puedeEditar}
             puedeVerArchivo={puedeEditar}
             alCambio={() => void recargarConsent()}
             alNuevo={() => setDialogo('consentimiento')}

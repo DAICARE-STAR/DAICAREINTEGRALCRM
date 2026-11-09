@@ -16,6 +16,9 @@
 - [ ] `aplicar.mjs` y `aplicar.mjs --verificar` sin DIFIERE.
 - [ ] `cuentas-prueba.mjs` y `supabase/pruebas/rls-simulacion.sql` sin FALLA.
 - [ ] Módulos activados con `modulos.mjs`; `--listar` coincide con lo contratado.
+- [ ] Con `crm`: Supabase Vault activo; Settings → API → «Exposed schemas» sin `vault`.
+- [ ] Con `crm`: PostgREST sin `Prefer: tx=rollback` (`db-tx-end` sin `allow-override`; una petición con ese encabezado no debe deshacerse). Con la anulación permitida se podría leer salud sin dejar registro.
+- [ ] Con `crm`: la clave de servicio solo en Netlify y en el gestor de quien instala (lee Vault: PP-R4).
 
 ## Sitio
 

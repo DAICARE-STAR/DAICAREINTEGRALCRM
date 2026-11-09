@@ -21,7 +21,11 @@ describe('vistas del CRM', () => {
     expect(consentimientoVigente([], 'datos_salud')).toBe(false)
     expect(consentimientoVigente([k({})], 'datos_salud')).toBe(true)
     expect(consentimientoVigente([k({ revocado_en: '2026-02-01T00:00:00Z' })], 'datos_salud')).toBe(false)
-    expect(consentimientoVigente([k({}), k({ fecha: '2026-03-01', otorgado: false })], 'datos_salud')).toBe(false)
+    expect(consentimientoVigente([k({}), k({ id: 'y', created_at: '2026-01-02T00:00:00Z', otorgado: false })], 'datos_salud')).toBe(false)
+    // La fecha del documento no decide: manda el registrado más tarde
+    expect(
+      consentimientoVigente([k({ id: 'y', fecha: '2099-12-31', created_at: '2026-01-01T00:00:00Z' }), k({ created_at: '2026-01-02T00:00:00Z', otorgado: false })], 'datos_salud'),
+    ).toBe(false)
     expect(consentimientoVigente([k({ tipo: 'tratamiento_datos' })], 'datos_salud')).toBe(false)
     expect(
       consentimientoVigente([k({ otorgado: false, created_at: '2026-01-01T01:00:00Z' }), k({ created_at: '2026-01-01T02:00:00Z' })], 'datos_salud'),

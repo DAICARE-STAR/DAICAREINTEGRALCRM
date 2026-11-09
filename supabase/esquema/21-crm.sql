@@ -34,12 +34,20 @@
 --   | crm_salud                   | datos de salud cifrados (pgcrypto + clave en Vault); sin   |
 --   |                             | ningún grant para authenticated                            |
 --   | crm_consentimientos         | consentimiento informado (Ley 1581 de 2012, Decreto 1377   |
---   |                             | de 2013); sin update salvo revocar                         |
+--   |                             | de 2013); sin update salvo revocar, sin delete por la API; |
+--   |                             | vigente = el último por created_at                         |
 --   | crm_accesos_salud           | registro de cada lectura, escritura o borrado de salud     |
 --   | crm_salud_leer/guardar/     | única vía a crm_salud: módulo, permiso explícito,          |
 --   | borrar                      | segundo factor (aal2) y registro del acceso                |
---   | bucket crm-consentimientos  | privado, 10 MB, pdf/jpeg/png; lectura y subida con         |
---   |                             | edit_crm                                                   |
+--   | bucket crm-consentimientos  | privado, 10 MB, pdf/jpeg/png; ruta <cuenta_id>/<archivo>;  |
+--   |                             | lectura edit_crm o ver_salud, subida edit_crm, borrado     |
+--   |                             | solo admin                                                 |
+--
+-- Borrado físico de una cuenta: falla si tiene salud (antes crm_salud_borrar)
+-- o consentimientos (se archiva); al borrar una cuenta, contacto o actividad
+-- se suprime su historial y sus vínculos externos y queda solo una fila de
+-- borrado con id, entidad y autor (Ley 1581 art. 8). Los updates sí guardan
+-- antes y después en crm_cambios (retención en docs/seguridad/03-riesgos.md).
 --
 -- Nada de salud va a crm_cambios, audit_log ni crm_buscar (PP-DEC-19).
 -- ============================================================
@@ -75,8 +83,11 @@ begin
      or to_regprocedure('extensions.gen_random_bytes(integer)') is null then
     raise exception '21-crm detenido: falta pgcrypto en el esquema extensions (Database → Extensions → pgcrypto, esquema extensions)';
   end if;
+  -- create_secret por nombre y no por firma: cambia entre 0.2.x y 0.3.x
+  -- (patrón de team-portal, migración 69)
   if to_regclass('vault.decrypted_secrets') is null or to_regclass('vault.secrets') is null
-     or to_regprocedure('vault.create_secret(text,text,text)') is null then
+     or not exists (select 1 from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+                     where n.nspname = 'vault' and p.proname = 'create_secret') then
     raise exception '21-crm detenido: Supabase Vault no está activo. Actívalo en el panel de Supabase: Database → Extensions → supabase_vault, y vuelve a aplicar este archivo';
   end if;
   select n.nspname into v_esquema
@@ -92,10 +103,17 @@ create extension if not exists pg_trgm with schema extensions;
 
 -- La clave se crea una vez y nadie la ve: solo la leen las funciones
 -- security definer de salud desde vault.decrypted_secrets. Rotarla exige
--- re-cifrar crm_salud (no hay rotación automática).
+-- re-cifrar crm_salud (no hay rotación automática). Si falta y crm_salud ya
+-- tiene filas, se aborta: una clave nueva no descifra lo que ya existe.
+-- Llamada posicional (secreto, nombre, descripción): la admiten 0.2.x y 0.3.x.
 do $$
 begin
   if not exists (select 1 from vault.secrets where name = 'crm_salud_clave') then
+    if to_regclass('public.crm_salud') is not null then
+      if exists (select 1 from public.crm_salud) then
+        raise exception '21-crm detenido: falta el secreto crm_salud_clave en Vault y crm_salud tiene datos cifrados con una clave que ya no está. No se crea una clave nueva: restaura el secreto desde la copia de la clave y vuelve a aplicar';
+      end if;
+    end if;
     perform vault.create_secret(encode(extensions.gen_random_bytes(32), 'hex'), 'crm_salud_clave',
                                 'Clave de cifrado de crm_salud (PP-DEC-19). No rotar sin re-cifrar.');
   end if;
@@ -284,7 +302,8 @@ create index if not exists crm_vinculos_externos_entidad_idx on public.crm_vincu
 
 -- ============ 5) Tablas de salud (PP-DEC-19) ============
 create table if not exists public.crm_salud (
-  cuenta_id uuid primary key references public.crm_cuentas (id) on delete cascade,
+  -- restrict: borrar una persona con salud exige antes crm_salud_borrar
+  cuenta_id uuid primary key references public.crm_cuentas (id) on delete restrict,
   datos_cifrados bytea not null,
   version int not null default 1,
   actualizado_por uuid,
@@ -293,9 +312,13 @@ create table if not exists public.crm_salud (
 
 create table if not exists public.crm_consentimientos (
   id uuid primary key default gen_random_uuid(),
-  cuenta_id uuid not null references public.crm_cuentas (id) on delete cascade,
+  -- restrict: el consentimiento es la prueba que el Decreto 1377 obliga a
+  -- conservar; una cuenta con consentimientos se archiva, no se borra
+  cuenta_id uuid not null references public.crm_cuentas (id) on delete restrict,
   tipo text not null constraint crm_consentimientos_tipo_check check (tipo in ('tratamiento_datos', 'datos_salud')),
   otorgado boolean not null,
+  -- No futura: lo exige crm_consentimientos_preparar (un check con
+  -- current_date no es inmutable)
   fecha date not null default current_date,
   medio text not null constraint crm_consentimientos_medio_check check (medio in ('escrito', 'digital', 'verbal_grabado')),
   version_texto text not null constraint crm_consentimientos_version_check check (char_length(btrim(version_texto)) between 1 and 40),
@@ -304,10 +327,26 @@ create table if not exists public.crm_consentimientos (
     check (archivo_ruta is null or archivo_ruta ~ '^[0-9a-f-]{36}/[A-Za-z0-9._-]{1,120}$'),
   registrado_por uuid,
   revocado_en timestamptz,
+  revocado_por uuid,
   created_at timestamptz not null default now()
 );
 
 create index if not exists crm_consentimientos_cuenta_idx on public.crm_consentimientos (cuenta_id, tipo, fecha desc);
+create index if not exists crm_consentimientos_vigente_idx on public.crm_consentimientos (cuenta_id, tipo, created_at desc);
+
+-- Re-aplicación sobre una versión anterior del archivo: mismas reglas sin
+-- duplicar nada
+alter table public.crm_consentimientos add column if not exists revocado_por uuid;
+-- B2: el archivo vive en la carpeta de su cuenta
+alter table public.crm_consentimientos drop constraint if exists crm_consentimientos_archivo_cuenta_check;
+alter table public.crm_consentimientos add constraint crm_consentimientos_archivo_cuenta_check
+  check (archivo_ruta is null or left(archivo_ruta, 37) = cuenta_id::text || '/');
+alter table public.crm_salud drop constraint if exists crm_salud_cuenta_id_fkey;
+alter table public.crm_salud add constraint crm_salud_cuenta_id_fkey
+  foreign key (cuenta_id) references public.crm_cuentas (id) on delete restrict;
+alter table public.crm_consentimientos drop constraint if exists crm_consentimientos_cuenta_id_fkey;
+alter table public.crm_consentimientos add constraint crm_consentimientos_cuenta_id_fkey
+  foreign key (cuenta_id) references public.crm_cuentas (id) on delete restrict;
 
 -- Sin llave foránea a crm_cuentas: el registro sobrevive al borrado de la cuenta
 create table if not exists public.crm_accesos_salud (
@@ -348,9 +387,13 @@ begin
        and exists (select 1 from public.profiles p where p.id = new.responsable_id and p.es_servicio) then
       raise exception 'crm: el responsable no puede ser una cuenta de servicio' using errcode = '23514', hint = 'crm_responsable';
     end if;
-    if tg_op = 'UPDATE' and new.tipo <> 'persona' and old.tipo = 'persona'
-       and exists (select 1 from public.crm_salud s where s.cuenta_id = new.id) then
-      raise exception 'crm: la cuenta tiene datos de salud y debe seguir siendo persona' using errcode = '23514', hint = 'crm_salud_persona';
+    if tg_op = 'UPDATE' and new.tipo <> 'persona' and old.tipo = 'persona' then
+      -- Cierra la carrera con crm_salud_guardar, que bloquea la misma fila
+      perform 1 from public.crm_cuentas c where c.id = new.id for update;
+      -- Mensaje genérico: no revela si hay datos de salud
+      if exists (select 1 from public.crm_salud s where s.cuenta_id = new.id) then
+        raise exception 'crm: esta cuenta no puede cambiar de tipo' using errcode = '23514', hint = 'crm_tipo_bloqueado';
+      end if;
     end if;
   elsif tg_table_name = 'crm_actividades' then
     if tg_op = 'INSERT' then new.autor_id := auth.uid(); else new.autor_id := old.autor_id; end if;
@@ -475,9 +518,20 @@ declare
   v_despues jsonb;
   v_campos text[];
   v_id uuid;
+  v_entidad text;
 begin
-  if tg_op = 'DELETE' then v_id := old.id; else v_id := new.id; end if;
-  if tg_op in ('UPDATE', 'DELETE') then v_antes := to_jsonb(old) - 'updated_at'; end if;
+  if tg_op = 'DELETE' then
+    -- Supresión (Ley 1581 art. 8): se borra el historial y los vínculos
+    -- externos de la entidad; queda solo id, entidad y autor del borrado
+    v_entidad := case tg_table_name when 'crm_cuentas' then 'cuenta' when 'crm_contactos' then 'contacto' else 'actividad' end;
+    delete from public.crm_cambios c where c.entidad = v_entidad and c.entidad_id = old.id;
+    delete from public.crm_vinculos_externos x where x.entidad = v_entidad and x.entidad_id = old.id;
+    insert into public.crm_cambios (entidad, entidad_id, operacion, campos, antes, despues, autor_id)
+    values (v_entidad, old.id, 'delete', '{}', null, null, auth.uid());
+    return old;
+  end if;
+  v_id := new.id;
+  if tg_op = 'UPDATE' then v_antes := to_jsonb(old) - 'updated_at'; end if;
   if tg_op in ('INSERT', 'UPDATE') then v_despues := to_jsonb(new) - 'updated_at'; end if;
 
   if tg_op = 'UPDATE' then
@@ -489,7 +543,7 @@ begin
       into v_antes, v_despues
       from unnest(v_campos) k;
   else
-    select array_agg(k order by k) into v_campos from jsonb_object_keys(coalesce(v_despues, v_antes)) k;
+    select array_agg(k order by k) into v_campos from jsonb_object_keys(v_despues) k;
   end if;
 
   if octet_length(v_antes::text) > 2048 then
@@ -502,43 +556,85 @@ begin
   insert into public.crm_cambios (entidad, entidad_id, operacion, campos, antes, despues, autor_id)
   values (case tg_table_name when 'crm_cuentas' then 'cuenta' when 'crm_contactos' then 'contacto' else 'actividad' end,
           v_id, lower(tg_op), coalesce(v_campos, '{}'), v_antes, v_despues, auth.uid());
-
-  if tg_op = 'DELETE' then return old; end if;
   return new;
 end;
 $$;
 
 revoke execute on function public.crm_registrar_cambio() from public, anon, authenticated;
 
--- Consentimientos: registrado_por sellado; el único cambio admitido es
--- revocar una vez (revocado_en pasa de null a now()).
+-- Consentimientos: registrado_por y created_at (hora del servidor, decide
+-- el vigente) sellados; fecha no futura; el único cambio admitido es
+-- revocar una vez (revocado_en y revocado_por sellados).
 create or replace function public.crm_consentimientos_preparar()
 returns trigger language plpgsql set search_path = public, pg_temp as $$
 begin
   if tg_op = 'INSERT' then
+    if new.fecha is null or new.fecha > current_date + 1 then
+      raise exception 'crm: la fecha del consentimiento no puede ser futura' using errcode = '23514', hint = 'crm_consentimiento_fecha';
+    end if;
     new.registrado_por := auth.uid();
     new.revocado_en := null;
+    new.revocado_por := null;
     new.created_at := now();
     return new;
   end if;
   if old.revocado_en is not null then
     raise exception 'crm: el consentimiento ya está revocado' using errcode = '23514', hint = 'crm_consentimiento_revocado';
   end if;
-  if (to_jsonb(new) - 'revocado_en') is distinct from (to_jsonb(old) - 'revocado_en') then
+  if (to_jsonb(new) - 'revocado_en' - 'revocado_por') is distinct from (to_jsonb(old) - 'revocado_en' - 'revocado_por') then
     raise exception 'crm: un consentimiento solo se revoca' using errcode = '23514', hint = 'crm_consentimiento_inmutable';
   end if;
-  if new.revocado_en is not null then new.revocado_en := now(); end if;
+  if new.revocado_en is not null then
+    new.revocado_en := now();
+    new.revocado_por := auth.uid();
+  else
+    new.revocado_por := null;
+  end if;
   return new;
 end;
 $$;
 
 revoke execute on function public.crm_consentimientos_preparar() from public, anon, authenticated;
 
+-- Borrado físico de una cuenta: las llaves de crm_salud y
+-- crm_consentimientos son restrict; este trigger da antes un error claro sin
+-- revelar contenido. security definer: quien borra no ve crm_salud.
+create or replace function public.crm_cuenta_borrable()
+returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  if exists (select 1 from public.crm_salud s where s.cuenta_id = old.id) then
+    raise exception 'crm: la cuenta no se puede borrar; antes hay que borrar sus datos de salud'
+      using errcode = '23503', hint = 'crm_cuenta_con_salud';
+  end if;
+  if exists (select 1 from public.crm_consentimientos k where k.cuenta_id = old.id) then
+    raise exception 'crm: la cuenta tiene consentimientos que se conservan; archívala en lugar de borrarla'
+      using errcode = '23503', hint = 'crm_cuenta_con_consentimientos';
+  end if;
+  return old;
+end;
+$$;
+
+revoke execute on function public.crm_cuenta_borrable() from public, anon, authenticated;
+
+-- Un contacto que cambia de cuenta se lleva sus actividades. security
+-- definer: quien mueve el contacto puede no ser autor de las actividades.
+create or replace function public.crm_contacto_mover_actividades()
+returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  update public.crm_actividades a set cuenta_id = new.cuenta_id
+   where a.contacto_id = new.id and a.cuenta_id is distinct from new.cuenta_id;
+  return null;
+end;
+$$;
+
+revoke execute on function public.crm_contacto_mover_actividades() from public, anon, authenticated;
+
 -- crm_salud solo para cuentas de tipo persona
 create or replace function public.crm_salud_validar()
 returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
 begin
-  if not exists (select 1 from public.crm_cuentas c where c.id = new.cuenta_id and c.tipo = 'persona') then
+  -- for update: cierra la carrera con un cambio de tipo de la cuenta
+  if not exists (select 1 from public.crm_cuentas c where c.id = new.cuenta_id and c.tipo = 'persona' for update) then
     raise exception 'crm: los datos de salud son solo de una persona' using errcode = '23514', hint = 'crm_salud_persona';
   end if;
   return new;
@@ -562,6 +658,9 @@ create trigger crm_validar_catalogos before insert or update on public.crm_cuent
 drop trigger if exists crm_registrar_cambio on public.crm_cuentas;
 create trigger crm_registrar_cambio after insert or update or delete on public.crm_cuentas
   for each row execute function public.crm_registrar_cambio();
+drop trigger if exists crm_cuenta_borrable on public.crm_cuentas;
+create trigger crm_cuenta_borrable before delete on public.crm_cuentas
+  for each row execute function public.crm_cuenta_borrable();
 drop trigger if exists auditar_cambio on public.crm_cuentas;
 create trigger auditar_cambio after delete on public.crm_cuentas
   for each row execute function public.auditar_cambio();
@@ -581,6 +680,10 @@ create trigger crm_validar_catalogos before insert or update on public.crm_conta
 drop trigger if exists crm_registrar_cambio on public.crm_contactos;
 create trigger crm_registrar_cambio after insert or update or delete on public.crm_contactos
   for each row execute function public.crm_registrar_cambio();
+drop trigger if exists crm_mover_actividades on public.crm_contactos;
+create trigger crm_mover_actividades after update of cuenta_id on public.crm_contactos
+  for each row when (new.cuenta_id is distinct from old.cuenta_id)
+  execute function public.crm_contacto_mover_actividades();
 drop trigger if exists auditar_cambio on public.crm_contactos;
 create trigger auditar_cambio after delete on public.crm_contactos
   for each row execute function public.auditar_cambio();
@@ -605,6 +708,10 @@ create trigger auditar_cambio after insert or update or delete on public.crm_cam
 drop trigger if exists crm_consentimientos_preparar on public.crm_consentimientos;
 create trigger crm_consentimientos_preparar before insert or update on public.crm_consentimientos
   for each row execute function public.crm_consentimientos_preparar();
+-- Auditoría: solo acción e id (auditar_cambio no copia columnas de esta tabla)
+drop trigger if exists auditar_cambio on public.crm_consentimientos;
+create trigger auditar_cambio after insert or update on public.crm_consentimientos
+  for each row execute function public.auditar_cambio();
 
 drop trigger if exists crm_salud_validar on public.crm_salud;
 create trigger crm_salud_validar before insert or update on public.crm_salud
@@ -729,7 +836,8 @@ begin
     raise exception 'crm: los datos de salud exigen segundo factor' using errcode = '42501', hint = 'salud_mfa';
   end if;
 
-  select c.tipo into v_tipo from public.crm_cuentas c where c.id = p_cuenta;
+  -- for update: un cambio de tipo concurrente espera a este guardado
+  select c.tipo into v_tipo from public.crm_cuentas c where c.id = p_cuenta for update;
   if v_tipo is null then
     raise exception 'crm: cuenta no encontrada' using errcode = 'P0002', hint = 'crm_cuenta';
   end if;
@@ -737,11 +845,12 @@ begin
     raise exception 'crm: los datos de salud son solo de una persona' using errcode = '23514', hint = 'crm_salud_persona';
   end if;
 
-  -- El consentimiento vigente es el más reciente de tipo datos_salud
+  -- El vigente es el último registrado (created_at, hora del servidor), no
+  -- el de fecha mayor: fecha la escribe el cliente
   if not coalesce((select k.otorgado and k.revocado_en is null
                      from public.crm_consentimientos k
                     where k.cuenta_id = p_cuenta and k.tipo = 'datos_salud'
-                    order by k.fecha desc, k.created_at desc
+                    order by k.created_at desc, k.id desc
                     limit 1), false) then
     raise exception 'crm: falta el consentimiento de datos de salud' using errcode = '42501', hint = 'salud_sin_consentimiento';
   end if;
@@ -812,12 +921,17 @@ revoke all on table public.crm_cuentas, public.crm_contactos, public.crm_activid
 grant select, insert, update, delete on table public.crm_cuentas, public.crm_contactos, public.crm_actividades,
                                               public.crm_campos_def to authenticated;
 grant select on table public.crm_cambios, public.crm_vinculos_externos, public.crm_accesos_salud to authenticated;
-grant select, insert, delete on table public.crm_consentimientos to authenticated;
+grant select, insert on table public.crm_consentimientos to authenticated;
 grant update (revocado_en) on table public.crm_consentimientos to authenticated;
 grant all on table public.crm_cuentas, public.crm_contactos, public.crm_actividades, public.crm_campos_def,
-                   public.crm_vinculos_externos, public.crm_consentimientos to service_role;
+                   public.crm_vinculos_externos to service_role;
+-- Consentimientos: tampoco la service role los borra (se conservan)
+revoke all on table public.crm_consentimientos from service_role;
+grant select, insert, update on table public.crm_consentimientos to service_role;
 grant select on table public.crm_cambios, public.crm_accesos_salud to service_role;
--- crm_salud: la service role solo ve el texto cifrado; authenticated, nada
+-- crm_salud: authenticated, nada. La service role lee el texto cifrado y,
+-- como la clave de servicio también lee Vault, puede descifrarlo: equivale a
+-- acceso total a la base (riesgo aceptado PP-R4, docs/seguridad/03-riesgos.md)
 grant select on table public.crm_salud to service_role;
 
 -- Cuentas y contactos: leer con app_crm, escribir con edit_crm, borrar admin
@@ -892,8 +1006,9 @@ drop policy if exists crm_vinculos_externos_select on public.crm_vinculos_extern
 create policy crm_vinculos_externos_select on public.crm_vinculos_externos
   for select to authenticated using ((select public.puede_ver_app('crm')));
 
--- Consentimientos: alta con edit_crm; revocar, un administrador o quien
--- tenga edit_salud en sus roles; borrar, solo un administrador
+-- Consentimientos: alta con edit_crm; revocar (derecho del titular, lo
+-- registra quien atiende), edit_crm, un administrador o edit_salud
+-- explícito; nadie los borra por la API ni des-revoca (trigger)
 drop policy if exists crm_consentimientos_select on public.crm_consentimientos;
 create policy crm_consentimientos_select on public.crm_consentimientos
   for select to authenticated using ((select public.puede_ver_app('crm')));
@@ -903,11 +1018,9 @@ create policy crm_consentimientos_insert on public.crm_consentimientos
 drop policy if exists crm_consentimientos_update on public.crm_consentimientos;
 create policy crm_consentimientos_update on public.crm_consentimientos
   for update to authenticated
-  using ((select public.is_admin()) or (select public.crm_perm_explicito('edit_salud')))
-  with check ((select public.is_admin()) or (select public.crm_perm_explicito('edit_salud')));
+  using ((select public.is_admin()) or (select public.has_perm('edit_crm')) or (select public.crm_perm_explicito('edit_salud')))
+  with check ((select public.is_admin()) or (select public.has_perm('edit_crm')) or (select public.crm_perm_explicito('edit_salud')));
 drop policy if exists crm_consentimientos_delete on public.crm_consentimientos;
-create policy crm_consentimientos_delete on public.crm_consentimientos
-  for delete to authenticated using ((select public.is_admin()));
 
 -- Registro de accesos a salud: lo lee un administrador; lo escriben solo
 -- las funciones de salud (sin grant de insert para la API)
@@ -928,9 +1041,11 @@ select public.aplicar_politica_modulo('public.crm_consentimientos', array['crm']
 select public.aplicar_politica_modulo('public.crm_accesos_salud', array['crm']);
 
 -- ============ 10) Bucket privado de consentimientos ============
--- Privado: los archivos solo salen con URL firmada. Carpeta por cuenta
--- (<cuenta_id>/<archivo>). Lectura y subida con edit_crm y el módulo
--- activo; sin update ni delete para la API.
+-- Privado: los archivos solo salen con URL firmada. Ruta <cuenta_id>/<archivo>:
+-- lectura con edit_crm o ver_salud explícito, subida con edit_crm, con el
+-- módulo activo y solo si la primera
+-- carpeta es una cuenta persona existente; borrar, solo un administrador
+-- (supresión); sin update.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types) values
   ('crm-consentimientos', 'crm-consentimientos', false, 10485760, array['application/pdf', 'image/jpeg', 'image/png'])
 on conflict (id) do nothing;
@@ -938,12 +1053,22 @@ on conflict (id) do nothing;
 drop policy if exists crm_consentimientos_leer on storage.objects;
 create policy crm_consentimientos_leer on storage.objects
   for select to authenticated
-  using (bucket_id = 'crm-consentimientos' and (select public.has_modulo('crm')) and (select public.has_perm('edit_crm')));
+  using (bucket_id = 'crm-consentimientos' and (select public.has_modulo('crm'))
+         and ((select public.has_perm('edit_crm')) or (select public.crm_perm_explicito('ver_salud')))
+         and exists (select 1 from public.crm_cuentas c
+                      where c.id::text = (storage.foldername(name))[1] and c.tipo = 'persona'));
 
 drop policy if exists crm_consentimientos_subir on storage.objects;
 create policy crm_consentimientos_subir on storage.objects
   for insert to authenticated
-  with check (bucket_id = 'crm-consentimientos' and (select public.has_modulo('crm')) and (select public.has_perm('edit_crm')));
+  with check (bucket_id = 'crm-consentimientos' and (select public.has_modulo('crm')) and (select public.has_perm('edit_crm'))
+              and exists (select 1 from public.crm_cuentas c
+                           where c.id::text = (storage.foldername(name))[1] and c.tipo = 'persona'));
+
+drop policy if exists crm_consentimientos_borrar on storage.objects;
+create policy crm_consentimientos_borrar on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'crm-consentimientos' and (select public.has_modulo('crm')) and (select public.is_admin()));
 
 -- exigir_mfa en las tablas nuevas (03-mfa)
 select public.aplicar_exigir_mfa();
@@ -971,9 +1096,15 @@ begin
     raise exception '21-crm: tablas sin crear, sin RLS, sin exigir_mfa o sin modulo_crm: %', v;
   end if;
 
-  foreach t in array array['select', 'insert', 'update', 'delete'] loop
+  -- has_any_column_privilege solo admite select, insert, update y references
+  foreach t in array array['select', 'insert', 'update', 'references'] loop
+    if has_any_column_privilege('authenticated', 'public.crm_salud', t)
+       or has_any_column_privilege('anon', 'public.crm_salud', t) then
+      raise exception '21-crm: crm_salud admite % para la API', t;
+    end if;
+  end loop;
+  foreach t in array array['select', 'insert', 'update', 'delete', 'truncate', 'references', 'trigger'] loop
     if has_table_privilege('authenticated', 'public.crm_salud', t)
-       or has_any_column_privilege('authenticated', 'public.crm_salud', t)
        or has_table_privilege('anon', 'public.crm_salud', t) then
       raise exception '21-crm: crm_salud admite % para la API', t;
     end if;
@@ -992,7 +1123,9 @@ begin
      or has_table_privilege('authenticated', 'public.crm_vinculos_externos', 'insert')
      or has_table_privilege('authenticated', 'public.crm_vinculos_externos', 'update')
      or has_table_privilege('authenticated', 'public.crm_vinculos_externos', 'delete')
-     or has_table_privilege('authenticated', 'public.crm_consentimientos', 'update') then
+     or has_table_privilege('authenticated', 'public.crm_consentimientos', 'update')
+     or has_table_privilege('authenticated', 'public.crm_consentimientos', 'delete')
+     or has_table_privilege('service_role', 'public.crm_consentimientos', 'delete') then
     raise exception '21-crm: grants de escritura de más en crm_cambios, crm_accesos_salud, crm_vinculos_externos o crm_consentimientos';
   end if;
 
@@ -1008,6 +1141,32 @@ begin
 
   if not exists (select 1 from vault.secrets where name = 'crm_salud_clave') then
     raise exception '21-crm: falta el secreto crm_salud_clave en Vault';
+  end if;
+  -- La clave actual descifra una fila existente (no se devuelve el contenido)
+  if exists (select 1 from public.crm_salud) then
+    begin
+      perform octet_length(extensions.pgp_sym_decrypt(s.datos_cifrados, public.crm_salud_clave()))
+         from public.crm_salud s limit 1;
+    exception when others then
+      raise exception '21-crm: la clave crm_salud_clave de Vault no descifra crm_salud';
+    end;
+  end if;
+  -- La API no lee Vault (la service role sí: riesgo aceptado PP-R4)
+  if has_table_privilege('anon', 'vault.decrypted_secrets', 'select')
+     or has_table_privilege('authenticated', 'vault.decrypted_secrets', 'select')
+     or has_table_privilege('anon', 'vault.secrets', 'select')
+     or has_table_privilege('authenticated', 'vault.secrets', 'select') then
+    raise exception '21-crm: anon o authenticated pueden leer Vault';
+  end if;
+
+  -- Salud y consentimientos no caen en cascada al borrar la cuenta
+  if exists (select 1 from pg_catalog.pg_constraint k
+              where k.conrelid in ('public.crm_salud'::regclass, 'public.crm_consentimientos'::regclass)
+                and k.contype = 'f' and k.confrelid = 'public.crm_cuentas'::regclass and k.confdeltype <> 'r')
+     or (select count(*) from pg_catalog.pg_constraint k
+          where k.conrelid in ('public.crm_salud'::regclass, 'public.crm_consentimientos'::regclass)
+            and k.contype = 'f' and k.confrelid = 'public.crm_cuentas'::regclass) <> 2 then
+    raise exception '21-crm: crm_salud o crm_consentimientos no tienen on delete restrict hacia crm_cuentas';
   end if;
 
   if not exists (select 1 from pg_catalog.pg_extension e join pg_catalog.pg_namespace n on n.oid = e.extnamespace
@@ -1026,7 +1185,10 @@ begin
 
   if not exists (select 1 from pg_catalog.pg_trigger where tgname = 'crm_registrar_cambio' and tgrelid = 'public.crm_cuentas'::regclass)
      or not exists (select 1 from pg_catalog.pg_trigger where tgname = 'crm_validar_catalogos' and tgrelid = 'public.crm_cuentas'::regclass)
-     or not exists (select 1 from pg_catalog.pg_trigger where tgname = 'crm_validar_campos' and tgrelid = 'public.crm_contactos'::regclass) then
+     or not exists (select 1 from pg_catalog.pg_trigger where tgname = 'crm_validar_campos' and tgrelid = 'public.crm_contactos'::regclass)
+     or not exists (select 1 from pg_catalog.pg_trigger where tgname = 'crm_cuenta_borrable' and tgrelid = 'public.crm_cuentas'::regclass)
+     or not exists (select 1 from pg_catalog.pg_trigger where tgname = 'crm_mover_actividades' and tgrelid = 'public.crm_contactos'::regclass)
+     or not exists (select 1 from pg_catalog.pg_trigger where tgname = 'auditar_cambio' and tgrelid = 'public.crm_consentimientos'::regclass) then
     raise exception '21-crm: faltan los triggers de validación o historial';
   end if;
 end $$;

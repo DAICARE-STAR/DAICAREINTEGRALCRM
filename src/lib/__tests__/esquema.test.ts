@@ -587,9 +587,75 @@ describe('esquema: 21-crm', () => {
     expect(c).toContain('least(greatest(coalesce(p_limite, 50), 1), 200)')
   })
 
-  it('salud no entra al historial ni a la auditoría', () => {
-    expect(sql).not.toMatch(/create\s+trigger\s+\w+[^;]*on\s+public\.crm_(?:salud|consentimientos|accesos_salud)\b[^;]*(?:auditar_cambio|crm_registrar_cambio)/i)
+  it('salud no entra al historial ni a la auditoría; los consentimientos sí se auditan', () => {
+    expect(sql).not.toMatch(/create\s+trigger\s+\w+[^;]*on\s+public\.crm_(?:salud|accesos_salud)\b[^;]*(?:auditar_cambio|crm_registrar_cambio)/i)
+    expect(sql).not.toMatch(/create\s+trigger\s+\w+[^;]*on\s+public\.crm_consentimientos\b[^;]*crm_registrar_cambio/i)
+    expect(sql).toMatch(/create\s+trigger\s+auditar_cambio\s+after\s+insert\s+or\s+update\s+on\s+public\.crm_consentimientos\b/i)
     expect(cuerpo('crm_registrar_cambio')).not.toMatch(/salud/i)
+  })
+
+  it('la verificación no pasa delete a has_any_column_privilege', () => {
+    for (const m of sql.matchAll(/foreach\s+t\s+in\s+array\s+array\[([^\]]*)\]\s+loop([\s\S]*?)end\s+loop;/gi)) {
+      if (/has_any_column_privilege/.test(m[2])) expect(m[1]).not.toMatch(/'delete'|'truncate'|'trigger'/)
+    }
+    for (const m of sql.matchAll(/has_any_column_privilege\([^)]*\)/gi)) expect(m[0]).not.toMatch(/'delete'|'truncate'|'trigger'/)
+  })
+
+  it('salud y consentimientos: on delete restrict y error claro al borrar la cuenta', () => {
+    for (const t of ['crm_salud', 'crm_consentimientos']) {
+      const def = new RegExp(`create\\s+table\\s+if\\s+not\\s+exists\\s+public\\.${t}\\s*\\(([\\s\\S]*?)\\n\\);`, 'i').exec(sql)![1]
+      expect(def, t).toMatch(/references public\.crm_cuentas \(id\) on delete restrict/)
+      expect(def, t).not.toMatch(/on delete cascade/)
+      expect(sql, t).toMatch(new RegExp(`alter table public\\.${t} add constraint ${t}_cuenta_id_fkey\\s+foreign key \\(cuenta_id\\) references public\\.crm_cuentas \\(id\\) on delete restrict;`))
+    }
+    const c = cuerpo('crm_cuenta_borrable')
+    expect(c).toMatch(/hint = 'crm_cuenta_con_salud'/)
+    expect(c).toMatch(/hint = 'crm_cuenta_con_consentimientos'/)
+    expect(sql).toMatch(/create trigger crm_cuenta_borrable before delete on public\.crm_cuentas/)
+  })
+
+  it('Vault: create_secret por nombre, sin firma exacta', () => {
+    expect(sql).not.toMatch(/to_regprocedure\('vault\.create_secret/i)
+    expect(sql).toMatch(/n\.nspname = 'vault' and p\.proname = 'create_secret'/)
+  })
+
+  it('sin clave y con filas en crm_salud aborta en vez de crear otra clave', () => {
+    const bloque = /do \$\$\s*begin\s*if not exists \(select 1 from vault\.secrets where name = 'crm_salud_clave'\) then([\s\S]*?)end \$\$;/.exec(sql)![1]
+    const aborta = bloque.search(/if exists \(select 1 from public\.crm_salud\) then\s+raise exception/)
+    expect(aborta).toBeGreaterThan(-1)
+    expect(aborta).toBeLessThan(bloque.indexOf('vault.create_secret'))
+    expect(sql).toMatch(/pgp_sym_decrypt\(s\.datos_cifrados, public\.crm_salud_clave\(\)\)\)\s+from public\.crm_salud s limit 1/)
+  })
+
+  it('consentimientos: sin delete por la API, vigente por created_at, fecha no futura', () => {
+    expect(sql).not.toMatch(/create\s+policy\s+\w+\s+on\s+public\.crm_consentimientos\s+for\s+delete/i)
+    for (const m of sql.matchAll(/grant\s+([^;]+?)\s+on\s+table\s+([^;]+?)\s+to\s+([^;]+);/gi)) {
+      if (/public\.crm_consentimientos\b/.test(m[2])) expect(m[1], m[0]).not.toMatch(/delete|\ball\b/i)
+    }
+    expect(cuerpo('crm_salud_guardar')).toMatch(/order by k\.created_at desc, k\.id desc/)
+    expect(cuerpo('crm_salud_guardar')).not.toMatch(/order by k\.fecha/)
+    const prep = cuerpo('crm_consentimientos_preparar')
+    expect(prep).toMatch(/new\.fecha > current_date \+ 1/)
+    expect(prep).toMatch(/new\.created_at := now\(\)/)
+    expect(prep).toMatch(/new\.revocado_por := auth\.uid\(\)/)
+  })
+
+  it('bucket: carpeta de una cuenta persona y archivo_ruta en la carpeta de su cuenta', () => {
+    for (const n of ['crm_consentimientos_leer', 'crm_consentimientos_subir']) {
+      const m = new RegExp(`create policy ${n} on storage\\.objects([^;]*);`).exec(sql)![1]
+      expect(m, n).toMatch(/c\.id::text = \(storage\.foldername\(name\)\)\[1\] and c\.tipo = 'persona'/)
+    }
+    expect(sql).toMatch(/create policy crm_consentimientos_leer on storage\.objects[^;]*\(\(select public\.has_perm\('edit_crm'\)\) or \(select public\.crm_perm_explicito\('ver_salud'\)\)\)/)
+    expect(/create policy crm_consentimientos_subir on storage\.objects([^;]*);/.exec(sql)![1]).not.toMatch(/ver_salud/)
+    expect(/create policy crm_consentimientos_update on public\.crm_consentimientos([^;]*);/.exec(sql)![1]).toMatch(/has_perm\('edit_crm'\)/)
+    expect(sql).toMatch(/create policy crm_consentimientos_borrar on storage\.objects\s+for delete to authenticated\s+using \([^;]*public\.is_admin\(\)/)
+    expect(sql).toMatch(/check \(archivo_ruta is null or left\(archivo_ruta, 37\) = cuenta_id::text \|\| '\/'\)/)
+  })
+
+  it('un contacto que cambia de cuenta se lleva sus actividades', () => {
+    expect(sql).toMatch(/create trigger crm_mover_actividades after update of cuenta_id on public\.crm_contactos/)
+    expect(cuerpo('crm_contacto_mover_actividades')).toMatch(/update public\.crm_actividades a set cuenta_id = new\.cuenta_id\s+where a\.contacto_id = new\.id/)
+    expect(funciones(sql).find((x) => x.nombre === 'crm_contacto_mover_actividades')!.definer).toBe(true)
   })
 })
 
