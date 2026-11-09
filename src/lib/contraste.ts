@@ -114,3 +114,24 @@ export function primitivasValidas(valores: unknown, permitidas: readonly string[
   if (!valores || typeof valores !== 'object' || Array.isArray(valores)) return false
   return Object.entries(valores as Record<string, unknown>).every(([k, v]) => permitidas.includes(k) && typeof v === 'string' && HEX.test(v))
 }
+
+export type FallaTema = Falla & { tema: Tema }
+
+// Paleta de una instalación (primitivas redefinidas sobre las de paleta.css)
+// evaluada en los tres temas de temas.css. La usan Administración →
+// Instalación y tools/tema/verificar.mjs: la misma función en los dos lados.
+export function validarTemas(propias: Readonly<Record<string, string>>, paletaCss: string, temasCss: string): { ok: boolean; fallas: FallaTema[] } {
+  const primitivas = new Map(primitivasDe(paletaCss))
+  for (const [k, v] of Object.entries(propias)) primitivas.set(k, v.toLowerCase())
+  const fallas = TEMAS_PORTAL.flatMap((tema) => validarPaleta(primitivas, semanticosDe(temasCss, tema)).fallas.map((f) => ({ ...f, tema })))
+  return { ok: fallas.length === 0, fallas }
+}
+
+// «tema oscuro: --muted sobre --card 3,90:1 (mínimo 4,5:1)»
+export function describirFalla(f: FallaTema): string {
+  const medida = f.ratio === null ? (f.motivo ?? 'sin resolver') : `${f.ratio.toFixed(2).replace('.', ',')}:1`
+  return `tema ${f.tema}: ${f.texto} sobre ${f.fondo} ${medida} (mínimo ${String(f.minimo).replace('.', ',')}:1)`
+}
+
+// Primitivas de color de la hoja: las únicas que una instalación redefine
+export const primitivasDeColor = (paletaCss: string): string[] => [...primitivasDe(paletaCss)].filter(([, v]) => HEX.test(v)).map(([k]) => k)

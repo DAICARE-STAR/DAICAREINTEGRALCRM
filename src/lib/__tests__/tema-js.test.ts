@@ -21,6 +21,7 @@ type Ventana = {
   ptLeerTema?: () => string
   ptAplicarTema?: (t: string) => void
   ptGuardarValores?: (v: Record<string, string> | null) => void
+  ptGuardarDefecto?: (t: string | null) => void
   addEventListener: (tipo: string, fn: (e: { key: string | null }) => void) => void
 }
 
@@ -66,6 +67,19 @@ describe('tema.js', () => {
     expect(cargar({ pt_tema_v1: 'oscuro' }).atributos['data-theme']).toBe('oscuro')
     expect(cargar({ pt_tema_v1: 'enfasis' }).atributos['data-theme']).toBe('claro')
     expect(cargar({ pt_tema_v1: 'marfil' }).window.ptLeerTema?.()).toBe('claro')
+  })
+
+  it('el tema por defecto de la instalación vale sin elección del navegador', () => {
+    expect(cargar({ pt_tema_defecto_v1: 'oscuro' }).atributos['data-theme']).toBe('oscuro')
+    expect(cargar({ pt_tema_defecto_v1: 'oscuro', pt_tema_v1: 'calido' }).atributos['data-theme']).toBe('calido')
+    expect(cargar({ pt_tema_defecto_v1: 'otro' }).atributos['data-theme']).toBe('claro')
+    const { window, atributos, almacen } = cargar()
+    window.ptGuardarDefecto?.('calido')
+    expect(atributos['data-theme']).toBe('calido')
+    expect(almacen.pt_tema_v1).toBeUndefined()
+    window.ptGuardarDefecto?.(null)
+    expect(almacen.pt_tema_defecto_v1).toBeUndefined()
+    expect(atributos['data-theme']).toBe('claro')
   })
 
   it('con caché aplica las primitivas válidas y guarda el tema elegido', () => {

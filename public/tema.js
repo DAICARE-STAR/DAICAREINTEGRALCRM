@@ -17,6 +17,8 @@
   var POR_DEFECTO = 'claro';
   var CLAVE_TEMA = 'pt_tema_v1';
   var CLAVE_VALORES = 'pt_tema_valores_v1';
+  // Tema por defecto de la instalación (N-5): vale si el navegador no eligió uno
+  var CLAVE_DEFECTO = 'pt_tema_defecto_v1';
   // Primitivas de color de src/estilos/paleta.css que una instalación puede
   // redefinir. La prueba exige que coincida con las de la hoja.
   var PRIMITIVAS = [
@@ -31,8 +33,13 @@
 
   function leerTema() {
     var t = null;
-    try { t = localStorage.getItem(CLAVE_TEMA); } catch (e) { /* sin almacenamiento */ }
-    return TEMAS.indexOf(t) < 0 ? POR_DEFECTO : t;
+    var d = null;
+    try {
+      t = localStorage.getItem(CLAVE_TEMA);
+      d = localStorage.getItem(CLAVE_DEFECTO);
+    } catch (e) { /* sin almacenamiento */ }
+    if (TEMAS.indexOf(t) >= 0) return t;
+    return TEMAS.indexOf(d) < 0 ? POR_DEFECTO : d;
   }
 
   function leerValores() {
@@ -79,8 +86,17 @@
     aplicar();
   };
 
+  // Guarda el tema por defecto de la instalación (null lo borra) y repinta
+  window.ptGuardarDefecto = function (t) {
+    try {
+      if (TEMAS.indexOf(t) >= 0) localStorage.setItem(CLAVE_DEFECTO, t);
+      else localStorage.removeItem(CLAVE_DEFECTO);
+    } catch (e) { /* solo esta sesión */ }
+    aplicar();
+  };
+
   aplicar();
   window.addEventListener('storage', function (e) {
-    if (!e.key || e.key === CLAVE_TEMA || e.key === CLAVE_VALORES) aplicar();
+    if (!e.key || e.key === CLAVE_TEMA || e.key === CLAVE_VALORES || e.key === CLAVE_DEFECTO) aplicar();
   });
 })();

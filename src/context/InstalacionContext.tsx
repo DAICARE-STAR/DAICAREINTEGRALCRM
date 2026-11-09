@@ -1,6 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { guardarLogosCache, leerLogosCache, logoDe, logosValidos, SUPABASE_URL, type Logos } from '../lib/instalacion'
+import { aplicarFuentes, fuentesValidas } from '../lib/fuentes'
 import { estaActivo } from '../lib/modulos'
+import { primitivasValidas } from '../lib/contraste'
+import { esTema, guardarTemaPorDefecto, guardarValoresTema } from '../lib/theme'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './AuthContext'
 
@@ -72,7 +75,7 @@ export function InstalacionProvider({ children }: { children: ReactNode }) {
     let vivo = true
     void (async () => {
       const [inst, mods] = await Promise.all([
-        supabase.from('instalacion').select('nombre, nombre_corto, rubro, pais, locale, zona_horaria, moneda_base, logos').maybeSingle(),
+        supabase.from('instalacion').select('nombre, nombre_corto, rubro, pais, locale, zona_horaria, moneda_base, logos, tema, ajustes').maybeSingle(),
         supabase.from('modulos_instalacion').select('slug, activo'),
       ])
       if (!vivo) return
@@ -85,12 +88,18 @@ export function InstalacionProvider({ children }: { children: ReactNode }) {
       const lista = ((mods.data ?? []) as { slug: string; activo: boolean }[]).filter((m) => m.activo).map((m) => m.slug)
       setActivos(lista)
       guardarCache(lista)
-      const fila = inst.error ? null : ((inst.data as (Instalacion & { logos: unknown }) | null) ?? null)
+      const fila = inst.error ? null : ((inst.data as (Instalacion & { logos: unknown; tema: unknown; ajustes: unknown }) | null) ?? null)
       setInstalacion(fila)
       if (fila) {
         const propios = logosValidos(fila.logos, SUPABASE_URL)
         setLogos(propios)
         guardarLogosCache(propios)
+        // Tema de la instalación (N-5): caché de primitivas, tema por defecto
+        // y fuentes; tema.js repinta. La base ya validó el tema (tema_valido).
+        guardarValoresTema(primitivasValidas(fila.tema, window.PT_PRIMITIVAS ?? []) ? fila.tema : null)
+        const nucleo = ((fila.ajustes as Record<string, unknown> | null)?.nucleo ?? {}) as { tema_por_defecto?: unknown; fuentes?: unknown }
+        guardarTemaPorDefecto(esTema(nucleo.tema_por_defecto) ? nucleo.tema_por_defecto : null)
+        void aplicarFuentes(fuentesValidas(nucleo.fuentes, SUPABASE_URL))
       }
       setError(null)
     })()

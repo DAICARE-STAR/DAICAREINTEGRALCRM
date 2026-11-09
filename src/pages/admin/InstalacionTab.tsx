@@ -6,10 +6,12 @@ import { guardarInstalacion, uploadLogoInstalacion } from '../../lib/data'
 import { CLAVES_LOGO, LOGOS, logoDe, logosValidos, SUPABASE_URL, type ClaveLogo, type Logos } from '../../lib/instalacion'
 import { supabase } from '../../lib/supabase'
 import CabeceraAdmin from './CabeceraAdmin'
+import TemaInstalacion from './TemaInstalacion'
 
 // Administración → Instalación (N-4), solo administrador: datos de la
 // empresa y logos (bucket marca). La fila es única (id = 1) y la base
-// valida cada campo con su CHECK (04-instalacion-modulos.sql).
+// valida cada campo con su CHECK (04-instalacion-modulos.sql). La sección
+// Tema (N-5) vive en TemaInstalacion.
 
 interface Fila {
   nombre: string
@@ -23,6 +25,8 @@ interface Fila {
   correo_responsable: string
   contactos: unknown[]
   logos: unknown
+  tema: Record<string, string>
+  ajustes: Record<string, unknown>
 }
 
 type Campo = 'nombre' | 'nombre_corto' | 'rubro' | 'pais' | 'locale' | 'zona_horaria' | 'moneda_base' | 'divisas' | 'correo_responsable' | 'contactos'
@@ -104,6 +108,7 @@ export default function InstalacionTab() {
   const { recargar } = useInstalacion()
   const [campos, setCampos] = useState<Campos | null>(null)
   const [logos, setLogos] = useState<Logos>({})
+  const [temaFila, setTemaFila] = useState<Pick<Fila, 'tema' | 'ajustes'> | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [guardando, setGuardando] = useState(false)
@@ -114,7 +119,7 @@ export default function InstalacionTab() {
     void (async () => {
       const { data, error: e } = await supabase
         .from('instalacion')
-        .select('nombre, nombre_corto, rubro, pais, locale, zona_horaria, moneda_base, divisas, correo_responsable, contactos, logos')
+        .select('nombre, nombre_corto, rubro, pais, locale, zona_horaria, moneda_base, divisas, correo_responsable, contactos, logos, tema, ajustes')
         .eq('id', 1)
         .maybeSingle()
       if (!vivo) return
@@ -125,6 +130,7 @@ export default function InstalacionTab() {
       const fila = data as Fila
       setCampos(aCampos(fila))
       setLogos(logosValidos(fila.logos, SUPABASE_URL))
+      setTemaFila({ tema: fila.tema ?? {}, ajustes: fila.ajustes ?? {} })
     })()
     return () => {
       vivo = false
@@ -240,6 +246,18 @@ export default function InstalacionTab() {
               </tbody>
             </table>
           </div>
+
+          {temaFila && (
+            <TemaInstalacion
+              tema={temaFila.tema}
+              ajustes={temaFila.ajustes}
+              alGuardar={(a, err) => {
+                setAviso(a)
+                setError(err ? mensajeGuardado(err) : null)
+                if (a) recargar()
+              }}
+            />
+          )}
         </>
       )}
     </section>

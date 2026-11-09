@@ -14,9 +14,11 @@ export const TEMAS: readonly { id: Tema; nombre: string }[] = [
 
 declare global {
   interface Window {
+    PT_PRIMITIVAS?: string[]
     ptLeerTema?: () => Tema
     ptAplicarTema?: (t: Tema) => void
     ptGuardarValores?: (valores: Record<string, string> | null) => void
+    ptGuardarDefecto?: (t: Tema | null) => void
   }
 }
 
@@ -47,6 +49,13 @@ export function aplicarTema(tema: Tema): void {
 export function guardarValoresTema(valores: Record<string, string> | null): void {
   if (window.ptGuardarValores) window.ptGuardarValores(valores)
 }
+
+// Tema por defecto de la instalación (vale si el navegador no eligió uno)
+export function guardarTemaPorDefecto(tema: Tema | null): void {
+  if (window.ptGuardarDefecto) window.ptGuardarDefecto(tema)
+}
+
+export const esTema = (t: unknown): t is Tema => TEMAS.some((x) => x.id === t)
 
 // Llamar una vez al arrancar la app, antes de pintar
 export function iniciarTema(): void {
