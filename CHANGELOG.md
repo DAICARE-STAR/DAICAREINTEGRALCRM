@@ -4,7 +4,8 @@ Formato: cada commit a `main` es un Paso `Mayor.Fase.Paso — descripción`. La 
 
 ## 0.2 — CRM nativo (2026-11-09)
 
-- 0.2.1 — Módulos: el registro cambia `directorio` (adaptador de HubSpot sin tablas ni código) por `crm`, el CRM nativo con tablas propias en 21-crm.sql y permisos `app_crm`, `edit_crm`, `ver_salud` y `edit_salud`; los dos de salud entran en la lista solo-admin (shell, funciones y 01-seguridad.sql, ahora catorce claves). Cotizador y Ventas integran `crm`. Fuera la búsqueda de HubSpot de src/lib/search.ts, que no tenía conector. Decisiones PP-DEC-18 y PP-DEC-19 y términos del CRM en el glosario.
+- 0.2.1 — Módulos: el registro cambia `directorio` (adaptador de HubSpot sin tablas ni código) por `crm`, el CRM nativo con tablas propias en 21-crm.sql y permisos `app_crm`, `edit_crm`, `ver_salud` y `edit_salud`; los dos de salud entran en la lista solo-admin (shell, funciones y 01-seguridad.sql, ahora catorce claves). Cotizador y Ventas integran `crm`. Fuera la búsqueda de HubSpot de src/lib/search.ts, que no tenía conector. Decisiones PP-DEC-18 y PP-DEC-19 y términos del CRM en el glosario. (076e2c3)
+- 0.2.2 — CRM: lógica pura en src/modulos/crm/lib/ (tipos; catálogos por instalación con etapas, orígenes, tipos de empresa y relaciones por defecto; validación de campos personalizados con números en formato colombiano y fechas reales; filtros de la lista y parámetros de crm_buscar; CSV RFC 4180 con separador autodetectado y fórmulas neutralizadas; importador con cruce por documento o nombre, vista previa por fila y lotes de 500; exportador y plantilla con ida y vuelta sin cambios) y 33 pruebas. rutas-modulos.test.ts admite una carpeta de módulo que solo trae lib/.
 
 ## 0.1 — Arranque (2026-11-07)
 

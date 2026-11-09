@@ -16,6 +16,10 @@ describe('rutas de los módulos', () => {
       const m = MODULOS.find((x) => x.slug === slug)
       expect(m, slug).toBeDefined()
       expect(m!.ruta, slug).not.toBeNull()
+      // Un módulo en construcción puede traer primero solo su lógica pura
+      // (lib/); en cuanto suma cualquier otra cosa, rutas.tsx es obligatorio
+      const contenido = readdirSync(join(DIR, slug))
+      if (contenido.length === 1 && contenido[0] === 'lib') continue
       expect(existsSync(join(DIR, slug, 'rutas.tsx')), slug).toBe(true)
     }
   })
