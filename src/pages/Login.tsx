@@ -3,7 +3,7 @@ import { createPath, Navigate, useLocation, useNavigate } from 'react-router'
 import { useAuth } from '../context/AuthContext'
 import { esEnlaceInterno } from '../lib/enlaces'
 import { supabaseConfigured } from '../lib/supabase'
-import { NOMBRE_PORTAL } from '../lib/instalacion'
+import { leerLogosCache, logoDe, NOMBRE_PORTAL } from '../lib/instalacion'
 
 export default function Login() {
   const { session, signIn, signOut, loading } = useAuth()
@@ -59,7 +59,7 @@ export default function Login() {
   return (
     <div className="login-wrap">
       <form className="login-card" onSubmit={onSubmit}>
-        <img className="login-logo" src="/brand/logo-banner-transp-440.png" alt="" width={200} height={100} />
+        <img className="login-logo" src={logoDe(leerLogosCache(), 'banner_440')} alt="" width={200} height={100} />
         <h1>{NOMBRE_PORTAL}</h1>
         {!supabaseConfigured && (
           <p className="alert">

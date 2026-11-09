@@ -12,7 +12,9 @@ import type { Permission } from '../types'
 
 const AuditTab = lazy(() => import('./admin/AuditTab'))
 const ConnectorsTab = lazy(() => import('./admin/ConnectorsTab'))
+const InstalacionTab = lazy(() => import('./admin/InstalacionTab'))
 const MembersTab = lazy(() => import('./admin/MembersTab'))
+const ModulosTab = lazy(() => import('./admin/ModulosTab'))
 const NovedadesTab = lazy(() => import('./admin/NovedadesTab'))
 const RolesTab = lazy(() => import('./admin/RolesTab'))
 const UsoTab = lazy(() => import('./admin/UsoTab'))
@@ -20,7 +22,7 @@ const WidgetsTab = lazy(() => import('./admin/WidgetsTab'))
 
 // Pestañas del núcleo; cada módulo activo y visible suma las de su
 // src/modulos/<slug>/rutas.tsx (pestanasAdmin).
-type TabId = 'widgets' | 'connectors' | 'members' | 'roles' | 'uso' | 'registro' | 'novedades'
+type TabId = 'widgets' | 'connectors' | 'members' | 'roles' | 'uso' | 'instalacion' | 'modulos' | 'registro' | 'novedades'
 
 // Quién ve cada sección: un permiso, solo admin o cualquiera que entre (la
 // ruta ya exige al menos uno de los permisos de administración)
@@ -37,6 +39,9 @@ const TABS: { id: TabId; label: string; grupo: string; acceso: Acceso }[] = [
   // Uso del portal por persona: tiempo por app y acciones (migración 73).
   // Seguimiento del equipo: solo admin, por decisión del usuario.
   { id: 'uso', label: 'Uso', grupo: 'Personas', acceso: 'admin' },
+  // Datos de la empresa, logos y tema; módulos en solo lectura (N-4)
+  { id: 'instalacion', label: 'Instalación', grupo: 'Sistema', acceso: 'admin' },
+  { id: 'modulos', label: 'Módulos', grupo: 'Sistema', acceso: 'admin' },
   { id: 'registro', label: 'Registro', grupo: 'Sistema', acceso: 'admin' },
   { id: 'novedades', label: 'Novedades', grupo: 'Novedades', acceso: 'todos' },
 ]
@@ -96,6 +101,8 @@ export default function Admin() {
             {activa.id === 'members' && <MembersTab />}
             {activa.id === 'roles' && <RolesTab />}
             {activa.id === 'uso' && <UsoTab />}
+            {activa.id === 'instalacion' && <InstalacionTab />}
+            {activa.id === 'modulos' && <ModulosTab />}
             {activa.id === 'registro' && <AuditTab />}
             {activa.id === 'novedades' && <NovedadesTab />}
             {deModulos.filter((p) => p.id === activa.id).map((p) => (

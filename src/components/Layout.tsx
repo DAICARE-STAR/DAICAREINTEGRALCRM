@@ -38,7 +38,7 @@ import { shellDe } from '../modulos'
 import { indiceSiguiente } from '../lib/teclado'
 import { useDialogo } from '../lib/useDialogo'
 import { useEsMovil } from '../lib/useEsMovil'
-import { NOMBRE_PORTAL } from '../lib/instalacion'
+import { logoDe, NOMBRE_PORTAL } from '../lib/instalacion'
 
 const NAV_STATE_KEY = 'pt_nav_open_v1'
 
@@ -158,7 +158,7 @@ function NavSection({
 export default function Layout() {
   const { profile, session, signOut, hasPerm } = useAuth()
   const { pathname } = useLocation()
-  const { activos, cargando: cargandoModulos } = useInstalacion()
+  const { activos, cargando: cargandoModulos, logos } = useInstalacion()
   // Con el permiso, no solo activo: sin app_manuales el enlace del aviso
   // lleva a «Módulo no disponible» y el aviso no se podría cerrar
   const conManuales = puedeVerModulo('manuales', profile?.roles ?? null, profile?.permissions ?? null, activos)
@@ -403,7 +403,7 @@ export default function Layout() {
               <path d="M3 6h18M3 12h18M3 18h18" />
             </svg>
           </button>
-          <img src="/brand/logo-banner-transp-440.png" alt={NOMBRE_PORTAL} className="mobile-logo" width={60} height={30} />
+          <img src={logoDe(logos, 'banner_440')} alt={NOMBRE_PORTAL} className="mobile-logo" width={60} height={30} />
           <button
             type="button"
             className="nav-burger topbar-search"
@@ -430,7 +430,7 @@ export default function Layout() {
         >
           <div className="brand">
             <img
-              src={menuCompacto ? '/brand/logo-icon.png' : '/brand/logo-banner-transp-440.png'}
+              src={logoDe(logos, menuCompacto ? 'icono' : 'banner_440')}
               alt={NOMBRE_PORTAL}
               width={menuCompacto ? 36 : 180}
               height={menuCompacto ? 36 : 90}

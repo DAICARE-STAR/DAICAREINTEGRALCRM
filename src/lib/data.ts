@@ -349,6 +349,20 @@ export function uploadAvatar(file: File, userId: string): Promise<string> {
   return uploadSiteImage(file, userId, 'avatares')
 }
 
+// Logo de la instalación: bucket marca, carpeta logos/ (solo un
+// administrador sube; 09-storage-base.sql)
+export function uploadLogoInstalacion(file: File): Promise<string> {
+  return uploadSiteImage(file, 'logos', 'marca')
+}
+
+// Datos de la instalación (fila única id = 1; solo un administrador la
+// cambia por RLS). Un CHECK fallido llega como el código 23514.
+export async function guardarInstalacion(cambios: Record<string, unknown>): Promise<void> {
+  const { data, error } = await supabase.from('instalacion').update(cambios).eq('id', 1).select('id')
+  if (error) throw error
+  assertAffected(data)
+}
+
 // Actualiza el perfil propio (nombre visible, avatar y/o datos de firma
 // del cotizador — migración 31). RLS + trigger garantizan que solo se
 // toca la fila propia y nunca el rol.

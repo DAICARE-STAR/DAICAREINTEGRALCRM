@@ -15,6 +15,7 @@ const STORAGE_SQL = fileURLToPath(new URL('../../../supabase/esquema/09-storage-
 // bucket -> { dueño, funciones de data.ts que suben a él }
 const PERMITIDOS: Record<string, { modulo: string; funciones: string[] }> = {
   avatares: { modulo: 'nucleo', funciones: ['uploadAvatar'] },
+  marca: { modulo: 'nucleo', funciones: ['uploadLogoInstalacion'] },
   blog: { modulo: 'sitio-web', funciones: ['uploadBlogImage', 'uploadBrandLogo', 'uploadProjectImage'] },
 }
 
