@@ -475,14 +475,14 @@ describe('supabase/pruebas/rls-simulacion.sql', () => {
     expect(sinComentarios(sim)).not.toMatch(/\bcommit\b/i)
   })
 
-  it('tiene las secciones 0 a 11 y la 0 lee instalador.cuentas_prueba', () => {
-    for (let n = 0; n <= 11; n++) expect(sim).toContain(`-- ============ ${n}) `)
+  it('tiene las secciones 0 a 13 y la 0 lee instalador.cuentas_prueba', () => {
+    for (let n = 0; n <= 13; n++) expect(sim).toContain(`-- ============ ${n}) `)
     expect(bloques.find((b) => b.startsWith('-- ============ 0) '))).toMatch(/from instalador\.cuentas_prueba where rol = 'qa'/)
   })
 
   it('cada sección después de la 0 se niega a correr suelta', () => {
     const secciones = bloques.filter((b) => /^-- ============ [1-9]\d*\) /.test(b))
-    expect(secciones.length).toBe(11)
+    expect(secciones.length).toBe(13)
     for (const s of secciones) expect(s).toMatch(/current_setting\('rls\.txid', true\) is distinct from txid_current\(\)::text then\s+raise exception/)
   })
 
@@ -520,6 +520,76 @@ describe('supabase/pruebas/rls-simulacion.sql', () => {
     expect(sim).not.toMatch(/luce/i)
     expect(sim).not.toMatch(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z0-9.-]+/)
     expect(sim).not.toMatch(/\p{Extended_Pictographic}/u)
+  })
+})
+
+describe('esquema: 21-crm', () => {
+  const a = archivos.find((x) => x.nombre === '21-crm.sql')!
+  const sql = a.sql
+  const cuerpo = (nombre: string) => new RegExp(`function\\s+public\\.${nombre}\\([^)]*\\)[\\s\\S]*?\\$\\$([\\s\\S]*?)\\$\\$`, 'i').exec(sql)![1]
+
+  it('cada tabla del registro crm lleva aplicar_politica_modulo y se crea en el archivo', async () => {
+    const { tablasDe } = await import('../modulos')
+    const lista = tablasDe('crm')
+    expect(lista.length).toBe(9)
+    for (const t of lista) {
+      expect(tablas(sql), t).toContain(t)
+      expect(sql, t).toMatch(new RegExp(`select\\s+public\\.aplicar_politica_modulo\\('public\\.${t}',\\s*array\\['crm'\\]\\);`, 'i'))
+    }
+    expect(sql.search(/select\s+public\.aplicar_exigir_mfa\(\);/i)).toBeLessThan(sql.lastIndexOf('do $$'))
+  })
+
+  it('ninguna política abre con true', () => {
+    expect(sql).not.toMatch(/using\s*\(\s*true\s*\)/i)
+    expect(sql).not.toMatch(/with\s+check\s*\(\s*true\s*\)/i)
+  })
+
+  it('las políticas de delete exigen is_admin', () => {
+    const del = [...sql.matchAll(/create\s+policy\s+\w+\s+on\s+public\.(crm_\w+)\s+for\s+delete\s+([^;]*);/gi)]
+    expect(del.length).toBeGreaterThan(3)
+    for (const m of del) expect(m[2], m[1]).toMatch(/\(select public\.is_admin\(\)\)/)
+  })
+
+  it('crm_salud no tiene grant ni política para authenticated', () => {
+    for (const m of sql.matchAll(/grant\s+([^;]+?)\s+on\s+table\s+([^;]+?)\s+to\s+([^;]+);/gi)) {
+      if (/public\.crm_salud\b/.test(m[2])) expect(m[3]).not.toMatch(/authenticated|anon/)
+    }
+    expect(sql).not.toMatch(/create\s+policy\s+\w+\s+on\s+public\.crm_salud\b/i)
+  })
+
+  it.each(['crm_salud_leer', 'crm_salud_guardar', 'crm_salud_borrar'])('%s: definer, search_path, revoke, aal2 y registro del acceso', (n) => {
+    const f = funciones(sql).find((x) => x.nombre === n)!
+    expect(f.definer).toBe(true)
+    expect(f.cabecera).toMatch(/set\s+search_path\s*=\s*public,\s*pg_temp/i)
+    expect(revocaA(sql, n, 'public,\\s*anon')).toBe(true)
+    expect(sql).toMatch(new RegExp(`grant\\s+execute\\s+on\\s+function\\s+public\\.${n}\\s*\\([^;]*\\)\\s+to\\s+authenticated;`, 'i'))
+    const c = cuerpo(n)
+    expect(c).toMatch(/coalesce\(\(select auth\.jwt\(\) ->> 'aal'\), ''\) <> 'aal2' then\s+raise exception[^;]*errcode = '42501', hint = 'salud_mfa'/)
+    expect(c).toMatch(/insert into public\.crm_accesos_salud/)
+    // Permiso explícito: has_perm daría true a un administrador por serlo
+    expect(c).toMatch(/public\.crm_perm_explicito\('(?:ver|edit)_salud'\)/)
+    expect(c).not.toMatch(/has_perm\('(?:ver|edit)_salud'\)/)
+  })
+
+  it('crm_perm_explicito no tiene el atajo de admin y guardar exige consentimiento', () => {
+    expect(cuerpo('crm_perm_explicito')).not.toMatch(/'admin'/)
+    expect(cuerpo('crm_salud_guardar')).toMatch(/hint = 'salud_sin_consentimiento'/)
+    expect(cuerpo('crm_salud_borrar')).toMatch(/public\.is_admin\(\) and public\.crm_perm_explicito\('edit_salud'\)/)
+  })
+
+  it('crm_buscar es security invoker y no toca salud', () => {
+    const f = funciones(sql).find((x) => x.nombre === 'crm_buscar')!
+    expect(f.definer).toBe(false)
+    expect(f.cabecera).toMatch(/security\s+invoker/i)
+    const c = cuerpo('crm_buscar')
+    expect(c).not.toMatch(/salud/i)
+    expect(c).toContain(String.raw`replace(replace(replace(nullif(btrim(p_q), ''), '\', '\\'), '%', '\%'), '_', '\_')`)
+    expect(c).toContain('least(greatest(coalesce(p_limite, 50), 1), 200)')
+  })
+
+  it('salud no entra al historial ni a la auditoría', () => {
+    expect(sql).not.toMatch(/create\s+trigger\s+\w+[^;]*on\s+public\.crm_(?:salud|consentimientos|accesos_salud)\b[^;]*(?:auditar_cambio|crm_registrar_cambio)/i)
+    expect(cuerpo('crm_registrar_cambio')).not.toMatch(/salud/i)
   })
 })
 

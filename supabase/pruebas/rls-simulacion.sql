@@ -9,7 +9,7 @@
 -- transacción de la sección 0. Nunca muestra valores de la base: solo
 -- conteos, códigos (SQLSTATE) y nombres de funciones o tablas.
 --
--- Requiere: supabase/esquema 00 a 04 aplicados (05 a 09 para las secciones 8 a 11) y las cuentas de prueba de
+-- Requiere: supabase/esquema 00 a 04 aplicados (05 a 09 para las secciones 8 a 11; 21-crm.sql para la 12 y la 13) y las cuentas de prueba de
 -- node tools/instalar/cuentas-prueba.mjs (instalador.cuentas_prueba con qa,
 -- miembro y admin). Sin una cuenta, sus casos salen OMITIDO.
 --
@@ -33,7 +33,12 @@
 --      widgets sin escritura para un miembro
 --  11) storage: avatar propio sí, ajeno no, marca solo admin, anónimo sin
 --      listado, subida por encima del tope rechazada
--- Las secciones 8 a 11 salen OMITIDO si falta su archivo de 05 a 09.
+--  12) crm: lectura con app_crm, alta con edit_crm, borrado de miembro,
+--      historial, actividad ajena, catálogos, campos y módulo inactivo
+--  13) salud: permiso explícito, aal2, registro de accesos, consentimiento
+--      y crm_salud cerrada a la API
+-- Las secciones 8 a 11 salen OMITIDO si falta su archivo de 05 a 09; la 12
+-- y la 13, si falta 21-crm.sql.
 -- ============================================================
 
 begin;
@@ -1007,6 +1012,256 @@ begin
   r := r || E'\n' || case when v = 'true' then 'OK      ' else 'FALLA   ' end || '11.7  sin límite de almacenamiento (null) → true · ' || v;
   perform set_config('request.jwt.claims', '', true);
 
+  perform set_config('rls.res', current_setting('rls.res') || r, true);
+end $$;
+
+-- ============ 12) CRM: lectura, escritura, borrado, catálogos e historial ============
+-- Activa crm en la transacción (se deshace) con roles de prueba app_crm y
+-- edit_crm para el miembro.
+do $$
+declare
+  r text := '';
+  v text;
+  v_n int;
+  v_cuenta uuid;
+  v_act uuid;
+  v_miembro uuid := nullif(current_setting('rls.miembro'), '')::uuid;
+  v_admin uuid := nullif(current_setting('rls.admin'), '')::uuid;
+begin
+  if current_setting('rls.txid', true) is distinct from txid_current()::text then
+    raise exception 'rls-simulacion: correr el archivo entero de una vez (BEGIN … ROLLBACK), no una sección suelta';
+  end if;
+  if to_regclass('public.crm_cuentas') is null then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 12    crm · falta 21-crm.sql', true);
+    return;
+  end if;
+  if v_miembro is null or v_admin is null then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 12    crm · faltan las cuentas miembro o admin', true);
+    return;
+  end if;
+
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.modulos_instalacion (slug, activo) values ('crm', true)
+  on conflict (slug) do update set activo = true;
+  insert into public.roles (name, permissions) values ('prueba-rls-crm-ver', array['app_crm']);
+  insert into public.roles (name, permissions) values ('prueba-rls-crm-edit', array['app_crm', 'edit_crm']);
+  insert into public.user_roles (user_id, role) values (v_miembro, 'prueba-rls-crm-ver');
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+  set local role authenticated;
+  begin
+    select count(*) into v_n from public.crm_cuentas;
+    v := 'lee';
+  exception when others then v := sqlstate;
+  end;
+  begin
+    insert into public.crm_cuentas (tipo, nombre) values ('persona', 'Prueba RLS lectura');
+    v := v || ' / entró';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  reset role;
+  r := r || E'\n' || case when v = 'lee / 42501' then 'OK      ' else 'FALLA   ' end || '12.1  miembro con app_crm lee y no escribe → lee / 42501 · ' || v;
+
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.user_roles (user_id, role) values (v_miembro, 'prueba-rls-crm-edit');
+  perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+  set local role authenticated;
+  begin
+    insert into public.crm_cuentas (tipo, nombre, documento) values ('persona', 'Prueba RLS', '1.234.567-8') returning id into v_cuenta;
+    v := 'entró';
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  select count(*) into v_n from public.crm_cuentas where id = v_cuenta and created_by = v_miembro and documento = '12345678';
+  r := r || E'\n' || case when v = 'entró' and v_n = 1 then 'OK      ' else 'FALLA   ' end || '12.2  miembro con edit_crm crea una cuenta sellada y normalizada → entró / 1 · ' || v || ' / ' || v_n;
+
+  if v_cuenta is null then
+    perform set_config('request.jwt.claims', '', true);
+    perform set_config('rls.res', current_setting('rls.res') || r || E'\nOMITIDO 12.3-7 crm · no se creó la cuenta de prueba', true);
+    return;
+  end if;
+
+  select count(*) into v_n from public.crm_cambios where entidad = 'cuenta' and entidad_id = v_cuenta and operacion = 'insert';
+  r := r || E'\n' || case when v_n = 1 then 'OK      ' else 'FALLA   ' end || '12.3  crm_cambios recibe la fila del alta → 1 · ' || v_n;
+
+  set local role authenticated;
+  begin
+    delete from public.crm_cuentas where id = v_cuenta;
+    get diagnostics v_n = row_count;
+    v := v_n || ' filas';
+  exception when others then v := sqlstate;
+  end;
+  begin
+    insert into public.crm_cambios (entidad, entidad_id, operacion) values ('cuenta', v_cuenta, 'delete');
+    v := v || ' / entró';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  reset role;
+  r := r || E'\n' || case when v = '0 filas / 42501' then 'OK      ' else 'FALLA   ' end || '12.4  miembro borra la cuenta y escribe crm_cambios → 0 filas / 42501 · ' || v;
+
+  -- Actividad del administrador (auth.uid() lee el claim aunque el rol sea postgres)
+  perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
+  insert into public.crm_actividades (tipo, cuenta_id, asunto) values ('nota', v_cuenta, 'Prueba RLS') returning id into v_act;
+  perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+  set local role authenticated;
+  begin
+    update public.crm_actividades set asunto = 'cambiada' where id = v_act;
+    get diagnostics v_n = row_count;
+    v := v_n || ' filas';
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  r := r || E'\n' || case when v in ('0 filas', '42501') then 'OK      ' else 'FALLA   ' end || '12.5  miembro edita una actividad ajena → 0 filas · ' || v;
+
+  set local role authenticated;
+  begin
+    update public.crm_cuentas set etapa = 'etapa-inventada' where id = v_cuenta;
+    v := 'actualizó';
+  exception when others then v := sqlstate;
+  end;
+  begin
+    update public.crm_cuentas set campos = '{"campo_inexistente": 1}' where id = v_cuenta;
+    v := v || ' / actualizó';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  reset role;
+  r := r || E'\n' || case when v = '23514 / 23514' then 'OK      ' else 'FALLA   ' end || '12.6  etapa inventada y campo no definido → 23514 / 23514 · ' || v;
+
+  perform set_config('request.jwt.claims', '', true);
+  update public.modulos_instalacion set activo = false where slug = 'crm';
+  perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+  set local role authenticated;
+  begin
+    select count(*) into v_n from public.crm_cuentas;
+    v := v_n || ' filas';
+  exception when others then v := sqlstate;
+  end;
+  begin
+    insert into public.crm_cuentas (tipo, nombre) values ('persona', 'Prueba RLS inactivo');
+    v := v || ' / entró';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  reset role;
+  r := r || E'\n' || case when v = '0 filas / 42501' then 'OK      ' else 'FALLA   ' end || '12.7  módulo inactivo: lee y escribe → 0 filas / 42501 · ' || v;
+
+  perform set_config('request.jwt.claims', '', true);
+  update public.modulos_instalacion set activo = true where slug = 'crm';
+  perform set_config('rls.crm_cuenta', v_cuenta::text, true);
+  perform set_config('rls.res', current_setting('rls.res') || r, true);
+end $$;
+
+-- ============ 13) Salud: permiso explícito, segundo factor, consentimiento y registro ============
+do $$
+declare
+  r text := '';
+  v text;
+  v_hint text;
+  v_n int;
+  v_m int;
+  v_cuenta uuid := nullif(current_setting('rls.crm_cuenta', true), '')::uuid;
+  v_miembro uuid := nullif(current_setting('rls.miembro'), '')::uuid;
+  v_admin uuid := nullif(current_setting('rls.admin'), '')::uuid;
+begin
+  if current_setting('rls.txid', true) is distinct from txid_current()::text then
+    raise exception 'rls-simulacion: correr el archivo entero de una vez (BEGIN … ROLLBACK), no una sección suelta';
+  end if;
+  if to_regprocedure('public.crm_salud_leer(uuid)') is null then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 13    salud · falta 21-crm.sql', true);
+    return;
+  end if;
+  if v_cuenta is null or v_miembro is null or v_admin is null then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 13    salud · falta la cuenta de prueba de la sección 12 o las cuentas miembro y admin', true);
+    return;
+  end if;
+
+  -- 13.1 Con edit_crm pero sin ver_salud, aun con aal2
+  perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal2')::text, true);
+  set local role authenticated;
+  begin
+    perform public.crm_salud_leer(v_cuenta);
+    v := 'leyó';
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  r := r || E'\n' || case when v = '42501' then 'OK      ' else 'FALLA   ' end || '13.1  miembro sin ver_salud lee salud → 42501 · ' || v;
+
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.roles (name, permissions) values ('prueba-rls-salud', array['app_crm', 'edit_crm', 'ver_salud', 'edit_salud']);
+  insert into public.user_roles (user_id, role) values (v_miembro, 'prueba-rls-salud');
+
+  -- 13.2 Con el permiso y aal1
+  perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+  set local role authenticated;
+  begin
+    perform public.crm_salud_leer(v_cuenta);
+    v_hint := 'leyó';
+  exception when others then get stacked diagnostics v_hint = pg_exception_hint;
+  end;
+  reset role;
+  r := r || E'\n' || case when v_hint = 'salud_mfa' then 'OK      ' else 'FALLA   ' end || '13.2  con ver_salud y aal1 → salud_mfa · ' || coalesce(v_hint, 'null');
+
+  -- 13.3 Con aal2 lee y deja fila en crm_accesos_salud
+  select count(*) into v_m from public.crm_accesos_salud where cuenta_id = v_cuenta and operacion = 'leer';
+  perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal2')::text, true);
+  set local role authenticated;
+  begin
+    v := public.crm_salud_leer(v_cuenta)::text;
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  select count(*) into v_n from public.crm_accesos_salud where cuenta_id = v_cuenta and operacion = 'leer';
+  r := r || E'\n' || case when v = '{}' and v_n = v_m + 1 then 'OK      ' else 'FALLA   ' end || '13.3  con aal2 lee y queda el acceso → {} / +1 · ' || v || ' / +' || (v_n - v_m);
+
+  -- 13.4 Guardar sin consentimiento
+  set local role authenticated;
+  begin
+    perform public.crm_salud_guardar(v_cuenta, '{"alergias": ["prueba"]}');
+    v_hint := 'guardó';
+  exception when others then get stacked diagnostics v_hint = pg_exception_hint;
+  end;
+  reset role;
+  r := r || E'\n' || case when v_hint = 'salud_sin_consentimiento' then 'OK      ' else 'FALLA   ' end || '13.4  guardar sin consentimiento → salud_sin_consentimiento · ' || coalesce(v_hint, 'null');
+
+  -- 13.5 Con consentimiento guarda cifrado y lee lo mismo (no se muestra el valor)
+  set local role authenticated;
+  begin
+    insert into public.crm_consentimientos (cuenta_id, tipo, otorgado, medio, version_texto)
+    values (v_cuenta, 'datos_salud', true, 'digital', 'prueba-rls');
+    perform public.crm_salud_guardar(v_cuenta, '{"alergias": ["prueba"]}');
+    v := (public.crm_salud_leer(v_cuenta) = '{"alergias": ["prueba"]}'::jsonb)::text;
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  r := r || E'\n' || case when v = 'true' then 'OK      ' else 'FALLA   ' end || '13.5  con consentimiento guarda y lee lo mismo → true · ' || v;
+
+  -- 13.6 Select directo a crm_salud como authenticated
+  set local role authenticated;
+  begin
+    select count(*) into v_n from public.crm_salud;
+    v := v_n || ' filas';
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  r := r || E'\n' || case when v = '42501' then 'OK      ' else 'FALLA   ' end || '13.6  select directo a crm_salud → 42501 · ' || v;
+
+  -- 13.7 Admin sin ver_salud en sus roles
+  perform set_config('request.jwt.claims', '', true);
+  if exists (select 1 from public.user_roles ur join public.roles ro on ro.name = ur.role
+              where ur.user_id = v_admin and 'ver_salud' = any (ro.permissions)) then
+    r := r || E'\nOMITIDO 13.7  admin sin ver_salud · la cuenta admin tiene ver_salud en un rol';
+  else
+    perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
+    set local role authenticated;
+    begin
+      perform public.crm_salud_leer(v_cuenta);
+      v := 'leyó';
+    exception when others then v := sqlstate;
+    end;
+    reset role;
+    r := r || E'\n' || case when v = '42501' then 'OK      ' else 'FALLA   ' end || '13.7  admin sin ver_salud lee salud → 42501 · ' || v;
+  end if;
+
+  perform set_config('request.jwt.claims', '', true);
   perform set_config('rls.res', current_setting('rls.res') || r, true);
 end $$;
 
