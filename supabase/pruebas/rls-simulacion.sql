@@ -9,7 +9,7 @@
 -- transacción de la sección 0. Nunca muestra valores de la base: solo
 -- conteos, códigos (SQLSTATE) y nombres de funciones o tablas.
 --
--- Requiere: supabase/esquema 00 a 04 aplicados (05 a 09 para las secciones 8 a 11; 21-crm.sql para la 12 y la 13) y las cuentas de prueba de
+-- Requiere: supabase/esquema 00 a 04 aplicados (05 a 09 para las secciones 8 a 11, con 06b para el caso 9.7; 21-crm.sql para la 12 y la 13, con 21b para el caso 13.9) y las cuentas de prueba de
 -- node tools/instalar/cuentas-prueba.mjs (instalador.cuentas_prueba con qa,
 -- miembro y admin). Sin una cuenta, sus casos salen OMITIDO.
 --

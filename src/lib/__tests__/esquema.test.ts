@@ -667,6 +667,72 @@ describe('esquema: 21-crm', () => {
   })
 })
 
+describe('esquema: correcciones con letra (06b, 21b)', () => {
+  const de = (nombre: string) => archivos.find((a) => a.nombre === nombre)
+
+  // Postgres rechaza una cota de repetición mayor de 255 (SQLSTATE 2201B) y
+  // lo hace al evaluar la expresión, no al crear el check: se ve aquí.
+  // Devuelve las cotas {n} o {n,m} con algún número mayor de 255 dentro del
+  // literal que sigue a ~, ~*, !~ o !~*.
+  const cotasInvalidas = (sql: string) =>
+    [...sql.matchAll(/~\*?\s*E?'((?:[^']|'')*)'/g)].flatMap((m) =>
+      [...m[1].matchAll(/\{(\d+)(?:,(\d*))?\}/g)].filter((c) => Number(c[1]) > 255 || Number(c[2] ?? 0) > 255).map((c) => c[0]),
+    )
+
+  it('el lector de cotas encuentra las mayores de 255 y deja pasar las demás', () => {
+    expect(cotasInvalidas(`check (a ~ '^x{1,1000}$')`)).toEqual(['{1,1000}'])
+    expect(cotasInvalidas(`where a !~* '^x{256}y{2,}z{0,255}$'`)).toEqual(['{256}'])
+    expect(cotasInvalidas(`check (a ~ '^[0-9a-f]{64}$' and b ~ '^x{1,255}$')`)).toEqual([])
+  })
+
+  it.each(archivos.map((a) => [a.nombre, a] as const))('%s no usa cotas de repetición mayores de 255 en una expresión regular', (_n, a) => {
+    // Excepción única: 06-avisos.sql está aplicado y no se edita; lo corrige 06b
+    if (a.nombre === '06-avisos.sql') expect(cotasInvalidas(a.sql)).toEqual(['{1,1000}'])
+    else expect(cotasInvalidas(a.sql)).toEqual([])
+  })
+
+  it('06b existe, va después de 06 y redefine el check del endpoint con el largo fuera de la expresión', () => {
+    const nombres = archivos.map((a) => a.nombre)
+    expect(nombres.indexOf('06b-avisos-endpoint.sql')).toBe(nombres.indexOf('06-avisos.sql') + 1)
+    const sql = de('06b-avisos-endpoint.sql')!.sql
+    const quita = sql.indexOf('alter table public.push_subscriptions drop constraint if exists push_subscriptions_endpoint_https;')
+    const crea = sql.indexOf(
+      "alter table public.push_subscriptions add constraint push_subscriptions_endpoint_https\n  check (endpoint ~ '^https://[^[:space:]]+$' and char_length(endpoint) <= 1008);",
+    )
+    expect(quita).toBeGreaterThan(-1)
+    expect(crea).toBeGreaterThan(quita)
+    expect(sql).toMatch(/to_regclass\('public\.push_subscriptions'\) is null then\s+raise exception '06b-avisos-endpoint detenido: falta 06-avisos\.sql'/)
+    // La verificación evalúa el check guardado: un patrón inválido aborta el archivo
+    const verificacion = sql.slice(sql.lastIndexOf('do $$'))
+    expect(verificacion).toMatch(/pg_get_expr\(k\.conbin, k\.conrelid\)/)
+    expect(verificacion).toMatch(/execute 'select bool_and\(\(' \|\| v_check \|\| '\) = t\.esperado\)/)
+    expect(verificacion).toContain("'https://push.ejemplo.test/x'")
+  })
+
+  it('21b redefine crm_consentimientos_preparar igual que 21 salvo el reloj: clock_timestamp() en created_at y revocado_en', () => {
+    const definicion = (sql: string) => /create or replace function public\.crm_consentimientos_preparar\(\)[\s\S]*?\$\$;/.exec(sql)![0]
+    const original = definicion(de('21-crm.sql')!.sql)
+    const nueva = definicion(de('21b-crm-consentimiento-reloj.sql')!.sql)
+    expect(original.match(/now\(\)/g)?.length).toBe(2)
+    expect(nueva).toBe(original.split('now()').join('clock_timestamp()'))
+    expect(nueva).toContain('new.created_at := clock_timestamp();')
+    expect(nueva).toContain('new.revocado_en := clock_timestamp();')
+    const sql = de('21b-crm-consentimiento-reloj.sql')!.sql
+    expect(funciones(sql).map((f) => [f.nombre, f.definer, f.esTrigger])).toEqual([['crm_consentimientos_preparar', false, true]])
+    expect(sql).toMatch(/to_regprocedure\('public\.crm_consentimientos_preparar\(\)'\) is null then\s+raise exception '21b-crm-consentimiento-reloj detenido: falta 21-crm\.sql'/)
+    expect(sql.slice(sql.lastIndexOf('do $$'))).toMatch(/position\('now\(\)' in v_src\) > 0/)
+  })
+
+  it('una corrección con letra de un módulo lleva el número del archivo de su módulo', async () => {
+    const { MODULOS } = await import('../modulos')
+    const numeros = new Set(MODULOS.flatMap((m) => (m.sql ? [m.sql.slice(0, 2)] : [])))
+    for (const a of archivos) {
+      const m = /^(\d{2})[a-z]-/.exec(a.nombre)
+      if (m && Number(m[1]) > 9) expect(numeros.has(m[1]), a.nombre).toBe(true)
+    }
+  })
+})
+
 describe('exigir_mfa restrictiva en las comprobaciones', () => {
   it('verificar.sql y seguridad_resumen() solo dan por buena una exigir_mfa restrictiva', () => {
     const verificar = readFileSync(CARPETA + 'verificar.sql', 'utf8')

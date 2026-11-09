@@ -12,10 +12,14 @@
 // El registro src/lib/modulos.ts manda: un módulo desconocido o planeado no
 // se activa, una dependencia inactiva lo impide y un dependiente activo
 // impide desactivar (salvo --cascada, que desactiva del más lejano al
-// propio). Al activar, si el módulo tiene archivo SQL y no figura en
-// instalador.esquema_aplicado, se aplica con aplicar.mjs --archivo. Sin
-// --limites, un módulo nuevo recibe los límites por defecto (PP-LIM).
-// --limites fusiona con los vigentes: una clave con null queda sin límite.
+// propio). Al activar se aplican con aplicar.mjs --archivo, en orden, los
+// archivos del módulo (el de su Modulo.sql y las correcciones con letra del
+// mismo número: 21-crm.sql, 21b-…) que no figuren en
+// instalador.esquema_aplicado; también si el módulo ya estaba activo, así
+// --activar sobre una instalación hecha aplica las correcciones pendientes.
+// --listar las avisa por módulo activo. Sin --limites, un módulo nuevo
+// recibe los límites por defecto (PP-LIM). --limites fusiona con los
+// vigentes: una clave con null queda sin límite.
 //
 // Salidas: 0 bien, 1 rechazado por el registro o fallo de SQL, 2 no se pudo
 // (falta la variable, opción mala, falta 04 o el archivo del módulo).
@@ -24,7 +28,7 @@ import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { main as aplicarMain } from './aplicar.mjs'
-import { CARPETA_ESQUEMA, VARIABLE_URL, crearCliente as crearClienteReal, leerUrlBase, ocultarUrl } from './comun.mjs'
+import { CARPETA_ESQUEMA, VARIABLE_URL, crearCliente as crearClienteReal, leerUrlBase, listarArchivosEsquema, numeroDe, ocultarUrl } from './comun.mjs'
 import { MODULOS, NUCLEO, moduloPorSlug, validarActivacion, validarDesactivacion, validarLimites } from '../../src/lib/modulos.ts'
 
 // PP-LIM: lo que no figura aquí queda sin límite
@@ -92,6 +96,14 @@ export function leerArgumentos(argv) {
 
 const texto = (v) => JSON.stringify(v ?? {})
 
+// Archivos de un módulo en orden de aplicación: el de Modulo.sql y las
+// correcciones con letra de su mismo número
+export function archivosDeModulo(modulo, carpeta = CARPETA_ESQUEMA) {
+  if (!modulo?.sql) return []
+  const numero = numeroDe(modulo.sql)
+  return listarArchivosEsquema(carpeta).filter((n) => numeroDe(n) === numero)
+}
+
 export async function main(argv = process.argv.slice(2), opciones = {}) {
   const {
     env = process.env,
@@ -151,12 +163,20 @@ export async function main(argv = process.argv.slice(2), opciones = {}) {
     const filas = await cliente.consultar(CONSULTA_FILAS)
     const porSlug = new Map(filas.map((f) => [f.slug, f]))
     const activos = filas.filter((f) => f.activo).map((f) => f.slug)
+    const pendientesDe = async (m) => {
+      const pendientes = []
+      for (const n of archivosDeModulo(m, carpeta)) {
+        if (!(await cliente.consultar(CONSULTA_APLICADO, [n])).length) pendientes.push(n)
+      }
+      return pendientes
+    }
 
     if (o.accion === 'listar') {
       for (const m of MODULOS) {
         const f = porSlug.get(m.slug)
         const estado = m.estado === 'planeado' ? 'planeado' : f?.activo || m.slug === NUCLEO ? 'activo' : 'inactivo'
-        log(`${m.slug} · ${estado}${f ? ` · límites ${texto(f.limites)}` : ''}`)
+        const pendientes = estado === 'activo' ? await pendientesDe(m) : []
+        log(`${m.slug} · ${estado}${f ? ` · límites ${texto(f.limites)}` : ''}${pendientes.length ? ` · correcciones pendientes: ${pendientes.join(', ')}` : ''}`)
       }
       for (const f of filas) if (!moduloPorSlug(f.slug)) log(`${f.slug} · fuera del registro · ${f.activo ? 'activo' : 'inactivo'}`)
       return 0
@@ -172,10 +192,10 @@ export async function main(argv = process.argv.slice(2), opciones = {}) {
         error(`OMITIDO falta supabase/esquema/${modulo.sql}: el módulo ${o.slug} todavía no tiene su archivo`)
         return 2
       }
-      if (rutaSql && !(await cliente.consultar(CONSULTA_APLICADO, [modulo.sql])).length) {
-        const codigo = await aplicarArchivo(resolve(rutaSql))
+      for (const n of await pendientesDe(modulo)) {
+        const codigo = await aplicarArchivo(resolve(join(carpeta, n)))
         if (codigo !== 0) {
-          error(`DIFIERE no se aplicó ${modulo.sql}: el módulo ${o.slug} sigue inactivo`)
+          error(`DIFIERE no se aplicó ${n}: el módulo ${o.slug} ${activos.includes(o.slug) ? 'queda con esa corrección pendiente' : 'sigue inactivo'}`)
           return 1
         }
       }

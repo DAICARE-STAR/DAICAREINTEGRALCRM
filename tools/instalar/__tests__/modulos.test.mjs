@@ -1,5 +1,6 @@
 // Script de módulos con un cliente falso: dependencias, cascada, límites,
-// el SQL del módulo una sola vez y la cadena de conexión fuera de la salida.
+// el SQL del módulo una sola vez, sus correcciones con letra en orden y la
+// cadena de conexión fuera de la salida.
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -124,6 +125,46 @@ describe('modulos.mjs: activar', () => {
     expect(segunda.escritas(ACTIVAR_MODULO)).toEqual([['chat', '{}']])
   })
 
+  it('aplica en orden el archivo del módulo y sus correcciones con letra, y solo las del mismo número', async () => {
+    writeFileSync(join(carpeta, '21-crm.sql'), 'select 1;\n')
+    writeFileSync(join(carpeta, '21c-crm-otra.sql'), 'select 3;\n')
+    writeFileSync(join(carpeta, '21b-crm-correccion.sql'), 'select 2;\n')
+    writeFileSync(join(carpeta, '22-catalogo.sql'), 'select 1;\n')
+    const r = await correr(['--activar', 'crm'])
+    expect(r.codigo).toBe(0)
+    expect(r.aplicadas).toEqual(['21-crm.sql', '21b-crm-correccion.sql', '21c-crm-otra.sql'].map((n) => join(carpeta, n)))
+    expect(r.escritas(INSERT_MODULO)).toEqual([['crm', '{}']])
+    expect(r.salida).toContain('OK crm activo')
+  })
+
+  it('un módulo ya activo con su archivo aplicado y una corrección pendiente aplica solo la corrección', async () => {
+    writeFileSync(join(carpeta, '21-crm.sql'), 'select 1;\n')
+    writeFileSync(join(carpeta, '21b-crm-correccion.sql'), 'select 2;\n')
+    const config = { filas: [fila('nucleo'), fila('crm')], aplicados: ['21-crm.sql'] }
+    const r = await correr(['--activar', 'crm'], config)
+    expect(r.codigo).toBe(0)
+    expect(r.aplicadas).toEqual([join(carpeta, '21b-crm-correccion.sql')])
+    expect(r.escritas(ACTIVAR_MODULO)).toEqual([['crm', '{}']])
+    expect(r.escritas(INSERT_MODULO)).toEqual([])
+    expect(r.salida).toContain('OK crm activo')
+
+    const alDia = await correr(['--activar', 'crm'], { ...config, aplicados: ['21-crm.sql', '21b-crm-correccion.sql'] })
+    expect(alDia.codigo).toBe(0)
+    expect(alDia.aplicadas).toEqual([])
+    expect(alDia.salida).toContain('OK crm activo')
+  })
+
+  it('si una corrección falla se detiene ahí: no aplica las siguientes y sale con 1', async () => {
+    writeFileSync(join(carpeta, '21-crm.sql'), 'select 1;\n')
+    writeFileSync(join(carpeta, '21b-crm-correccion.sql'), 'select 2;\n')
+    writeFileSync(join(carpeta, '21c-crm-otra.sql'), 'select 3;\n')
+    const r = await correr(['--activar', 'crm'], { filas: [fila('nucleo'), fila('crm')], aplicados: ['21-crm.sql'], codigoAplicar: 1 })
+    expect(r.codigo).toBe(1)
+    expect(r.aplicadas).toEqual([join(carpeta, '21b-crm-correccion.sql')])
+    expect(r.errores.join('\n')).toMatch(/no se aplicó 21b-crm-correccion\.sql: el módulo crm queda con esa corrección pendiente/)
+    expect(r.escritas(ACTIVAR_MODULO)).toEqual([])
+  })
+
   it('si el SQL del módulo falla, la fila no se escribe y sale con 1', async () => {
     const r = await correr(['--activar', 'chat'], { codigoAplicar: 1 })
     expect(r.codigo).toBe(1)
@@ -211,6 +252,20 @@ describe('modulos.mjs: límites y listado', () => {
     expect(r.salida).toContain('chat · inactivo · límites {}')
     expect(r.salida).toContain('inventario · planeado')
     expect(r.salida).toContain('viejo · fuera del registro · activo')
+  })
+
+  it('--listar avisa las correcciones pendientes de un módulo activo y no las de uno inactivo', async () => {
+    writeFileSync(join(carpeta, '21-crm.sql'), 'select 1;\n')
+    writeFileSync(join(carpeta, '21b-crm-correccion.sql'), 'select 2;\n')
+    writeFileSync(join(carpeta, '11b-chat-correccion.sql'), 'select 2;\n')
+    const filas = [fila('nucleo'), fila('crm'), fila('chat', false)]
+    const r = await correr(['--listar'], { filas, aplicados: ['21-crm.sql', '11-chat.sql'] })
+    expect(r.codigo).toBe(0)
+    expect(r.salida).toContain('crm · activo · límites {} · correcciones pendientes: 21b-crm-correccion.sql')
+    expect(r.salida).toContain('chat · inactivo · límites {}')
+    expect(r.aplicadas).toEqual([])
+    const alDia = await correr(['--listar'], { filas, aplicados: ['21-crm.sql', '21b-crm-correccion.sql'] })
+    expect(alDia.salida).toContain('crm · activo · límites {}')
   })
 })
 
