@@ -1,5 +1,6 @@
 import { useEffect, useId, useState, type FormEvent } from 'react'
 import { logAction } from '../lib/audit'
+import { NOMBRE_PORTAL } from '../lib/instalacion'
 import { supabase } from '../lib/supabase'
 import Dialogo from './Dialogo'
 import InfoI from './InfoI'
@@ -55,7 +56,7 @@ export default function MfaModal({ onClose }: { onClose: () => void }) {
     setError(null)
     const { data, error: err } = await supabase.auth.mfa.enroll({
       factorType: 'totp',
-      friendlyName: 'Team Portal del equipo',
+      friendlyName: NOMBRE_PORTAL,
     })
     setBusy(false)
     if (err || !data) {

@@ -67,7 +67,7 @@ export function destinoAviso(ev: { title: string }, asistentes: Asistente[]): De
 // Nombre visible de la instalación en los correos (el mismo VITE_PORTAL_NOMBRE
 // del shell; Netlify lo pasa también a las funciones)
 export function nombrePortal(): string {
-  return process.env.VITE_PORTAL_NOMBRE?.trim() || 'Portal del equipo'
+  return process.env.VITE_PORTAL_NOMBRE?.trim() || 'TailorSuite'
 }
 
 export function escHtml(s: string): string {

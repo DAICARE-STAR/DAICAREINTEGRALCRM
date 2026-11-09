@@ -8,7 +8,7 @@ Cada instalación (un cliente) tiene su `.env` local en el PC de quien instala y
 | `VITE_SUPABASE_ANON_KEY` | Pública | Netlify y `.env` | Núcleo: clave anónima (la RLS protege) |
 | `VITE_VAPID_PUBLIC_KEY` | Pública | Netlify y `.env` | Avisos push: suscripción del navegador |
 | `VAPID_PUBLIC_KEY` | Pública | Netlify | Avisos push: la misma clave para las funciones |
-| `VITE_PORTAL_NOMBRE` | Pública | Netlify y `.env` | Nombre visible; vacío es «Portal del equipo» |
+| `VITE_PORTAL_NOMBRE` | Pública | Netlify y `.env` | Nombre visible; vacío es «TailorSuite» |
 | `SUPABASE_SERVICE_ROLE_KEY` | Secreta | Netlify y `.env` de quien instala | Funciones y `cuentas-prueba.mjs` |
 | `SUPABASE_DB_URL` | Secreta | Solo el `.env` de quien instala | `aplicar.mjs`, `modulos.mjs`, `cuentas-prueba.mjs`; nunca en Netlify |
 | `GEMINI_API_KEY` | Secreta | Netlify | Módulo IA (PP-DEC-03), con tope de gasto |

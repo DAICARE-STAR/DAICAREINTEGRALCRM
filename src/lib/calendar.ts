@@ -1027,7 +1027,7 @@ export function contenidoIcs(ev: CalendarEvent): string {
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//Portal del equipo//ES',
+    'PRODID:-//TailorSuite//ES',
     'BEGIN:VEVENT',
     `UID:${ev.id}@portal.invalid`,
     `DTSTAMP:${dt(ev.updated_at)}`,

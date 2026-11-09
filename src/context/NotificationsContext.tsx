@@ -170,7 +170,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
 
   const unread = mine.length + radar.length
 
-  // El título de la pestaña refleja lo pendiente: «(3) Portal del equipo …»
+  // El título de la pestaña refleja lo pendiente: «(3) TailorSuite …»
   useEffect(() => {
     document.title = unread > 0 ? `(${unread}) ${BASE_TITLE}` : BASE_TITLE
     return () => {

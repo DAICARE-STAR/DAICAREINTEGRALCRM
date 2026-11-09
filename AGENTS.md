@@ -3,7 +3,7 @@
 Instrucciones para cualquier IA (Claude, Codex, Cursor, Gemini) que trabaje en este proyecto. Claude las carga desde `CLAUDE.md`; las demás leen este archivo directamente.
 
 - Área: personal · Tipo: portal · Creado: 2026-11-07 · Sigla de decisiones: PP
-- Qué es: ERP modular para pymes nacido del Team Portal: shell React, Supabase y Netlify Functions, una instalación por cliente con módulos a la carta. Nombre provisional (PP-DEC-12); nombre visible por defecto «Portal del equipo».
+- Qué es: ERP modular para pymes nacido del Team Portal: shell React, Supabase y Netlify Functions, una instalación por cliente con módulos a la carta. Nombre: TailorSuite (PP-DEC-17); es también el nombre visible por defecto si la instalación no define `VITE_PORTAL_NOMBRE`.
 
 ## Reglas generales
 

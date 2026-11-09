@@ -10,7 +10,7 @@ self.addEventListener('push', function (event) {
     data = { body: event.data ? event.data.text() : '' }
   }
   event.waitUntil(
-    self.registration.showNotification(data.title || 'Portal del equipo', {
+    self.registration.showNotification(data.title || 'TailorSuite', {
       body: data.body || 'Hay novedades en el portal.',
       icon: '/brand/logotipo-cuadrado.png',
       badge: '/brand/logotipo-cuadrado.png',
