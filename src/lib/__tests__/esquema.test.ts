@@ -107,6 +107,14 @@ describe('esquema consolidado: tablas', () => {
     }
   })
 
+  it('00: quita EXECUTE a la función de plataforma rls_auto_enable() solo si es de event trigger, antes de verificar', () => {
+    const base = archivos.find((a) => a.nombre === '00-base.sql')!.sql
+    const revoca = base.indexOf('revoke execute on function public.rls_auto_enable() from public, anon, authenticated')
+    expect(revoca).toBeGreaterThan(-1)
+    expect(base).toMatch(/prorettype = 'pg_catalog\.event_trigger'::regtype/)
+    expect(revoca).toBeLessThan(base.indexOf('funciones security definer ejecutables por anon'))
+  })
+
   it('roles trae funcion con su lista cerrada y un rol por función', () => {
     const base = archivos.find((a) => a.nombre === '00-base.sql')!.sql
     expect(base).toMatch(/funcion\s+text\s+constraint\s+roles_funcion_check\s+check\s*\(funcion is null or funcion in \('aviso_leads', 'aviso_perdidas', 'qa'\)\)/i)

@@ -426,6 +426,21 @@ create policy "gestores administran conectores"
 
 notify pgrst, 'reload schema';
 
+-- ============ 8) Función de plataforma de Supabase ============
+-- Un proyecto creado con «Enable automatic RLS» trae en public la función
+-- rls_auto_enable(), security definer y con EXECUTE para todos. Solo la usa
+-- su event trigger, que no revisa EXECUTE: se le quita a la API. Solo se toca
+-- si es de verdad una función de event trigger; cualquier otra con ese
+-- nombre la frena la verificación de abajo.
+do $$
+begin
+  if exists (select 1 from pg_catalog.pg_proc p
+              where p.oid = to_regprocedure('public.rls_auto_enable()')
+                and p.prorettype = 'pg_catalog.event_trigger'::regtype) then
+    revoke execute on function public.rls_auto_enable() from public, anon, authenticated;
+  end if;
+end $$;
+
 -- ============ Verificación: aborta el archivo si algo no quedó ============
 do $$
 declare v text;
