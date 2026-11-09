@@ -345,9 +345,12 @@ function clienteRevision(o: OpcionesRevision) {
   const avisos: unknown[] = []
   const auditoria: Record<string, unknown>[] = []
   const cliente = {
-    rpc: vi.fn(async () => o.rpc),
+    rpc: vi.fn(async (nombre: string) => (nombre === 'modulos_consumo' ? { data: { miembros: 1 }, error: null } : o.rpc)),
     from: vi.fn((tabla: string) => {
       if (tabla === 'audit_log') return consultaAuditoria(o, auditoria)
+      if (tabla === 'modulos_instalacion') {
+        return { select: async () => ({ data: [{ slug: 'nucleo', activo: true, limites: { miembros: 10 } }], error: null }) }
+      }
       if (tabla === 'user_roles') {
         return { select: () => ({ eq: async () => ({ data: (o.admins ?? []).map((user_id) => ({ user_id })), error: null }) }) }
       }

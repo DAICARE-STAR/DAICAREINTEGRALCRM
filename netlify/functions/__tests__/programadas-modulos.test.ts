@@ -14,7 +14,7 @@ vi.mock('@supabase/supabase-js', async (importOriginal) => ({
 
 import { reiniciarCacheModulos } from '../../lib/modulos-instalacion.mts'
 import recordatorios from '../check-event-reminders.mts'
-import { consumoAlto, hallazgosDe } from '../revision-seguridad.mts'
+import { consumoAlto, consumoDe, hallazgosDe, hallazgosLectura } from '../revision-seguridad.mts'
 
 function cliente(modulos: unknown[] | null) {
   const rpc = vi.fn(async () => ({ data: [], error: null }))
@@ -85,5 +85,26 @@ describe('consumo > 80 %', () => {
   it('hallazgosDe incluye el hallazgo de consumo', () => {
     const h = hallazgosDe({}, [], [{ modulo: 'nucleo', clave: 'miembros', uso: 10, limite: 10 }])
     expect(h).toEqual([{ titulo: 'Consumo por encima del 80 % del límite', items: ['nucleo.miembros: 10 de 10'] }])
+  })
+
+  it('consumoDe mide también almacenamiento e IA del día, no solo miembros', () => {
+    const c = consumoDe(
+      [
+        { slug: 'nucleo', activo: true, limites: { miembros: 10, almacenamiento_mb: 100 } },
+        { slug: 'ia', activo: true, limites: { ia_dia_equipo: 300 } },
+      ],
+      { miembros: 3, almacenamiento_mb: 95, ia_hoy: 290 },
+    )
+    expect(consumoAlto(c).sort()).toEqual(['ia.ia_dia_equipo: 290 de 300', 'nucleo.almacenamiento_mb: 95 de 100'])
+  })
+
+  it('consumoDe no mide un módulo inactivo', () => {
+    expect(consumoDe([{ slug: 'ia', activo: false, limites: { ia_dia_equipo: 300 } }], { ia_hoy: 290 })).toEqual([])
+  })
+
+  it('sin lectura de módulos o de consumo, un hallazgo lo dice', () => {
+    expect(hallazgosLectura(true, true)).toEqual([])
+    expect(hallazgosLectura(false, false)[0]?.titulo).toBe('Revisión incompleta')
+    expect(hallazgosLectura(true, false)[0]?.items[0]).toContain('modulos_consumo')
   })
 })

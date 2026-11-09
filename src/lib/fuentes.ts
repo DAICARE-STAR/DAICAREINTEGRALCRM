@@ -37,7 +37,8 @@ export async function aplicarFuentes(fuentes: readonly Fuente[]): Promise<void> 
       document.fonts.add(await cara.load())
       cargadas.push(f.familia)
     } catch {
-      /* se queda la fuente de la hoja */
+      // Se queda la fuente de la hoja; se avisa para no fallar en silencio
+      console.warn('[tema] no se pudo cargar la fuente', f.familia, f.peso)
     }
   }
   for (const p of ['--pal-fuente-cuerpo', '--pal-fuente-display']) {

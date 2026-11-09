@@ -15,11 +15,11 @@ Verificación: `npm run typecheck`, `npm test`, `npm run build`, `npm run secret
 Una instalación por cliente: su proyecto Supabase y su sitio Netlify (PP-DEC-01). Lo hace quien instala, en su PC; las variables y su clase están en `docs/instalacion/variables.md` y la lista de control en `docs/seguridad/04-checklist-despliegue.md`.
 
 1. Crear el proyecto Supabase del cliente (plan Free sirve para empezar).
-2. En Auth: cerrar el registro público y activar TOTP.
-3. Poner `SUPABASE_DB_URL`, `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` en el `.env` local (nunca como argumento).
-4. `npm run instalar` (aplica 00 a 09) y `node tools/instalar/aplicar.mjs --verificar`: ninguna línea DIFIERE.
-5. `node tools/instalar/cuentas-prueba.mjs` y correr `supabase/pruebas/rls-simulacion.sql` en el SQL Editor: ninguna FALLA.
-6. Activar los módulos contratados: `node tools/instalar/modulos.mjs --listar` y `--activar <slug>` (`docs/modulos.md` lista los que hay).
+2. En Auth: cerrar el registro público y activar TOTP. En Auth → URL Configuration, poner la URL del sitio Netlify como Site URL y en Redirect URLs (si no, el enlace de invitación lleva a `localhost:3000`). En Auth → SMTP, un SMTP propio: el integrado solo envía a los correos del equipo del proyecto Supabase.
+3. Poner `SUPABASE_DB_URL`, `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` en el `.env` local (nunca como argumento). Los scripts de `tools/instalar/` leen el entorno: `npm run instalar` ya carga el `.env`; los demás se corren con `node --env-file=.env`.
+4. `npm run instalar` (aplica 00 a 09) y `node --env-file=.env tools/instalar/aplicar.mjs --verificar`: ninguna línea DIFIERE.
+5. `node --env-file=.env tools/instalar/cuentas-prueba.mjs` y correr `supabase/pruebas/rls-simulacion.sql` en el SQL Editor: ninguna FALLA.
+6. Activar los módulos contratados: `node --env-file=.env tools/instalar/modulos.mjs --listar` y `--activar <slug>` (`docs/modulos.md` lista los que hay).
 7. Crear el sitio Netlify desde el repo y cargar las variables (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_PORTAL_NOMBRE`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `GEMINI_API_KEY`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `VAPID_SUBJECT`, `GEMINI_MODEL`, `IA_MODELO_BLOG_DRAFT`, `IA_MODELO_LEAD_REPLY`). `URL` la pone Netlify.
 8. Generar las claves VAPID con `npx web-push generate-vapid-keys` y cargar `VITE_VAPID_PUBLIC_KEY`, `VAPID_PUBLIC_KEY` y `VAPID_PRIVATE_KEY`.
 9. Invitar al primer administrador desde Auth (o con `invitar-miembro` una vez haya uno) y darle el rol admin.

@@ -12,6 +12,7 @@
 ## Base
 
 - [ ] Registro público cerrado y TOTP activado.
+- [ ] Auth → URL Configuration: Site URL y Redirect URLs con la URL del sitio; SMTP propio en Auth.
 - [ ] `aplicar.mjs` y `aplicar.mjs --verificar` sin DIFIERE.
 - [ ] `cuentas-prueba.mjs` y `supabase/pruebas/rls-simulacion.sql` sin FALLA.
 - [ ] Módulos activados con `modulos.mjs`; `--listar` coincide con lo contratado.

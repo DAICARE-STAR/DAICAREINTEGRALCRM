@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { leerModulos, limiteDe, moduloActivo } from '../lib/modulos-instalacion.mts'
+import { leerModulos, limiteDe, moduloActivo, type FilaModulo } from '../lib/modulos-instalacion.mts'
 import { esCuentaServicio, escHtml, nombrePortal, sendEmailTo, teamEmails, type EmailContent } from '../lib/email.mts'
 
 // Revisión diaria de seguridad. Lee la foto de seguridad_resumen()
@@ -286,17 +286,39 @@ async function destinatariosAdmin(admin: SupabaseClient): Promise<{ ids: string[
   return { ids, correos }
 }
 
-// Miembros contra nucleo.miembros (modulos_consumo() exige un administrador
-// y aquí corre la service role). Si algo falla, sin medición.
-async function consumoMiembros(admin: SupabaseClient, modulos: Awaited<ReturnType<typeof leerModulos>>): Promise<Consumo[]> {
-  const limite = modulos ? limiteDe(modulos, 'nucleo', 'miembros') : null
-  if (limite === null) return []
-  const { count, error } = await admin.from('profiles').select('id', { count: 'exact', head: true }).eq('es_servicio', false)
-  if (error || count === null) {
-    console.warn('revision-seguridad: no se pudo contar los miembros', { codigo: error?.code ?? null })
-    return []
+// Límites enteros de los módulos activos contra las cifras de
+// modulos_consumo() (miembros, almacenamiento_mb, ia_dia_equipo). Parte pura.
+// Clave de límite → cifra de modulos_consumo(), como MEDIDA de src/lib/consumo.ts
+const MEDIDA: Record<string, string> = { miembros: 'miembros', almacenamiento_mb: 'almacenamiento_mb', ia_dia_equipo: 'ia_hoy' }
+
+export function consumoDe(modulos: readonly FilaModulo[], cifras: Record<string, number | null>): Consumo[] {
+  return modulos
+    .filter((m) => moduloActivo(modulos, m.slug))
+    .flatMap((m) =>
+      Object.keys(m.limites ?? {}).flatMap((clave) => {
+        const limite = limiteDe(modulos, m.slug, clave)
+        const uso = MEDIDA[clave] ? cifras[MEDIDA[clave]] : null
+        return limite !== null && typeof uso === 'number' ? [{ modulo: m.slug, clave, uso, limite }] : []
+      }),
+    )
+}
+
+// Falla cerrado: sin lectura de módulos o de consumo no se calla, se avisa
+export function hallazgosLectura(modulosLeidos: boolean, consumoLeido: boolean): Hallazgo[] {
+  const items = [
+    !modulosLeidos && 'No se pudieron leer los módulos de la instalación: los leads se revisan igual.',
+    modulosLeidos && !consumoLeido && 'No se pudo leer modulos_consumo(): el consumo no se midió.',
+  ].filter((x): x is string => typeof x === 'string')
+  return items.length ? [{ titulo: 'Revisión incompleta', items }] : []
+}
+
+async function consumoModulos(admin: SupabaseClient, modulos: readonly FilaModulo[]): Promise<Consumo[] | null> {
+  const { data, error } = await admin.rpc('modulos_consumo')
+  if (error || !data || typeof data !== 'object') {
+    console.warn('revision-seguridad: no se pudo leer modulos_consumo', { codigo: error?.code ?? null })
+    return null
   }
-  return [{ modulo: 'nucleo', clave: 'miembros', uso: count, limite }]
+  return consumoDe(modulos, data as Record<string, number | null>)
 }
 
 export default async () => {
@@ -322,13 +344,17 @@ export default async () => {
 
   const resumen = (data ?? {}) as ResumenSeguridad
   // Lo de un módulo inactivo no se revisa: los leads son de sitio-web. Sin
-  // lectura de módulos se revisa todo lo demás y no se mide el consumo.
+  // lectura de módulos se revisa todo (también los leads) y se avisa.
   const modulos = await leerModulos(admin)
-  if (!modulos || !moduloActivo(modulos, 'sitio-web')) {
-    if (resumen.leads_24h !== undefined) console.log('revision-seguridad: sitio-web inactivo o sin leer, se omiten los leads')
+  if (modulos && !moduloActivo(modulos, 'sitio-web')) {
+    if (resumen.leads_24h !== undefined) console.log('revision-seguridad: sitio-web inactivo, se omiten los leads')
     delete resumen.leads_24h
   }
-  const hallazgos = hallazgosDe(resumen, await revelacionesPorUsuario(admin), await consumoMiembros(admin, modulos))
+  const consumo = modulos ? await consumoModulos(admin, modulos) : null
+  const hallazgos = [
+    ...hallazgosLectura(modulos !== null, consumo !== null),
+    ...hallazgosDe(resumen, await revelacionesPorUsuario(admin), consumo ?? []),
+  ]
   if (hallazgos.length === 0) {
     console.log('revision-seguridad: sin novedades')
     return Response.json({ hallazgos: 0 })

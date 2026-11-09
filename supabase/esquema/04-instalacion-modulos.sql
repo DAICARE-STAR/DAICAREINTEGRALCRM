@@ -34,7 +34,7 @@
 --   | limite_modulo(slug, clave) | límite entero de un módulo; null = sin límite              |
 --   | aplicar_politica_modulo    | política restrictiva modulo_<slug> en una tabla de módulo; |
 --   |                            | solo el dueño (archivos de módulo 10 en adelante)          |
---   | modulos_consumo()          | miembros, almacenamiento, IA y uso (solo administrador)    |
+--   | modulos_consumo()          | miembros, almacenamiento, IA y uso (administrador o service role) |
 --   | profiles_limite_miembros   | respaldo del límite de miembros al crear un perfil, al     |
 --   |                            | confirmar el alta (diferido)                               |
 --   | auditar_modulo             | fila 'base' en audit_log por cambio de un módulo, con slug |
@@ -334,7 +334,8 @@ declare
   v_n numeric;
   v_m numeric;
 begin
-  if not public.is_admin() then
+  -- La service role la usa revision-seguridad para el aviso de consumo > 80 %
+  if not (public.is_admin() or coalesce(auth.jwt() ->> 'role', '') = 'service_role') then
     raise exception 'modulos_consumo: solo un administrador' using errcode = '42501';
   end if;
 
@@ -369,7 +370,7 @@ end;
 $$;
 
 revoke execute on function public.modulos_consumo() from public, anon;
-grant execute on function public.modulos_consumo() to authenticated;
+grant execute on function public.modulos_consumo() to authenticated, service_role;
 
 -- ============ 5) Límite de miembros (respaldo) ============
 -- La función invitar-miembro valida antes y responde 409 'limite_miembros';

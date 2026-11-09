@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router'
 import App from './App'
 import { AuthProvider } from './context/AuthContext'
+import { AvisosProvider } from './context/AvisosContext'
 import { InstalacionProvider } from './context/InstalacionContext'
 import { iniciarTema } from './lib/theme'
 // Tokens, temas y Roboto autoalojada (src/estilos); después, la hoja del shell
@@ -20,7 +21,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <BrowserRouter useTransitions={false}>
       <AuthProvider>
         <InstalacionProvider>
-          <App />
+          <AvisosProvider>
+            <App />
+          </AvisosProvider>
         </InstalacionProvider>
       </AuthProvider>
     </BrowserRouter>

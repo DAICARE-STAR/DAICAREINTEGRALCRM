@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { SkeletonLineas } from '../../components/Skeleton'
 import { cifraDestacada, filasDeModulos, type Consumo, type FilaBase, type FilaModulo } from '../../lib/consumo'
+import { llamarProxy } from '../../lib/proxy'
 import { supabase } from '../../lib/supabase'
 import CabeceraAdmin from './CabeceraAdmin'
 
@@ -28,7 +29,16 @@ const ETIQUETA_LIMITE: Record<string, string> = {
 
 const fmt = (n: number) => n.toLocaleString('es-CO')
 
-export function ModulosVista({ filas }: { filas: FilaModulo[] }) {
+// Estado que devuelve instalacion-estado-conectores (N-6); sin respuesta, «sin comprobar»
+const ESTADO_CONECTOR: Record<string, string> = {
+  configurado: 'configurado',
+  sin_configurar: 'sin configurar',
+  sin_comprobar: 'sin comprobar',
+}
+export const textoConector = (c: string, estados: Record<string, string> | null) =>
+  `${c} (${ESTADO_CONECTOR[estados?.[c] ?? ''] ?? 'sin comprobar'})`
+
+export function ModulosVista({ filas, conectores = null }: { filas: FilaModulo[]; conectores?: Record<string, string> | null }) {
   const destacada = cifraDestacada(filas)
   return (
     <>
@@ -57,7 +67,7 @@ export function ModulosVista({ filas }: { filas: FilaModulo[] }) {
                 <td>{f.nombre}</td>
                 <td>{ESTADO[f.estado]}</td>
                 <td>{f.depende.length ? f.depende.join(', ') : '—'}</td>
-                <td>{f.conectores.length ? f.conectores.map((c) => `${c} (sin comprobar)`).join(', ') : '—'}</td>
+                <td>{f.conectores.length ? f.conectores.map((c) => textoConector(c, conectores)).join(', ') : '—'}</td>
                 <td>
                   {f.limites.length === 0
                     ? '—'
@@ -84,9 +94,14 @@ export function ModulosVista({ filas }: { filas: FilaModulo[] }) {
 export default function ModulosTab() {
   const [filas, setFilas] = useState<FilaModulo[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [conectores, setConectores] = useState<Record<string, string> | null>(null)
 
   useEffect(() => {
     let vivo = true
+    // Si el proxy no responde, los conectores quedan «sin comprobar»
+    llamarProxy<{ conectores: Record<string, string> }>('instalacion-estado-conectores')
+      .then((r) => vivo && setConectores(r.conectores))
+      .catch(() => {})
     void (async () => {
       const [mods, consumo] = await Promise.all([
         supabase.from('modulos_instalacion').select('slug, activo, limites'),
@@ -115,7 +130,7 @@ export default function ModulosTab() {
           {error}
         </p>
       )}
-      {filas === null ? <SkeletonLineas n={6} /> : <ModulosVista filas={filas} />}
+      {filas === null ? <SkeletonLineas n={6} /> : <ModulosVista filas={filas} conectores={conectores} />}
     </section>
   )
 }

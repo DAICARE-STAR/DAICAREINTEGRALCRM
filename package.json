@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.netlify.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "instalar": "node tools/instalar/aplicar.mjs",
+    "instalar": "node --env-file-if-exists=.env tools/instalar/aplicar.mjs",
     "secretos": "node tools/seguridad/escanear-secretos.mjs",
     "secretos:staged": "node tools/seguridad/escanear-secretos.mjs --staged"
   },

@@ -59,9 +59,10 @@ begin
 end $$;
 
 -- ============ 1) Buckets ============
--- Si ya existen no se pisan: la verificación del final exige que sean públicos
+-- Si ya existen no se pisan: la verificación del final exige que sean públicos.
+-- marca admite también fuentes .woff2 y .woff (sección Tema, src/lib/fuentes.ts).
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types) values
-  ('marca', 'marca', true, 5242880, array['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml']),
+  ('marca', 'marca', true, 5242880, array['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml', 'font/woff2', 'font/woff']),
   ('avatares', 'avatares', true, 5242880, array['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 on conflict (id) do nothing;
 

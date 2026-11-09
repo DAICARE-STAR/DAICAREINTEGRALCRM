@@ -109,10 +109,12 @@ export function validarPaleta(primitivas: ReadonlyMap<string, string>, tema: Rea
   return { ok: fallas.length === 0, fallas }
 }
 
-// Primitivas redefinidas por una instalación: solo claves de la lista y hex.
+// Primitivas redefinidas por una instalación: solo claves de la lista y hex en
+// minúsculas, como tema_valido de la base (04), que rechaza '#FFFFFF'.
+const HEX_BASE = /^#[0-9a-f]{6}$/
 export function primitivasValidas(valores: unknown, permitidas: readonly string[]): valores is Record<string, string> {
   if (!valores || typeof valores !== 'object' || Array.isArray(valores)) return false
-  return Object.entries(valores as Record<string, unknown>).every(([k, v]) => permitidas.includes(k) && typeof v === 'string' && HEX.test(v))
+  return Object.entries(valores as Record<string, unknown>).every(([k, v]) => permitidas.includes(k) && typeof v === 'string' && HEX_BASE.test(v))
 }
 
 export type FallaTema = Falla & { tema: Tema }

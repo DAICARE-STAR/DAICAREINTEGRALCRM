@@ -60,5 +60,7 @@ describe('tools/tema/verificar.mjs', () => {
     expect(correr('{no').status).toBe(2)
     expect(correr('{"--bg":"#ffffff"}').status).toBe(2)
     expect(correr('{"--pal-base-300":"red"}').status).toBe(2)
+    // Mayúsculas: la base (tema_valido) las rechaza, la herramienta también
+    expect(correr('{"--pal-base-0":"#FFFFFF"}').status).toBe(2)
   })
 })

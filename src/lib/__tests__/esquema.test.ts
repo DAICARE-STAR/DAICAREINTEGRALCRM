@@ -251,8 +251,8 @@ describe('esquema consolidado: 04-instalacion-modulos', () => {
     expect(sql).toMatch(/grant\s+execute\s+on\s+function\s+public\.zona_horaria_valida\(text\)\s+to\s+authenticated,\s*service_role/i)
   })
 
-  it('modulos_consumo es solo para un administrador', () => {
-    expect(cuerpo('modulos_consumo')).toMatch(/if not public\.is_admin\(\) then\s+raise exception[^;]*errcode = '42501'/i)
+  it('modulos_consumo es solo para un administrador o la service role', () => {
+    expect(cuerpo('modulos_consumo')).toMatch(/if not \(public\.is_admin\(\) or coalesce\(auth\.jwt\(\) ->> 'role', ''\) = 'service_role'\) then\s+raise exception[^;]*errcode = '42501'/i)
   })
 
   it('aplicar_politica_modulo crea una política restrictiva con has_modulo en un initPlan y solo la ejecuta el dueño', () => {
@@ -444,6 +444,8 @@ describe('esquema consolidado: 05 a 09', () => {
     expect(insert).toMatch(/\('marca', 'marca', true,/)
     expect(insert).toMatch(/\('avatares', 'avatares', true, \d+, array\[[^\]]*\]\)/)
     expect(/\('avatares'[^)]*\]\)/.exec(insert)![0]).not.toContain('svg')
+    // Las fuentes de la sección Tema se sirven desde marca
+    expect(/\('marca'[^)]*\]\)/.exec(insert)![0]).toMatch(/'font\/woff2', 'font\/woff'/)
   })
 
   it('el shell sube los avatares al bucket avatares, en la carpeta del miembro', () => {

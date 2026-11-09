@@ -107,6 +107,14 @@ export default async (req: Request) => {
   if (errInvitar || !invitado?.user) {
     console.error('invitar-miembro: Auth', resumenError(errInvitar))
     const yaExiste = (errInvitar as { code?: string } | null)?.code === 'email_exists'
+    // Dos invitaciones a la vez con un solo cupo: el trigger diferido profiles_limite_miembros tumba la segunda
+    // y Auth solo dice «Database error». Se vuelve a contar para no culpar al SMTP.
+    if (!yaExiste && max !== null) {
+      const otra = await admin.from('profiles').select('id', { count: 'exact', head: true }).eq('es_servicio', false)
+      if (/limite_miembros/.test(errInvitar?.message ?? '') || (otra.count !== null && otra.count >= max)) {
+        return json(409, { error: `La instalación admite ${max} miembros.`, codigo: 'limite_miembros', limite: max })
+      }
+    }
     return yaExiste
       ? json(409, { error: 'Ese correo ya tiene una cuenta.', codigo: 'ya_existe' })
       : json(502, { error: 'Supabase Auth no envió la invitación (revisa el SMTP de Auth).' })
@@ -115,7 +123,10 @@ export default async (req: Request) => {
 
   const { error: errNombre } = await admin.from('profiles').update({ full_name: datos.nombre }).eq('id', id)
   const { error: errRoles } = roles.length
-    ? await admin.from('user_roles').insert(roles.map((role) => ({ user_id: id, role })))
+    ? await admin
+        .from('user_roles')
+        // El trigger profiles_seed_role ya creó (id, 'member'): sin ignorar duplicados el lote entero fallaría.
+        .upsert(roles.map((role) => ({ user_id: id, role })), { onConflict: 'user_id,role', ignoreDuplicates: true })
     : { error: null }
   if (errNombre || errRoles) console.error('invitar-miembro: perfil', resumenError(errNombre ?? errRoles))
 

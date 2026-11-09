@@ -31,6 +31,17 @@ describe('documentación', () => {
     expect(variables.filter((v) => !readme.includes(`\`${v}\``))).toEqual([])
   })
 
+  it('ningún documento nombra la empresa de origen, salvo los que citan la ruta de origen', () => {
+    const citanOrigen = new Set(['AGENTS.md', 'docs/origen.md', 'docs/portes.md'])
+    expect(documentos().filter((r) => !citanOrigen.has(r) && new RegExp(['lu', 'ce'].join(''), 'i').test(leer(r)))).toEqual([])
+  })
+
+  it('npm run instalar carga el .env que pide el README', () => {
+    const scripts = (JSON.parse(leer('package.json')) as { scripts: Record<string, string> }).scripts
+    expect(scripts.instalar).toMatch(/--env-file(?:-if-exists)?=\.env /)
+    expect(leer('README.md')).toContain('node --env-file=.env tools/instalar/modulos.mjs')
+  })
+
   it('ningún documento lleva correos ni direcciones IP', () => {
     const correo = /[\w.+-]+@[\w-]+\.[\w.]+/
     const ip = /\b(?:\d{1,3}\.){3}\d{1,3}\b/

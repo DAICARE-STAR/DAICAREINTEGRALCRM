@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import Dialogo from '../../components/Dialogo'
 import { supabase } from '../../lib/supabase'
+import { avisoParcial } from '../../lib/invitacion'
 import type { RoleDef } from '../../types'
 
 // Diálogo «Invitar» de Miembros (N-7): correo, nombre y roles. La función
@@ -25,6 +26,7 @@ export default function InvitarMiembro({
   const [elegidos, setElegidos] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
+  const [faltante, setFaltante] = useState<string | null>(null)
   const [listo, setListo] = useState(false)
 
   const ofrecidos = roles.filter((r) => esAdmin || !rolesSoloAdmin.has(r.name))
@@ -42,8 +44,11 @@ export default function InvitarMiembro({
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ correo, nombre, roles: elegidos }),
       })
-      const cuerpo = (await res.json().catch(() => null)) as { error?: string } | null
+      const cuerpo = (await res.json().catch(() => null)) as
+        | { error?: string; rolesAsignados?: boolean; nombreGuardado?: boolean }
+        | null
       if (!res.ok) throw new Error(cuerpo?.error ?? `No se pudo invitar (${res.status}).`)
+      setFaltante(avisoParcial(cuerpo))
       setListo(true)
       onInvitado()
     } catch (err) {
@@ -65,6 +70,11 @@ export default function InvitarMiembro({
           <p className="muted" role="status">
             Invitación enviada a {correo}.
           </p>
+          {faltante && (
+            <p className="alert" role="alert">
+              {faltante}
+            </p>
+          )}
           <div className="form-actions">
             <button className="btn-primary" type="button" onClick={onClose} autoFocus>
               Listo

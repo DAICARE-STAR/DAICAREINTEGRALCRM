@@ -14,10 +14,20 @@ vi.mock('../../lib/autorizacion.mts', async (importOriginal) => ({
 import { auditar, autenticar, type ContextoAuth } from '../../lib/autorizacion.mts'
 import invitar, { rolesEscalan } from '../invitar-miembro.mts'
 
-type Opciones = { limite?: number | null; miembros?: number; roles?: { name: string; permissions: string[] }[] }
+type Opciones = {
+  limite?: number | null
+  miembros?: number
+  roles?: { name: string; permissions: string[] }[]
+  errorInvitar?: { message: string; code?: string }
+  errorRoles?: { message: string }
+  miembrosTras?: number
+}
 
 function falso(o: Opciones = {}) {
-  const invite = vi.fn(async () => ({ data: { user: { id: 'u-nuevo' } }, error: null }))
+  const invite = vi.fn(async () =>
+    o.errorInvitar ? { data: { user: null }, error: o.errorInvitar } : { data: { user: { id: 'u-nuevo' } }, error: null },
+  )
+  const opcionesUpsert: unknown[] = []
   const inserts: unknown[] = []
   const from = vi.fn((tabla: string) => {
     if (tabla === 'roles') {
@@ -25,18 +35,20 @@ function falso(o: Opciones = {}) {
     }
     if (tabla === 'profiles') {
       return {
-        select: () => ({ eq: async () => ({ count: o.miembros ?? 3, error: null }) }),
+        select: () => ({ eq: async () => ({ count: invite.mock.calls.length ? (o.miembrosTras ?? o.miembros ?? 3) : (o.miembros ?? 3), error: null }) }),
         update: () => ({ eq: async () => ({ error: null }) }),
       }
     }
     if (tabla === 'user_roles') {
-      return { insert: async (f: unknown) => (inserts.push(f), { error: null }) }
+      return {
+        upsert: async (f: unknown, op: unknown) => (inserts.push(f), opcionesUpsert.push(op), { error: o.errorRoles ?? null }),
+      }
     }
     throw new Error('tabla inesperada: ' + tabla)
   })
   const rpc = vi.fn(async () => ({ data: o.limite === undefined ? 10 : o.limite, error: null }))
   const admin = { from, rpc, auth: { admin: { inviteUserByEmail: invite } } } as unknown as SupabaseClient
-  return { admin, invite, inserts }
+  return { admin, invite, inserts, opcionesUpsert }
 }
 
 function ctx(admin: SupabaseClient, parcial: Partial<ContextoAuth> = {}): ContextoAuth {
@@ -119,6 +131,7 @@ describe('invitar-miembro', () => {
     expect(res.status).toBe(200)
     expect(f.invite).toHaveBeenCalledWith('nueva@empresa.test', { redirectTo: 'https://portal.test', data: { full_name: 'Nueva Persona' } })
     expect(f.inserts).toEqual([[{ user_id: 'u-nuevo', role: 'ventas' }]])
+    expect(f.opcionesUpsert).toEqual([{ onConflict: 'user_id,role', ignoreDuplicates: true }])
     expect(vi.mocked(auditar).mock.calls[0]?.[1]).toMatchObject({ action: 'miembro.invitar', entityId: 'u-nuevo' })
   })
 
@@ -126,5 +139,26 @@ describe('invitar-miembro', () => {
     const f = falso({ limite: null, miembros: 500 })
     vi.mocked(autenticar).mockResolvedValue({ ctx: ctx(f.admin) })
     expect((await pedir(BASE)).status).toBe(200)
+  })
+
+  it('roles que no se asignan → 200 con rolesAsignados false', async () => {
+    const f = falso({ roles: [{ name: 'ventas', permissions: [] }], errorRoles: { message: 'x' } })
+    vi.mocked(autenticar).mockResolvedValue({ ctx: ctx(f.admin) })
+    const res = await pedir({ ...BASE, roles: ['ventas'] })
+    expect(await res.json()).toMatchObject({ rolesAsignados: false, nombreGuardado: true })
+  })
+
+  it('el trigger de límite tumba el alta → 409 limite_miembros, no 502', async () => {
+    const f = falso({ errorInvitar: { message: 'Database error saving new user' }, limite: 10, miembros: 9, miembrosTras: 10 })
+    vi.mocked(autenticar).mockResolvedValue({ ctx: ctx(f.admin) })
+    const res = await pedir(BASE)
+    expect(res.status).toBe(409)
+    expect(await res.json()).toMatchObject({ codigo: 'limite_miembros' })
+  })
+
+  it('otro fallo de Auth sin llegar al límite → 502', async () => {
+    const f = falso({ errorInvitar: { message: 'smtp' }, limite: 100, miembros: 3 })
+    vi.mocked(autenticar).mockResolvedValue({ ctx: ctx(f.admin) })
+    expect((await pedir(BASE)).status).toBe(502)
   })
 })
