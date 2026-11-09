@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import CabeceraAdmin from './CabeceraAdmin'
+import InvitarMiembro from './InvitarMiembro'
 import { SkeletonLista } from '../../components/Skeleton'
 import { useAuth } from '../../context/AuthContext'
 import { logAction } from '../../lib/audit'
@@ -14,7 +15,7 @@ import {
   updateMemberName,
 } from '../../lib/data'
 import { MODULOS } from '../../lib/modulos'
-import { PERMISSIONS, type Profile, type RoleDef } from '../../types'
+import { PERMISOS_SOLO_ADMIN, PERMISSIONS, type Profile, type RoleDef } from '../../types'
 
 function permLabel(key: string): string {
   return PERMISSIONS.find((p) => p.key === key)?.label ?? key
@@ -29,8 +30,10 @@ function esServicio(p: Profile): boolean {
 }
 
 export default function MembersTab() {
-  const { profile: me } = useAuth()
+  const { profile: me, hasPerm } = useAuth()
   const iAmAdmin = !!me?.roles.includes('admin')
+  const puedeInvitar = iAmAdmin || hasPerm('manage_members')
+  const [invitando, setInvitando] = useState(false)
   // null = cargando (skeleton), [] = sin miembros
   const [profiles, setProfiles] = useState<Profile[] | null>(null)
   const [roles, setRoles] = useState<RoleDef[]>([])
@@ -157,7 +160,7 @@ export default function MembersTab() {
 
   // Lo indispensable, en el «i» junto al conteo (sin leyenda en pantalla)
   const ayuda =
-    'Las altas y bajas de usuarios se hacen en Supabase (Authentication → Users → Invite). Cada chip activa o quita un rol al instante; los permisos de un miembro son la unión de todos sus roles.' +
+    'Invitar envía el correo de alta; la instalación tiene un límite de miembros. Las bajas se hacen en Supabase (Authentication → Users). Cada chip activa o quita un rol al instante; los permisos de un miembro son la unión de todos sus roles.' +
     (iAmAdmin ? '' : ' Solo un admin puede cambiar roles y nombres.')
 
   const nMiembros = profiles?.filter((p) => !esServicio(p)).length ?? 0
@@ -169,7 +172,22 @@ export default function MembersTab() {
           profiles === null ? 'Miembros' : `${nMiembros} ${nMiembros === 1 ? 'miembro' : 'miembros'}`
         }
         ayuda={ayuda}
-      />
+      >
+        {puedeInvitar && (
+          <button className="btn-primary" type="button" onClick={() => setInvitando(true)}>
+            Invitar
+          </button>
+        )}
+      </CabeceraAdmin>
+      {invitando && (
+        <InvitarMiembro
+          roles={roles}
+          esAdmin={iAmAdmin}
+          rolesSoloAdmin={new Set(roles.filter((r) => r.name === 'admin' || r.permissions.some((p) => PERMISOS_SOLO_ADMIN.includes(p))).map((r) => r.name))}
+          onClose={() => setInvitando(false)}
+          onInvitado={load}
+        />
+      )}
       {error && <p className="alert">{error}</p>}
 
       {profiles === null && <SkeletonLista n={4} avatar={false} lineas={2} />}
