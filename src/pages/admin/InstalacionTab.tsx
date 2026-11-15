@@ -200,9 +200,9 @@ export default function InstalacionTab() {
                   <label key={c.id} className={`form-field${c.multilinea ? ' form-field-wide' : ''}`}>
                     <span className="form-label">{c.etiqueta}</span>
                     {c.multilinea ? (
-                      <textarea rows={3} value={campos[c.id]} onChange={(e) => setCampos({ ...campos, [c.id]: e.target.value })} />
+                      <textarea autoComplete="off" rows={3} value={campos[c.id]} onChange={(e) => setCampos({ ...campos, [c.id]: e.target.value })} />
                     ) : (
-                      <input value={campos[c.id]} onChange={(e) => setCampos({ ...campos, [c.id]: e.target.value })} />
+                      <input autoComplete="off" value={campos[c.id]} onChange={(e) => setCampos({ ...campos, [c.id]: e.target.value })} />
                     )}
                   </label>
                 ))}

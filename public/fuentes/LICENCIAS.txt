@@ -1,6 +1,6 @@
 Fuentes autoalojadas del producto (public/fuentes/)
 
-- roboto-latin-400/500/700-normal.woff2: @fontsource/roboto 5.2.10 (subconjunto latin), copiados de team-portal/public/apps/shared/fuentes (hash en docs/origen.md).
+- roboto-latin-400/500/700-normal.woff2: @fontsource/roboto 5.2.10 (subconjunto latin), autoalojados con el producto.
 
 Roboto se distribuye bajo la SIL Open Font License 1.1 tal como viene en el paquete; sigue la licencia completa.
 

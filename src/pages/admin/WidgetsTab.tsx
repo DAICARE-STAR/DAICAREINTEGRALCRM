@@ -121,11 +121,11 @@ export default function WidgetsTab() {
           <div className="form-grid">
             <label className="form-field">
               <span className="form-label">Nombre</span>
-              <input value={form.name} onChange={(e) => set('name', e.target.value)} />
+              <input autoComplete="off" value={form.name} onChange={(e) => set('name', e.target.value)} />
             </label>
             <label className="form-field">
               <span className="form-label">Orden</span>
-              <input
+              <input autoComplete="off"
                 type="number"
                 value={form.sort_order}
                 onChange={(e) => set('sort_order', Number(e.target.value) || 0)}
@@ -133,7 +133,7 @@ export default function WidgetsTab() {
             </label>
             <label className="form-field form-field-wide">
               <span className="form-label">Descripción</span>
-              <input
+              <input autoComplete="off"
                 value={form.description ?? ''}
                 onChange={(e) => set('description', e.target.value)}
               />

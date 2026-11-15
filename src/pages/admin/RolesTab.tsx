@@ -479,7 +479,7 @@ export default function RolesTab() {
                         <form className="pmx-detail-form" onSubmit={saveDetail}>
                           <label className="form-field">
                             <span className="form-label">Nombre</span>
-                            <input
+                            <input autoComplete="off"
                               value={detail.name}
                               disabled={role.is_system || protegido}
                               title={
@@ -492,7 +492,7 @@ export default function RolesTab() {
                           </label>
                           <label className="form-field pmx-detail-desc">
                             <span className="form-label">Descripción</span>
-                            <input
+                            <input autoComplete="off"
                               value={detail.description}
                               onChange={(e) => setDetail({ ...detail, description: e.target.value })}
                             />
@@ -569,7 +569,7 @@ export default function RolesTab() {
       </div>
 
       <form className="pmx-new" onSubmit={create}>
-        <input
+        <input autoComplete="off"
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           placeholder="nombre-del-rol"

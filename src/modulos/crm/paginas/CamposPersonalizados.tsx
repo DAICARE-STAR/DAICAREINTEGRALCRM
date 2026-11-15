@@ -50,13 +50,13 @@ export default function CamposPersonalizados({
             )
             break
           case 'fecha':
-            control = <input {...comunes} type="date" value={texto} onChange={(e) => alCambiar(d.clave, e.target.value)} />
+            control = <input autoComplete="off" {...comunes} type="date" value={texto} onChange={(e) => alCambiar(d.clave, e.target.value)} />
             break
           case 'numero':
-            control = <input {...comunes} inputMode="decimal" value={texto} onChange={(e) => alCambiar(d.clave, e.target.value)} />
+            control = <input autoComplete="off" {...comunes} inputMode="decimal" value={texto} onChange={(e) => alCambiar(d.clave, e.target.value)} />
             break
           default:
-            control = <input {...comunes} maxLength={500} value={texto} onChange={(e) => alCambiar(d.clave, e.target.value)} />
+            control = <input autoComplete="off" {...comunes} maxLength={500} value={texto} onChange={(e) => alCambiar(d.clave, e.target.value)} />
         }
         return (
           <label key={d.clave} htmlFor={id}>

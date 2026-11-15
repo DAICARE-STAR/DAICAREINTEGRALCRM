@@ -69,7 +69,7 @@ export function SaludVista(p: VistaProps) {
           {CAMPOS_SALUD.map((k) => (
             <label key={k}>
               <span>{ETIQUETA[k]}</span>
-              <textarea rows={3} value={borrador[k]} onChange={(e) => setBorrador({ ...borrador, [k]: e.target.value })} />
+              <textarea name={`ts-crm-salud-${k}`} autoComplete="off" rows={3} value={borrador[k]} onChange={(e) => setBorrador({ ...borrador, [k]: e.target.value })} />
             </label>
           ))}
           <div className="form-actions">

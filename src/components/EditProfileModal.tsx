@@ -154,7 +154,9 @@ export default function EditProfileModal({ onClose }: { onClose: () => void }) {
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder={session?.user.email ?? 'Tu nombre'}
+          name="ts-perfil-nombre"
+          autoComplete="off"
+          placeholder="Nombre y apellido"
           maxLength={60}
           autoFocus
         />
@@ -194,7 +196,9 @@ export default function EditProfileModal({ onClose }: { onClose: () => void }) {
             <input
               value={firma.cargo}
               onChange={(e) => setFirma({ ...firma, cargo: e.target.value })}
-              placeholder="Ej. Gerente LATAM"
+              name="ts-perfil-cargo"
+              autoComplete="off"
+              placeholder="Ej. Coordinador de servicio"
               maxLength={120}
             />
           </label>
@@ -203,7 +207,9 @@ export default function EditProfileModal({ onClose }: { onClose: () => void }) {
             <input
               value={firma.telefono}
               onChange={(e) => setFirma({ ...firma, telefono: e.target.value })}
-              placeholder="Ej. (+57) 300 000 0000"
+              name="ts-perfil-telefono"
+              autoComplete="off"
+              placeholder="Ej. +57 300 000 0000"
               maxLength={60}
             />
           </label>
@@ -212,7 +218,9 @@ export default function EditProfileModal({ onClose }: { onClose: () => void }) {
             <input
               value={firma.oficina}
               onChange={(e) => setFirma({ ...firma, oficina: e.target.value })}
-              placeholder="Ej. Cartagena — Diag. 22T # 50-20"
+              name="ts-perfil-oficina"
+              autoComplete="off"
+              placeholder="Ej. Sede principal"
               maxLength={160}
             />
           </label>

@@ -82,11 +82,11 @@ export default function FormActividad({
         </label>
         <label>
           <span>Asunto *</span>
-          <input ref={asuntoRef} required maxLength={200} value={f.asunto} onChange={(e) => set('asunto', e.target.value)} />
+          <input name="ts-crm-actividad-asunto" autoComplete="off" ref={asuntoRef} required maxLength={200} value={f.asunto} onChange={(e) => set('asunto', e.target.value)} />
         </label>
         <label>
           <span>Fecha</span>
-          <input type="datetime-local" required value={f.fecha} onChange={(e) => set('fecha', e.target.value)} />
+          <input autoComplete="off" type="datetime-local" required value={f.fecha} onChange={(e) => set('fecha', e.target.value)} />
         </label>
         {cuentaId && contactos.length > 0 && (
           <label>
@@ -103,7 +103,7 @@ export default function FormActividad({
         )}
         <label>
           <span>Detalle</span>
-          <textarea rows={4} maxLength={4000} value={f.detalle} onChange={(e) => set('detalle', e.target.value)} />
+          <textarea name="ts-crm-actividad-detalle" autoComplete="off" rows={4} maxLength={4000} value={f.detalle} onChange={(e) => set('detalle', e.target.value)} />
         </label>
         {error && (
           <p className="error" role="alert">

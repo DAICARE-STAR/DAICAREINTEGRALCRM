@@ -85,7 +85,7 @@ export default function FormContacto({
       <div className="crm-form">
         <label>
           <span>Nombre *</span>
-          <input ref={nombreRef} required maxLength={200} value={f.nombre} onChange={(e) => set('nombre', e.target.value)} />
+          <input name="ts-crm-contacto-nombre" autoComplete="off" ref={nombreRef} required maxLength={200} value={f.nombre} onChange={(e) => set('nombre', e.target.value)} />
         </label>
         <label>
           <span>Relación</span>
@@ -100,15 +100,15 @@ export default function FormContacto({
         </label>
         <label>
           <span>Cargo</span>
-          <input maxLength={120} value={f.cargo} onChange={(e) => set('cargo', e.target.value)} />
+          <input name="ts-crm-contacto-cargo" autoComplete="off" maxLength={120} value={f.cargo} onChange={(e) => set('cargo', e.target.value)} />
         </label>
         <label>
           <span>Correo</span>
-          <input type="email" maxLength={254} value={f.email} onChange={(e) => set('email', e.target.value)} />
+          <input name="ts-crm-contacto-correo" autoComplete="off" type="email" maxLength={254} value={f.email} onChange={(e) => set('email', e.target.value)} />
         </label>
         <label>
           <span>Teléfono</span>
-          <input type="tel" maxLength={40} value={f.telefono} onChange={(e) => set('telefono', e.target.value)} />
+          <input name="ts-crm-contacto-telefono" autoComplete="off" type="tel" maxLength={40} value={f.telefono} onChange={(e) => set('telefono', e.target.value)} />
         </label>
         <label>
           <span>
@@ -117,11 +117,11 @@ export default function FormContacto({
         </label>
         <label>
           <span>Etiquetas (separadas por coma)</span>
-          <input value={f.etiquetas} onChange={(e) => set('etiquetas', e.target.value)} />
+          <input name="ts-crm-contacto-etiquetas" autoComplete="off" value={f.etiquetas} onChange={(e) => set('etiquetas', e.target.value)} />
         </label>
         <label>
           <span>Notas</span>
-          <textarea rows={3} maxLength={4000} value={f.notas} onChange={(e) => set('notas', e.target.value)} />
+          <textarea name="ts-crm-contacto-notas" autoComplete="off" rows={3} maxLength={4000} value={f.notas} onChange={(e) => set('notas', e.target.value)} />
         </label>
         <CamposPersonalizados
           defs={defs}

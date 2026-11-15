@@ -224,7 +224,9 @@ export default function ConnectorsTab() {
                 ref={primerCampo}
                 value={form.name}
                 onChange={(e) => set('name', e.target.value)}
-                placeholder="Notion"
+                name="ts-herramienta-nombre"
+                autoComplete="off"
+                placeholder="Nombre de la herramienta"
               />
             </label>
             <label className="form-field">
@@ -232,7 +234,9 @@ export default function ConnectorsTab() {
               <input
                 value={form.url}
                 onChange={(e) => set('url', e.target.value)}
-                placeholder="https://www.notion.so"
+                name="ts-herramienta-url"
+                autoComplete="off"
+                placeholder="https://…"
               />
             </label>
             <label className="form-field">
@@ -240,7 +244,9 @@ export default function ConnectorsTab() {
               <input
                 value={form.category ?? ''}
                 onChange={(e) => set('category', e.target.value)}
-                placeholder="Gestión"
+                name="ts-herramienta-categoria"
+                autoComplete="off"
+                placeholder="Ej. Gestión"
               />
             </label>
             <div className="form-field">
@@ -252,9 +258,11 @@ export default function ConnectorsTab() {
               </span>
               <input
                 id="herr-icono"
+                name="ts-herramienta-icono"
+                autoComplete="off"
                 value={form.icon ?? ''}
                 onChange={(e) => set('icon', e.target.value)}
-                placeholder="/icons/notion.svg"
+                placeholder="/icons/herramienta.svg"
               />
             </div>
             <label className="form-field form-field-wide">
@@ -262,12 +270,14 @@ export default function ConnectorsTab() {
               <input
                 value={form.description ?? ''}
                 onChange={(e) => set('description', e.target.value)}
+                name="ts-herramienta-descripcion"
+                autoComplete="off"
                 placeholder="Para qué usa el equipo esta herramienta"
               />
             </label>
             <label className="form-field">
               <span className="form-label">Orden</span>
-              <input
+              <input autoComplete="off"
                 type="number"
                 value={form.sort_order}
                 onChange={(e) => set('sort_order', Number(e.target.value) || 0)}

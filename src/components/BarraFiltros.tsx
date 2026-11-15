@@ -41,7 +41,7 @@ export default function BarraFiltros({ filtros, alCambiar, alLimpiar, buscador }
   return (
     <div className={`fbar${n > 0 ? ' has-filters' : ''}`} role="search">
       {buscador && (
-        <input
+        <input autoComplete="off"
           type="search"
           aria-label={buscador.etiqueta}
           placeholder={buscador.etiqueta}

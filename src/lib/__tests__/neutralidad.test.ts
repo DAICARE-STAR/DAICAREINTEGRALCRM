@@ -51,6 +51,33 @@ describe('neutralidad del producto', () => {
     expect(lista).toEqual(expect.arrayContaining(['src/App.tsx', 'netlify/lib/email.mts', 'src/styles.css']))
   })
 
+  // El CHANGELOG entra en el bundle (pestaña Novedades) y public/ se sirve tal
+  // cual: el cliente los lee. Ahí no se nombra el portal de origen (0.2.10).
+  // En src/ y netlify/ vale el código, no los comentarios: esos dejan el
+  // rastro del origen por diseño y el build los quita.
+  it('lo que llega al navegador no nombra el portal de origen', () => {
+    const origen = new RegExp('team' + '-portal', 'i')
+    const sinComentarios = (t: string) =>
+      t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/[^\n]*/g, '$1')
+    const hallazgos: string[] = []
+    for (const ruta of lista) {
+      const sirve = ruta === 'CHANGELOG.md' || ruta === 'index.html' || ruta.startsWith('public/')
+      const codigo = /^(src|netlify)\//.test(ruta) && /\.(tsx?|mts|js|html|css)$/.test(ruta) && !/__tests__\//.test(ruta)
+      if (!sirve && !codigo) continue
+      let texto: string
+      try {
+        texto = readFileSync(RAIZ + ruta, 'utf8')
+      } catch {
+        continue // borrado en el árbol de trabajo
+      }
+      if (codigo && !sirve) texto = sinComentarios(texto)
+      texto.split(/\r?\n/).forEach((l, i) => {
+        if (origen.test(l.split(RUTA_ORIGEN).join(''))) hallazgos.push(`${ruta}:${i + 1}`)
+      })
+    }
+    expect(hallazgos).toEqual([])
+  })
+
   it.each(PROHIBIDOS)('ningún archivo contiene el %s de la empresa de origen', (_, patron) => {
     const hallazgos: string[] = []
     for (const ruta of lista) {

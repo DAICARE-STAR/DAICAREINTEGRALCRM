@@ -111,7 +111,7 @@ export default function FormCuenta({
   const texto = (k: keyof Estado, etiqueta: string, extra: Record<string, unknown> = {}) => (
     <label>
       <span>{etiqueta}</span>
-      <input value={f[k] as string} onChange={(e) => set(k, e.target.value as never)} {...extra} />
+      <input name={`ts-crm-cuenta-${k}`} autoComplete="off" value={f[k] as string} onChange={(e) => set(k, e.target.value as never)} {...extra} />
     </label>
   )
 
@@ -134,7 +134,7 @@ export default function FormCuenta({
         </label>
         <label>
           <span>Nombre *</span>
-          <input ref={nombreRef} required maxLength={200} value={f.nombre} onChange={(e) => set('nombre', e.target.value)} />
+          <input name="ts-crm-cuenta-nombre" autoComplete="off" ref={nombreRef} required maxLength={200} value={f.nombre} onChange={(e) => set('nombre', e.target.value)} />
         </label>
         {texto('documento', f.tipo === 'persona' ? 'Cédula' : 'NIT', { maxLength: 30 })}
         <label>
@@ -190,7 +190,7 @@ export default function FormCuenta({
         {texto('etiquetas', 'Etiquetas (separadas por coma)')}
         <label>
           <span>Notas</span>
-          <textarea maxLength={4000} rows={3} value={f.notas} onChange={(e) => set('notas', e.target.value)} />
+          <textarea name="ts-crm-cuenta-notas" autoComplete="off" maxLength={4000} rows={3} value={f.notas} onChange={(e) => set('notas', e.target.value)} />
         </label>
         <CamposPersonalizados
           defs={defs}

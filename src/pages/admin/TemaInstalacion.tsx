@@ -131,7 +131,7 @@ export default function TemaInstalacion({
         ))}
         <label className="form-field form-field-wide">
           <span className="form-label">Fuentes (familia | peso | URL del bucket marca, una por línea)</span>
-          <textarea rows={2} value={lineas} onChange={(e) => setLineas(e.target.value)} />
+          <textarea autoComplete="off" rows={2} value={lineas} onChange={(e) => setLineas(e.target.value)} />
         </label>
       </div>
 

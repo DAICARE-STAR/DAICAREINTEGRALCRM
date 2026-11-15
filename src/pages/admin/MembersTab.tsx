@@ -203,7 +203,7 @@ export default function MembersTab() {
               <div className="member-card-head">
                 {editingName?.id === p.id ? (
                   <span className="member-name-edit">
-                    <input
+                    <input name="ts-miembro-nombre" autoComplete="off"
                       value={editingName.value}
                       maxLength={120}
                       autoFocus

@@ -23,8 +23,8 @@ export function CatalogosVista({ ajustes, alCambiar, errores }: { ajustes: Ajust
         <legend>Etapas</legend>
         {etapas.map((e, i) => (
           <div key={i} className="crm-acciones">
-            <input aria-label={`Clave de la etapa ${i + 1}`} value={e.clave} onChange={(ev) => cambiarEtapa(i, { clave: ev.target.value })} />
-            <input aria-label={`Nombre de la etapa ${i + 1}`} value={e.nombre} onChange={(ev) => cambiarEtapa(i, { nombre: ev.target.value })} />
+            <input autoComplete="off" aria-label={`Clave de la etapa ${i + 1}`} value={e.clave} onChange={(ev) => cambiarEtapa(i, { clave: ev.target.value })} />
+            <input autoComplete="off" aria-label={`Nombre de la etapa ${i + 1}`} value={e.nombre} onChange={(ev) => cambiarEtapa(i, { nombre: ev.target.value })} />
             <select aria-label={`Cierre de la etapa ${i + 1}`} value={e.cierre ?? ''} onChange={(ev) => cambiarEtapa(i, { cierre: (ev.target.value || null) as Cierre })}>
               <option value="">Abierta</option>
               <option value="ganada">Cierre ganado</option>
@@ -54,7 +54,7 @@ export function CatalogosVista({ ajustes, alCambiar, errores }: { ajustes: Ajust
       ).map(([k, etiqueta]) => (
         <label key={k}>
           <span>{etiqueta} (separados por coma)</span>
-          <textarea rows={2} value={ajustes[k].join(', ')} onChange={(e) => alCambiar({ ...ajustes, [k]: lista(e.target.value) })} />
+          <textarea autoComplete="off" rows={2} value={ajustes[k].join(', ')} onChange={(e) => alCambiar({ ...ajustes, [k]: lista(e.target.value) })} />
         </label>
       ))}
       {errores.length > 0 && (
@@ -90,8 +90,8 @@ function FilaCampo({ def, nuevo, alGuardado }: { def: CampoDef; nuevo: boolean; 
   const etiq = nuevo ? 'del campo nuevo' : `de ${def.clave}`
   return (
     <div className="crm-acciones">
-      <input aria-label={`Clave ${etiq}`} value={d.clave} disabled={!nuevo} onChange={(e) => setD({ ...d, clave: e.target.value })} />
-      <input aria-label={`Etiqueta ${etiq}`} value={d.etiqueta} maxLength={80} onChange={(e) => setD({ ...d, etiqueta: e.target.value })} />
+      <input autoComplete="off" aria-label={`Clave ${etiq}`} value={d.clave} disabled={!nuevo} onChange={(e) => setD({ ...d, clave: e.target.value })} />
+      <input autoComplete="off" aria-label={`Etiqueta ${etiq}`} value={d.etiqueta} maxLength={80} onChange={(e) => setD({ ...d, etiqueta: e.target.value })} />
       <select aria-label={`Entidad ${etiq}`} value={d.entidad} disabled={!nuevo} onChange={(e) => setD({ ...d, entidad: e.target.value as EntidadCampo })}>
         <option value="cuenta">Cuenta</option>
         <option value="contacto">Contacto</option>
@@ -103,8 +103,8 @@ function FilaCampo({ def, nuevo, alGuardado }: { def: CampoDef; nuevo: boolean; 
         <option value="lista">Lista</option>
         <option value="booleano">Sí o no</option>
       </select>
-      {d.tipo === 'lista' && <input aria-label={`Opciones ${etiq}`} placeholder="Opciones" value={opciones} onChange={(e) => setOpciones(e.target.value)} />}
-      <input aria-label={`Orden ${etiq}`} type="number" value={d.orden} onChange={(e) => setD({ ...d, orden: Number(e.target.value) || 0 })} />
+      {d.tipo === 'lista' && <input autoComplete="off" aria-label={`Opciones ${etiq}`} placeholder="Opciones" value={opciones} onChange={(e) => setOpciones(e.target.value)} />}
+      <input autoComplete="off" aria-label={`Orden ${etiq}`} type="number" value={d.orden} onChange={(e) => setD({ ...d, orden: Number(e.target.value) || 0 })} />
       <label>
         <span>
           <input type="checkbox" checked={d.obligatorio} onChange={(e) => setD({ ...d, obligatorio: e.target.checked })} /> Obligatorio

@@ -154,7 +154,7 @@ export function FormConsentimiento({
         </label>
         <label>
           <span>Fecha</span>
-          <input type="date" required value={f.fecha} onChange={(e) => setF({ ...f, fecha: e.target.value })} />
+          <input autoComplete="off" type="date" required value={f.fecha} onChange={(e) => setF({ ...f, fecha: e.target.value })} />
         </label>
         <label>
           <span>Medio</span>
@@ -168,7 +168,7 @@ export function FormConsentimiento({
         </label>
         <label>
           <span>Versión del texto *</span>
-          <input ref={versionRef} required maxLength={40} value={f.version_texto} onChange={(e) => setF({ ...f, version_texto: e.target.value })} />
+          <input name="ts-crm-consentimiento-version" autoComplete="off" ref={versionRef} required maxLength={40} value={f.version_texto} onChange={(e) => setF({ ...f, version_texto: e.target.value })} />
         </label>
         <label>
           <span>Archivo (PDF, JPG o PNG)</span>
