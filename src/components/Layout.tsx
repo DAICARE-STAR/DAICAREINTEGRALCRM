@@ -38,6 +38,7 @@ import { shellDe } from '../modulos'
 import { indiceSiguiente } from '../lib/teclado'
 import { useDialogo } from '../lib/useDialogo'
 import { useEsMovil } from '../lib/useEsMovil'
+import { usePreferenciaCompacta } from '../lib/usePreferencia'
 import { logoDe, NOMBRE_PORTAL } from '../lib/instalacion'
 
 const NAV_STATE_KEY = 'pt_nav_open_v1'
@@ -54,29 +55,6 @@ const ICONO_MODULO: Partial<Record<ModuloRuta, ReactNode>> = {
   equipo: <IconoEquipo size={24} />,
   'sitio-web': <AppIcon icon={null} clave="sitio-web" size="lg" />,
   admin: <IconoAdministracion size={24} />,
-}
-
-// Barra lateral contraída a solo iconos; la elección se recuerda en este
-// navegador ('1' = contraída). Sin almacenamiento, solo estado en memoria.
-function usePreferenciaCompacta(clave: string): [boolean, () => void] {
-  const [compacta, setCompacta] = useState(() => {
-    try {
-      return localStorage.getItem(clave) === '1'
-    } catch {
-      return false
-    }
-  })
-  function alternar() {
-    setCompacta((c) => {
-      try {
-        localStorage.setItem(clave, c ? '0' : '1')
-      } catch {
-        /* sin almacenamiento: solo estado en memoria */
-      }
-      return !c
-    })
-  }
-  return [compacta, alternar]
 }
 
 // Ítems activos del menú de usuario, en orden (los deshabilitados no se

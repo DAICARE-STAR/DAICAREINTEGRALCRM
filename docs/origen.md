@@ -14,6 +14,7 @@ El producto nace de `C:\Users\enzov\IA\luce-design\team-portal` (solo lectura). 
 | 0.1.12 (PR-4) | 2026-11-07 | 12b1b72 | Adaptados al esquema consolidado `supabase/esquema/00-03`: versión final de schema.sql y de las migraciones 2, 3, 9, 13, 18, 19, 27, 31, 35, 43, 63, 64, 71, 84, 87 y 88 para los objetos del núcleo, sin semillas con emoji, sin app demo y sin nombres ni correos de team-portal. Lo de módulos de esas migraciones (radar, bitácora, bóveda, leads del sitio, buckets) queda para el archivo de cada módulo. |
 | 0.1.19 (N-1) | 2026-11-07 | 9d1524b (11 archivos en 5710280) | Commit de origen: copia única del núcleo, neutralizada y renombrada con `tools/origen/renombrar.mjs`. Detalle en § Commit de origen. |
 | 0.1.20 (N-2) | 2026-11-07 | 9d1524b | Adaptados a `supabase/esquema/05-09`: migraciones 12, 19, 20, 24, 27, 28, 30, 36, 47, 63 §4, 73, 83, 84, 89 y 90 para los objetos del núcleo. Sin la 95 (no existe en team-portal: perfil_privado llega en un 05b), sin inicio_checklist, project_reports ni los claim_* (son de módulo). `rls-simulacion.sql` 8 a 11 siguen las secciones 13 y 14 de la de team-portal sin copiar texto. |
+| 0.2.11-0.2.12 | 2026-11-15 | a453b63 y siguiente | Adaptados a mano, sin copia de archivos salvo `src/components/CabeceraMarco.tsx` (idéntico): barra fija, alto real de la cabecera, ancho y margen compartidos con `.page`, tokens de pestañas y barras. La barra plegable de `BarraFiltros` es código propio (las apps de team-portal la hacen en `public/apps/shared/filterbar.js`). |
 
 ## Commit de origen (0.1.19, N-1)
 

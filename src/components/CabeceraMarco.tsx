@@ -10,25 +10,27 @@ import { Cargando, Skeleton } from './Skeleton'
 export default function CabeceraMarco({ respaldo }: { respaldo: DatosCabecera | null }) {
   const datos = useCabeceraActiva() ?? respaldo
   const ref = useRef<HTMLDivElement>(null)
+  const alto = useRef(0)
 
   // Publica el alto real (crece con las pestañas) en --alto-cabecera-actual:
-  // lo usan scroll-padding-top y las barras que se pegan debajo (.barra-fija,
-  // .admin-menu). Se mide al pintar cada cabecera y, con ResizeObserver, cada
-  // vez que el ancho la hace saltar de línea. Sin JS queda el alto de una fila
+  // lo usan scroll-padding-top, el alto de Chat y del visor de apps y las
+  // barras que se pegan debajo (.barra-fija, .admin-menu). Se mide al pintar
+  // cada cabecera y, con ResizeObserver, cuando el ancho la hace saltar de
+  // línea; solo se escribe si cambió. Sin JS queda el alto de una fila
   const medir = () => {
-    const el = ref.current
-    if (el) document.documentElement.style.setProperty('--alto-cabecera-actual', `${el.offsetHeight}px`)
+    const h = ref.current?.offsetHeight ?? 0
+    if (h === alto.current) return
+    alto.current = h
+    document.documentElement.style.setProperty('--alto-cabecera-actual', `${h}px`)
   }
   useLayoutEffect(medir)
   useEffect(() => {
     const el = ref.current
-    const raiz = document.documentElement
-    if (!el || typeof ResizeObserver === 'undefined') return () => raiz.style.removeProperty('--alto-cabecera-actual')
-    const obs = new ResizeObserver(medir)
-    obs.observe(el)
+    const obs = el && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(medir) : null
+    if (el) obs?.observe(el)
     return () => {
-      obs.disconnect()
-      raiz.style.removeProperty('--alto-cabecera-actual')
+      obs?.disconnect()
+      document.documentElement.style.removeProperty('--alto-cabecera-actual')
     }
   }, [])
 

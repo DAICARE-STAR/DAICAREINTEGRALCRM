@@ -25,6 +25,10 @@ const REGLAS = reglas(ESTILOS)
 // Selectores que declara styles.css (para comprobar ausencias)
 const declara = (selector: string) => REGLAS.some((r) => r.selectores.includes(selector))
 
+// Valor de una declaración dentro del cuerpo de una regla
+const decl = (cuerpo: string, prop: string) =>
+  new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;]+)`).exec(cuerpo)?.[1].trim()
+
 // Primitivas --pal-* que una regla puede usar directo (GUIA-UI, «Tokens de
 // marca»): ninguna de color
 const PRIMITIVA_PERMITIDA = /^--pal-(texto|esp|radio|dur|curva|fuente|peso|interlinea|tracking|foco)(-|$)/
@@ -94,8 +98,6 @@ describe('cabecera del shell (styles.css)', () => {
 // Layout, que no se desmonta al navegar y queda arriba con el scroll
 describe('cabecera fija del marco (Layout)', () => {
   const marco = REGLAS.filter((r) => r.selectores.includes('.cabecera-marco'))
-  const decl = (cuerpo: string, prop: string) =>
-    new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;]+)`).exec(cuerpo)?.[1].trim()
 
   it('es sticky arriba, con el fondo y el filete de las barras', () => {
     const base = marco[0]
@@ -183,8 +185,6 @@ describe('un solo h1 por ruta', () => {
 
 // Submenús fijos y medidas de las barras (pedido del usuario, 2026-11-15)
 describe('submenús fijos y medidas de las barras', () => {
-  const decl = (cuerpo: string, prop: string) =>
-    new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;]+)`).exec(cuerpo)?.[1].trim()
 
   it('la barra fija se pega bajo la cabecera, entre la cabecera (35) y los menús (30)', () => {
     const barra = REGLAS.find((r) => r.selectores.includes('.barra-fija'))
@@ -198,6 +198,12 @@ describe('submenús fijos y medidas de las barras', () => {
 
   it('BarraFiltros usa la barra fija', () => {
     expect(leer('../../components/BarraFiltros.tsx')).toContain('fbar barra-fija')
+  })
+
+  it('BarraFiltros se pliega con un botón que anuncia su estado y lo recuerda', () => {
+    const fuente = leer('../../components/BarraFiltros.tsx')
+    expect(fuente).toContain("usePreferenciaCompacta('pt_filtros_plegados_v1')")
+    expect(fuente).toMatch(/className="btn-ghost fbar-plegar" aria-expanded=\{!plegada\}/)
   })
 
   it('la cabecera y la página comparten ancho y margen lateral', () => {
@@ -220,6 +226,7 @@ describe('submenús fijos y medidas de las barras', () => {
     expect(REGLAS.filter((r) => r.selectores.length === 1 && r.selectores[0] === '.tab').length, '.tab declarada una vez').toBe(1)
   })
 })
+
 
 describe('secciones de Administración (CabeceraAdmin)', () => {
   it('son la cabecera común en h2 y styles.css no conserva .admin-cabecera', () => {

@@ -1,9 +1,12 @@
 import { contarActivos, etiquetaMas, repartir, textoContador } from '../lib/filtros'
+import { usePreferenciaCompacta } from '../lib/usePreferencia'
 
 // Barra de filtros de las vistas de módulo (filterbar de team-portal): buscador
 // opcional, selects con su opción neutra, cinco visibles como máximo y el resto
 // en «Más filtros» (abierto al montar si alguno de dentro está activo), el
 // contador de activos y Limpiar. Cada select se nombra con su etiqueta.
+// Plegable: «Ocultar filtros» deja solo el buscador, el contador y el botón;
+// la elección se recuerda en este navegador (pt_filtros_plegados_v1).
 
 export interface FiltroSelect {
   id: string
@@ -27,6 +30,7 @@ export default function BarraFiltros({ filtros, alCambiar, alLimpiar, buscador }
   const { visibles, mas } = repartir(filtros)
   const n = contarActivos(filtros.map(aControl)) + (buscador && buscador.valor !== '' ? 1 : 0)
   const activosMas = contarActivos(mas.map(aControl))
+  const [plegada, alternar] = usePreferenciaCompacta('pt_filtros_plegados_v1')
 
   const select = (f: FiltroSelect) => (
     <select key={f.id} id={f.id} aria-label={f.etiqueta} value={f.valor} onChange={(e) => alCambiar(f.id, e.target.value)}>
@@ -39,7 +43,7 @@ export default function BarraFiltros({ filtros, alCambiar, alLimpiar, buscador }
   )
 
   return (
-    <div className={`fbar barra-fija${n > 0 ? ' has-filters' : ''}`} role="search">
+    <div className={`fbar barra-fija${n > 0 ? ' has-filters' : ''}${plegada ? ' fbar-plegada' : ''}`} role="search">
       {buscador && (
         <input autoComplete="off"
           type="search"
@@ -49,8 +53,8 @@ export default function BarraFiltros({ filtros, alCambiar, alLimpiar, buscador }
           onChange={(e) => buscador.alCambiar(e.target.value)}
         />
       )}
-      {visibles.map(select)}
-      {mas.length > 0 && (
+      {!plegada && visibles.map(select)}
+      {!plegada && mas.length > 0 && (
         <details className="fbar-mas" open={activosMas > 0 || undefined}>
           <summary>{etiquetaMas(activosMas)}</summary>
           <div className="fbar-mas-cuerpo">{mas.map(select)}</div>
@@ -59,8 +63,13 @@ export default function BarraFiltros({ filtros, alCambiar, alLimpiar, buscador }
       <span className="fbar-count" aria-live="polite">
         {textoContador(n)}
       </span>
-      <button type="button" className="btn-ghost fbar-clear" onClick={alLimpiar} disabled={n === 0}>
-        Limpiar
+      {!plegada && (
+        <button type="button" className="btn-ghost fbar-clear" onClick={alLimpiar} disabled={n === 0}>
+          Limpiar
+        </button>
+      )}
+      <button type="button" className="btn-ghost fbar-plegar" aria-expanded={!plegada} onClick={alternar}>
+        {plegada ? 'Mostrar filtros' : 'Ocultar filtros'}
       </button>
     </div>
   )

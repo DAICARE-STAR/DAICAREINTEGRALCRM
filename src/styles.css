@@ -972,7 +972,7 @@ code {
   flex: 1;
   /* El alto real lo impone el flex del .content padre; dvh (no vh) para
      que la barra de URL móvil no recorte si alguna vez no lo hiciera */
-  height: calc(100dvh - var(--alto-cabecera-marco));
+  height: calc(100dvh - var(--alto-cabecera));
 }
 
 .app-frame {
@@ -2104,8 +2104,8 @@ code {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.6rem;
-  margin-bottom: 0.7rem;
+  gap: var(--pal-esp-3);
+  margin-bottom: var(--pal-esp-3);
 }
 
 .cal-nav strong {
@@ -2656,7 +2656,7 @@ code {
 .chat-page {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - var(--alto-cabecera-marco));
+  height: calc(100vh - var(--alto-cabecera));
   padding-bottom: 0;
 }
 
@@ -5404,7 +5404,7 @@ html {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: var(--pal-esp-2);
   padding: 0 0 1.1rem; /* sin sangría: el banner (180) y el botón (32) caben en la fila */
 }
 
@@ -5639,9 +5639,13 @@ html {
 
 /* Componentes compartidos de los módulos (N-8): BarraFiltros, Resumen,
    Dinero, EstadoVacio, Avisos y CajonPestanas */
-.fbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; }
+.fbar { display: flex; flex-wrap: wrap; gap: var(--pal-esp-2); align-items: center; margin-bottom: var(--pal-esp-2); }
+/* Plegar la barra (BarraFiltros): el botón va al final; plegada y con
+   filtros activos lo avisa con el acento */
+.fbar-plegar { margin-left: auto; }
+.fbar-plegada.has-filters .fbar-plegar { border-color: var(--acento); color: var(--acento); }
 .fbar-mas { position: relative; }
-.fbar-mas-cuerpo { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+.fbar-mas-cuerpo { display: flex; flex-wrap: wrap; gap: var(--pal-esp-2); margin-top: var(--pal-esp-2); }
 .fbar-count { color: var(--text-muted); font-size: var(--pal-texto-sm, 0.85rem); }
 .resumen { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: flex-end; margin-bottom: 1rem; }
 .res-destacado { display: flex; flex-direction: column; }
