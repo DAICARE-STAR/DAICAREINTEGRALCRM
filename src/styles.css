@@ -175,7 +175,7 @@ code {
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  padding: 1.25rem 0.9rem;
+  padding: var(--pal-esp-5) var(--pal-esp-4);
   position: sticky;
   top: 0;
   height: 100vh;
@@ -731,9 +731,11 @@ code {
   outline: none;
 }
 
+/* Ancho y margen lateral de la página: los comparte la cabecera fija del
+   marco para alinear título y acciones con el borde del contenido */
 .page {
-  padding: 2rem 2.25rem;
-  max-width: 1100px;
+  padding: var(--pal-esp-8) var(--margen-pagina);
+  max-width: var(--ancho-pagina);
 }
 
 .page-loader {
@@ -1023,8 +1025,8 @@ code {
 /* ---- Panel de administración ---- */
 .tabs {
   display: flex;
-  gap: 0.35rem;
-  margin: 1.25rem 0 1.5rem;
+  gap: var(--pal-esp-1);
+  margin: var(--pal-esp-5) 0 var(--pal-esp-6);
   border-bottom: 1px solid var(--border);
   /* En pantallas angostas la fila de pestañas se desliza en su carril en
      vez de desbordar la página (evita el scroll horizontal del cuerpo) */
@@ -1035,15 +1037,12 @@ code {
 .tab {
   white-space: nowrap;
   flex: none;
-}
-
-.tab {
   font-family: var(--font-display);
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--text-muted);
-  padding: 0.55rem 0.9rem;
+  padding: var(--pal-esp-2) var(--pal-esp-4);
   font-size: var(--pal-texto-base);
   letter-spacing: 0.03em;
   cursor: pointer;
@@ -1072,8 +1071,13 @@ code {
    La consulta de contenedor mide el ancho real (depende de si el menú y la
    barra de equipo están contraídos), no el de la ventana. */
 .page-admin {
-  max-width: 1320px;
   container-type: inline-size;
+}
+
+/* Administración es más ancha: la variable va en .content para que la
+   cabecera fija del marco (hermana de la página) tome el mismo ancho */
+.content:has(> .page-admin) {
+  --ancho-pagina: 1320px;
 }
 
 .admin-layout {
@@ -1090,7 +1094,7 @@ code {
   gap: var(--pal-esp-4);
   position: sticky;
   /* Se pega debajo de la cabecera fija del marco, no bajo ella */
-  top: calc(var(--alto-cabecera-marco) + var(--pal-esp-4));
+  top: calc(var(--alto-cabecera) + var(--pal-esp-4));
 }
 
 .admin-menu-grupo {
@@ -3415,12 +3419,12 @@ code {
   .mobile-topbar {
     display: flex;
     align-items: center;
-    gap: 0.8rem;
+    gap: var(--pal-esp-3);
     position: sticky;
     top: 0;
     z-index: 40;
     width: 100%;
-    padding: 0.6rem 0.9rem;
+    padding: 0 var(--pal-esp-4);
     background: var(--bg-soft);
     border-bottom: 1px solid var(--border);
   }
@@ -3847,7 +3851,7 @@ body,
    ============================================================ */
 @media (max-width: 760px) {
   .page {
-    padding: 1.1rem 1rem 2rem;
+    padding: var(--pal-esp-5) var(--pal-esp-4) var(--pal-esp-8);
   }
 
   h1 {
@@ -4865,10 +4869,18 @@ body {
    pestañas suma su fila). El margen lateral es el de .page, con tokens.
    z-index 35 (GUIA-UI, «Capas del shell»): sobre lo posicionado del
    contenido (menús en 30) y bajo el topbar móvil (40). Las variables van
-   en :root porque html (scroll-padding-top) también las usa */
+   en :root porque html (scroll-padding-top) también las usa.
+   --alto-cabecera es el alto real: con pestañas la cabecera crece y
+   CabeceraMarco lo publica en --alto-cabecera-actual (ResizeObserver); sin
+   JS o antes de medir vale el de una fila. --ancho-pagina y --margen-pagina
+   los comparten .page y la cabecera, para que el título y las acciones
+   terminen donde termina el contenido */
 :root {
   --alto-cabecera-marco: calc(var(--pal-esp-10) + 2 * var(--pal-esp-3) + 1px);
+  --alto-cabecera: var(--alto-cabecera-actual, var(--alto-cabecera-marco));
   --alto-topbar-movil: 0px;
+  --ancho-pagina: 1100px;
+  --margen-pagina: calc(var(--pal-esp-8) + var(--pal-esp-1));
 }
 
 /* Foco visible que ninguna barra tapa (ui.md): al llevar a la vista un
@@ -4878,7 +4890,7 @@ body {
    cabecera no cambie de ancho entre páginas con y sin scroll */
 html {
   scrollbar-gutter: stable;
-  scroll-padding-top: calc(var(--alto-topbar-movil) + var(--alto-cabecera-marco) + var(--pal-esp-2));
+  scroll-padding-top: calc(var(--alto-topbar-movil) + var(--alto-cabecera) + var(--pal-esp-2));
 }
 
 .cabecera-marco {
@@ -4888,11 +4900,49 @@ html {
   flex: none;
   background: var(--bg-soft);
   border-bottom: 1px solid var(--border);
-  padding: var(--pal-esp-3) calc(var(--pal-esp-8) + var(--pal-esp-1));
+  padding: var(--pal-esp-3) var(--margen-pagina);
+}
+
+/* Fondo y filete a todo el ancho; el contenido, al ancho de .page */
+.cabecera-marco > * {
+  max-width: calc(var(--ancho-pagina) - 2 * var(--margen-pagina));
 }
 
 .cabecera-marco .cabecera {
   margin: 0;
+}
+
+/* Con pestañas, el filete del marco hace de línea base: sin la línea propia
+   de .tabs ni el relleno inferior no quedan dos filetes escalonados */
+.cabecera-marco:has(.cabecera > .tabs) {
+  padding-bottom: 0;
+}
+
+.cabecera-marco .cabecera > .tabs {
+  border-bottom: 0;
+}
+
+.cabecera-marco .cabecera > .tabs .tab {
+  margin-bottom: 0;
+}
+
+/* Barra de controles fija (filtros de un listado): se pega justo debajo de
+   la cabecera del marco. z-index 34 (GUIA-UI, «Capas del shell»): bajo la
+   cabecera (35), sobre los menús (30) */
+.barra-fija {
+  position: sticky;
+  top: calc(var(--alto-topbar-movil) + var(--alto-cabecera));
+  z-index: 34;
+  background: var(--bg);
+  padding-block: var(--pal-esp-2);
+}
+
+/* En móvil la cabecera ya ocupa su alto con las acciones en fila propia:
+   la barra vuelve al flujo para no tapar un tercio de la pantalla */
+@media (max-width: 760px) {
+  .barra-fija {
+    position: static;
+  }
 }
 
 /* Esqueleto de una línea mientras la página aún no registró su cabecera */
@@ -5589,7 +5639,7 @@ html {
 
 /* Componentes compartidos de los módulos (N-8): BarraFiltros, Resumen,
    Dinero, EstadoVacio, Avisos y CajonPestanas */
-.fbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 1rem; }
+.fbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem; }
 .fbar-mas { position: relative; }
 .fbar-mas-cuerpo { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
 .fbar-count { color: var(--text-muted); font-size: var(--pal-texto-sm, 0.85rem); }

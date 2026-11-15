@@ -39,7 +39,7 @@ export default function BarraFiltros({ filtros, alCambiar, alLimpiar, buscador }
   )
 
   return (
-    <div className={`fbar${n > 0 ? ' has-filters' : ''}`} role="search">
+    <div className={`fbar barra-fija${n > 0 ? ' has-filters' : ''}`} role="search">
       {buscador && (
         <input autoComplete="off"
           type="search"

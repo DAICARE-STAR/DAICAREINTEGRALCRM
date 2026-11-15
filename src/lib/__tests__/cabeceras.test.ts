@@ -127,18 +127,18 @@ describe('cabecera fija del marco (Layout)', () => {
     const menu = REGLAS.filter((r) => r.selectores.includes('.admin-menu'))
     const pegado = menu.filter((r) => decl(r.cuerpo, 'position') === 'sticky')
     expect(pegado.length).toBeGreaterThan(0)
-    for (const r of pegado) expect(decl(r.cuerpo, 'top')).toMatch(/^calc\(var\(--alto-cabecera-marco\) \+ /)
+    for (const r of pegado) expect(decl(r.cuerpo, 'top')).toMatch(/^calc\(var\(--alto-cabecera\) \+ /)
   })
 
   it('el foco que el navegador lleva a la vista no queda bajo la cabecera ni el topbar (ui.md)', () => {
     const html = REGLAS.filter((r) => r.selectores.includes('html'))
     const relleno = html.map((r) => decl(r.cuerpo, 'scroll-padding-top')).find(Boolean)
     expect(relleno, 'html: scroll-padding-top').toBeDefined()
-    expect(relleno).toContain('var(--alto-cabecera-marco)')
+    expect(relleno).toContain('var(--alto-cabecera)')
     expect(relleno).toContain('var(--alto-topbar-movil)')
     // html solo ve las variables declaradas en :root, no las de .shell
     const raiz = REGLAS.filter((r) => r.selectores.includes(':root'))
-    for (const v of ['--alto-cabecera-marco', '--alto-topbar-movil']) {
+    for (const v of ['--alto-cabecera-marco', '--alto-cabecera', '--alto-topbar-movil']) {
       expect(raiz.some((r) => decl(r.cuerpo, v) !== undefined), v).toBe(true)
       const enShell = REGLAS.filter((r) => r.selectores.includes('.shell'))
       expect(enShell.some((r) => decl(r.cuerpo, v) !== undefined), `${v} en .shell`).toBe(false)
@@ -179,6 +179,46 @@ describe('un solo h1 por ruta', () => {
       expect(leer(ruta)).not.toMatch(/<h1[\s>]/)
     }
   )
+})
+
+// Submenús fijos y medidas de las barras (pedido del usuario, 2026-11-15)
+describe('submenús fijos y medidas de las barras', () => {
+  const decl = (cuerpo: string, prop: string) =>
+    new RegExp(`(?:^|;)\\s*${prop}\\s*:\\s*([^;]+)`).exec(cuerpo)?.[1].trim()
+
+  it('la barra fija se pega bajo la cabecera, entre la cabecera (35) y los menús (30)', () => {
+    const barra = REGLAS.find((r) => r.selectores.includes('.barra-fija'))
+    expect(barra, '.barra-fija').toBeDefined()
+    expect(decl(barra!.cuerpo, 'position')).toBe('sticky')
+    expect(decl(barra!.cuerpo, 'top')).toBe('calc(var(--alto-topbar-movil) + var(--alto-cabecera))')
+    const z = Number(decl(barra!.cuerpo, 'z-index'))
+    expect(z).toBeGreaterThan(30)
+    expect(z).toBeLessThan(35)
+  })
+
+  it('BarraFiltros usa la barra fija', () => {
+    expect(leer('../../components/BarraFiltros.tsx')).toContain('fbar barra-fija')
+  })
+
+  it('la cabecera y la página comparten ancho y margen lateral', () => {
+    const page = REGLAS.find((r) => r.selectores.includes('.page'))!
+    expect(decl(page.cuerpo, 'max-width')).toBe('var(--ancho-pagina)')
+    expect(decl(page.cuerpo, 'padding')).toContain('var(--margen-pagina)')
+    const marco = REGLAS.find((r) => r.selectores.includes('.cabecera-marco'))!
+    expect(decl(marco.cuerpo, 'padding')).toContain('var(--margen-pagina)')
+    expect(declara('.cabecera-marco > *')).toBe(true)
+  })
+
+  it('pestañas, barra lateral y topbar móvil usan tokens de espaciado', () => {
+    const rs = REGLAS.filter((r) => r.selectores.some((s) => ['.tabs', '.tab', '.sidebar', '.mobile-topbar'].includes(s)))
+    for (const r of rs) {
+      for (const prop of ['padding', 'margin', 'gap']) {
+        const v = decl(r.cuerpo, prop)
+        if (v) expect(v, `${r.selectores.join(', ')}: ${prop}`).not.toMatch(/\d*\.?\d+rem/)
+      }
+    }
+    expect(REGLAS.filter((r) => r.selectores.length === 1 && r.selectores[0] === '.tab').length, '.tab declarada una vez').toBe(1)
+  })
 })
 
 describe('secciones de Administración (CabeceraAdmin)', () => {
