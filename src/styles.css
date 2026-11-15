@@ -1274,9 +1274,11 @@ code {
 /* Aviso de manuales pendientes: persistente hasta confirmar la lectura.
    Tinte al 14 % y al 22 % en hover (AU-DEC-05); con el 22 % el texto
    acento queda en 4,37:1 en Claro y Cálido (ver GUIA-UI.md) */
+/* Alineado con la cabecera y la página: mismo margen lateral y ancho */
 .manuales-aviso {
   display: block;
-  margin: 0 0 14px;
+  margin: var(--pal-esp-4) var(--margen-pagina) 0;
+  max-width: calc(var(--ancho-pagina) - 2 * var(--margen-pagina));
   padding: 10px 16px;
   background: color-mix(in srgb, var(--accent) 14%, var(--bg-card));
   border: 1px solid var(--accent);
@@ -4976,6 +4978,7 @@ html {
      fijo (--alto-topbar-movil) para que la cabecera no lo tape */
   :root {
     --alto-topbar-movil: calc(var(--pal-esp-12) + var(--pal-esp-2) + env(safe-area-inset-top, 0px));
+    --margen-pagina: var(--pal-esp-4);
   }
 
   .mobile-topbar {
