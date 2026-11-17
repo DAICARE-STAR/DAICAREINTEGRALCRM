@@ -1580,7 +1580,7 @@ end $$;
 -- contrato en cuentas y actividades del CRM: el miembro manda autoría,
 -- fechas y creado_via falsos y la base los sella; el historial no anota
 -- updated_by ni creado_via.
-do $
+do $$
 declare
   r text := '';
   v text;
@@ -1626,7 +1626,7 @@ begin
 
   if to_regclass('public.crm_cuentas') is null
      or not exists (select 1 from pg_catalog.pg_trigger g
-                     where g.tgrelid = 'public.crm_cuentas'::regclass and g.tgname = 'contrato_sellar') then
+                     where g.tgrelid = 'public.crm_cuentas'::regclass and g.tgname = 'zz_contrato_sellar') then
     perform set_config('rls.res', current_setting('rls.res') || r || E'\nOMITIDO 16.2-6 contrato en el crm · falta 21d-crm-contrato.sql', true);
     return;
   end if;
@@ -1714,7 +1714,7 @@ begin
   r := r || E'\n' || case when v = 'entró' and v_n = 1 then 'OK      ' else 'FALLA   ' end || '16.6  miembro crea una actividad con autor falso → entró / 1 sellada · ' || v || ' / ' || v_n;
 
   perform set_config('rls.res', current_setting('rls.res') || r, true);
-end $;
+end $$;
 
 -- ============ Resultado (error a propósito: deshace todo) ============
 do $$

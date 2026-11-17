@@ -73,26 +73,28 @@ const vacio = (v: unknown) => v === null || v === undefined || (typeof v === 'st
  * Valida un par importe y moneda: null si es válido (también los dos
  * vacíos) o el motivo para mostrar. El importe es un número o el texto
  * numérico que entrega la API («1234.5»), con hasta 4 decimales y 14 cifras
- * enteras.
+ * enteras. Un número se redondea a 4 decimales, como al guardarse (0.1 + 0.2);
+ * del texto se cuentan las cifras, porque un número JSON solo es exacto
+ * hasta unas 15 (Number('99999999999999.9999') ya es 1e14).
  */
 export function validarImporte(importe: unknown, moneda: unknown): string | null {
   if (vacio(importe) && vacio(moneda)) return null
   if (vacio(moneda)) return 'Falta la moneda del importe.'
   if (vacio(importe)) return 'Falta el importe.'
   if (!esCodigoMoneda(moneda)) return 'La moneda va en tres letras mayúsculas (COP).'
-  let n: number
-  let decimalesOk: boolean
+  let demasiado: boolean
+  let decimalesOk = true
   if (typeof importe === 'number') {
-    n = importe
-    decimalesOk = Number.isFinite(n) && Number(n.toFixed(4)) === n
+    if (!Number.isFinite(importe)) return 'El importe no es un número válido.'
+    demasiado = Math.abs(Number(importe.toFixed(4))) >= 1e14
   } else if (typeof importe === 'string' && /^-?\d+(\.\d+)?$/.test(importe.trim())) {
-    n = Number(importe.trim())
-    decimalesOk = !/\.\d{5,}$/.test(importe.trim())
+    const [enteros, decimales = ''] = importe.trim().replace(/^-/, '').split('.')
+    demasiado = enteros.replace(/^0+(?=\d)/, '').length > 14
+    decimalesOk = decimales.length <= 4
   } else {
     return 'El importe no es un número válido.'
   }
-  if (!Number.isFinite(n)) return 'El importe no es un número válido.'
-  if (Math.abs(n) >= 1e14) return 'El importe es demasiado grande.'
+  if (demasiado) return 'El importe es demasiado grande.'
   if (!decimalesOk) return 'El importe admite hasta 4 decimales.'
   return null
 }

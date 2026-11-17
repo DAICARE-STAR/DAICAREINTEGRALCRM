@@ -126,7 +126,9 @@ exportar_crm as (
   where n.nspname = 'public' and p.proname = 'crm_exportar'
 ),
 -- Contrato base de tabla (00b-contrato-tabla.sql, PP-DEC-23): toda tabla
--- con creado_via lleva el trigger contrato_sellar activo, y con el CRM
+-- con creado_via lleva el trigger zz_contrato_sellar activo y ningún
+-- trigger BEFORE de nombre posterior (Postgres los dispara por orden de
+-- nombre: uno posterior podría reescribir lo sellado), y con el CRM
 -- instalado lo tienen cuentas, contactos y actividades (21d-crm-contrato.sql)
 hay_contrato as (
   select to_regprocedure('public.contrato_sellar()') is not null
@@ -137,11 +139,15 @@ sin_contrato as (
   from tablas t
   where (exists (select 1 from pg_attribute a where a.attrelid = t.oid and a.attname = 'creado_via' and not a.attisdropped)
          or ((select existe from hay_crm) and t.relname in ('crm_cuentas', 'crm_contactos', 'crm_actividades')))
-    and not exists (
+    and (not exists (
       select 1 from pg_trigger g
-      where g.tgrelid = t.oid and g.tgname = 'contrato_sellar' and not g.tgisinternal and g.tgenabled <> 'D'
+      where g.tgrelid = t.oid and g.tgname = 'zz_contrato_sellar' and not g.tgisinternal and g.tgenabled <> 'D'
         and g.tgfoid = to_regprocedure('public.contrato_sellar()')
-    )
+    ) or exists (
+      select 1 from pg_trigger o
+      where o.tgrelid = t.oid and not o.tgisinternal and (o.tgtype::int & 2) <> 0
+        and o.tgname > 'zz_contrato_sellar'::name
+    ))
 ),
 -- Moneda como par (PP-DEC-24): cada columna public.importe tiene al lado
 -- <columna>_moneda de tipo public.codigo_moneda
@@ -247,13 +253,13 @@ select orden, comprobacion, estado, detalle from (
          else '' end
   union all
   select 15,
-    'tablas de negocio con el contrato base y el trigger contrato_sellar',
+    'tablas de negocio con el contrato base y el trigger zz_contrato_sellar el último',
     case when not (select existe from hay_contrato) then 'DIFIERE'
          when (select count(*) from sin_contrato) = 0 then 'OK'
          else 'DIFIERE' end,
     case when not (select existe from hay_contrato) then 'falta 00b-contrato-tabla.sql (npm run instalar)'
          when (select count(*) from sin_contrato) = 0 then ''
-         else 'sin contrato_sellar (con el CRM, falta 21d-crm-contrato.sql: modulos.mjs --activar crm): '
+         else 'sin zz_contrato_sellar o con un trigger BEFORE posterior (con el CRM, falta 21d-crm-contrato.sql: modulos.mjs --activar crm): '
               || (select string_agg(relname, ', ' order by relname) from sin_contrato) end
   union all
   select 16,

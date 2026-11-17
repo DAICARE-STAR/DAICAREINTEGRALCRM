@@ -483,6 +483,14 @@ describe('supabase/pruebas/rls-simulacion.sql', () => {
     expect(sinComentarios(sim)).not.toMatch(/\bcommit\b/i)
   })
 
+  // Un $ suelto no es una comilla de dólar: Postgres rechaza el archivo
+  // entero y no corre ninguna sección
+  it('cada bloque abre con do $$ y cierra con end $$;', () => {
+    expect(sim).not.toMatch(/^do \$(?!\$)/m)
+    expect(sim).not.toMatch(/^end \$(?!\$)/m)
+    expect(sim.match(/^do \$\$$/gm)?.length).toBe(sim.match(/^end \$\$;$/gm)?.length)
+  })
+
   it('tiene las secciones 0 a 16 y la 0 lee instalador.cuentas_prueba', () => {
     for (let n = 0; n <= 16; n++) expect(sim).toContain(`-- ============ ${n}) `)
     expect(bloques.find((b) => b.startsWith('-- ============ 0) '))).toMatch(/from instalador\.cuentas_prueba where rol = 'qa'/)

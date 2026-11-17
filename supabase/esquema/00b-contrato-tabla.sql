@@ -11,7 +11,10 @@
 --
 -- Contrato base (PP-DEC-23): toda tabla de negocio de un módulo lleva
 -- created_by, updated_by, created_at, updated_at, creado_via y
--- archivado_en, y el trigger contrato_sellar. El trigger sella autoría y
+-- archivado_en, y el trigger zz_contrato_sellar (función contrato_sellar).
+-- Se llama zz_ para dispararse el último de los BEFORE de la tabla
+-- (Postgres los ordena por nombre): ningún otro trigger puede volver a
+-- escribir lo sellado. El trigger sella autoría y
 -- fechas con la sesión de quien escribe (auth.uid(); null sin sesión: la
 -- service role, el instalador o el SQL Editor) y el cliente no puede
 -- falsearlas: lo que mande en esas columnas se ignora. creado_via lo
@@ -105,7 +108,7 @@ revoke execute on function public.contrato_sellar() from public, anon, authentic
 -- Añade las columnas del contrato que falten (las nuevas con su valor por
 -- defecto: las filas que ya existen quedan con creado_via 'manual' y
 -- updated_by null), comprueba el tipo de las que ya estaban y pone el
--- trigger contrato_sellar. p_sin solo puede omitir created_by (la tabla
+-- trigger zz_contrato_sellar. p_sin solo puede omitir created_by (la tabla
 -- tiene su propia columna de autor) o archivado_en (la tabla no se
 -- archiva); el motivo va en src/lib/__tests__/contrato-tabla.test.ts. El
 -- trigger se nombra con %I en format: drop y create del mismo nombre.
@@ -147,9 +150,9 @@ begin
     end if;
   end loop;
 
-  execute format('drop trigger if exists %I on %I.%I', 'contrato_sellar', v_esquema, v_nombre);
+  execute format('drop trigger if exists %I on %I.%I', 'zz_contrato_sellar', v_esquema, v_nombre);
   execute format('create trigger %I before insert or update on %I.%I for each row execute function public.contrato_sellar()',
-                 'contrato_sellar', v_esquema, v_nombre);
+                 'zz_contrato_sellar', v_esquema, v_nombre);
 end;
 $$;
 

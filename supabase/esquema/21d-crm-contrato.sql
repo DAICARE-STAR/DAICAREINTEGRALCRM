@@ -12,7 +12,7 @@
 -- Qué cambia y por qué: 21-crm.sql ya sellaba created_by (crm_preparar) y
 -- traía created_at, updated_at y archivado_en, pero no updated_by ni
 -- creado_via. contrato_aplicar (00b-contrato-tabla.sql) añade lo que falta
--- y pone el trigger contrato_sellar, que sella también created_at y
+-- y pone el trigger zz_contrato_sellar, que sella también created_at y
 -- updated_at. Datos existentes: las filas que ya están quedan con
 -- creado_via 'manual' y updated_by null hasta su próximo cambio; nada se
 -- reescribe. crm_actividades omite created_by (su autoría es autor_id,
@@ -30,8 +30,8 @@
 -- Efectos:
 --   | Objeto                          | Qué                                                 |
 --   |---------------------------------|-----------------------------------------------------|
---   | crm_cuentas, crm_contactos      | updated_by, creado_via y trigger contrato_sellar    |
---   | crm_actividades                 | updated_by, creado_via y trigger contrato_sellar    |
+--   | crm_cuentas, crm_contactos      | updated_by, creado_via y trigger zz_contrato_sellar |
+--   | crm_actividades                 | updated_by, creado_via y trigger zz_contrato_sellar |
 --   | crm_registrar_cambio()          | sin updated_by ni creado_via en el historial        |
 -- ============================================================
 
@@ -131,12 +131,12 @@ begin
   select string_agg(t.x, ', ') into v
     from (values ('crm_cuentas'), ('crm_contactos'), ('crm_actividades')) t(x)
    where not exists (select 1 from pg_catalog.pg_trigger g
-                      where g.tgname = 'contrato_sellar'
+                      where g.tgname = 'zz_contrato_sellar'
                         and g.tgrelid = to_regclass('public.' || t.x)
                         and g.tgfoid = to_regprocedure('public.contrato_sellar()')
                         and not g.tgisinternal and g.tgenabled <> 'D');
   if v is not null then
-    raise exception '21d-crm-contrato: falta el trigger contrato_sellar en %', v;
+    raise exception '21d-crm-contrato: falta el trigger zz_contrato_sellar en %', v;
   end if;
 
   select p.prosrc into v_src

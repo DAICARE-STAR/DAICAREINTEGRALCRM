@@ -4,7 +4,7 @@ Reglas que debe cumplir toda tabla nueva de un módulo en `supabase/esquema`. La
 
 ## Contrato base de tabla (PP-DEC-23)
 
-Toda tabla de negocio de un módulo lleva estas columnas y el trigger `contrato_sellar`:
+Toda tabla de negocio de un módulo lleva estas columnas y el trigger `zz_contrato_sellar` (función `contrato_sellar`):
 
 | Columna | Tipo | Quién la escribe |
 |---|---|---|
@@ -16,6 +16,7 @@ Toda tabla de negocio de un módulo lleva estas columnas y el trigger `contrato_
 | `archivado_en` | `timestamptz` | quien archiva; null es activo |
 
 - Lo que el cliente mande en autoría y fechas se ignora. Sin sesión (service role, instalador, SQL Editor) `auth.uid()` es null y la autoría queda null.
+- El trigger se llama `zz_contrato_sellar` para dispararse el último de los BEFORE de la tabla: Postgres los ordena por nombre y uno posterior podría reescribir lo sellado. Ningún trigger BEFORE puede llevar un nombre posterior; lo rechazan `contrato-tabla.test.ts` y la comprobación 15 de `verificar.sql`.
 - `creado_via` describe el canal; no es una garantía de seguridad: un miembro puede declarar `importacion`.
 - No se llama `origen`: en el CRM `origen` es el canal de captación de una cuenta.
 - El archivo del módulo, después de crear la tabla, llama a `select public.contrato_aplicar('public.<tabla>');`. La función añade las columnas que falten con su valor por defecto, comprueba el tipo de las que ya estaban y pone el trigger. Solo la ejecuta el dueño de la base (el instalador).
@@ -39,5 +40,5 @@ constraint <tabla>_total_moneda_check check ((total is null) = (total_moneda is 
 - Dos columnas y no un tipo compuesto: la API filtra, ordena y suma columnas simples; un compuesto llega como objeto y su `not null` no mira los campos.
 - La moneda por defecto es `instalacion.moneda_base`: la pone el cliente al escribir. Con una sola moneda por instalación (D-15, opción a) no hay tasas.
 - Una columna `numeric` con nombre de dinero (`importe`, `precio`, `valor`, `total`, `saldo`, `costo`, `impuesto`, `descuento`, `pago`…) la rechaza la prueba: va en `public.importe` con su moneda.
-- La API entrega el importe como número JSON: el navegador lo lee exacto hasta 15 cifras significativas.
+- La API entrega el importe como número JSON: el navegador lo lee exacto hasta 15 cifras significativas. Un módulo con importes de más cifras los lee como texto (`select('total::text')`) y los valida como cadena: `validarImporte` cuenta las cifras del texto. Un número con más de 4 decimales (una suma hecha en el navegador, 0.1 + 0.2) se redondea a 4, como al guardarse en la base.
 - En el navegador: `esCodigoMoneda`, `validarImporte` y `fmtImporte` de `src/lib/moneda.ts` (formato es-CO, «COP $ 1.234.567»).

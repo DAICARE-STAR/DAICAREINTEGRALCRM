@@ -50,6 +50,10 @@ const conEsquema = MODULOS.filter((m) => m.slug !== NUCLEO && m.sql && archivos.
   sql: archivos.filter((a) => a.nombre.slice(0, 2) === m.sql!.slice(0, 2)).map((a) => a.sql).join('\n'),
 }))
 
+// Tablas que crea un archivo (create table, no las temporales)
+const tablasCreadas = (sql: string) =>
+  [...sql.matchAll(/create\s+table\s+(?:if\s+not\s+exists\s+)?(?:public\.)?(\w+)\s*\(/gi)].map((m) => m[1].toLowerCase())
+
 // Llamadas a contrato_aplicar: tabla → columnas omitidas
 function aplicaciones(sql: string): Map<string, string[]> {
   const salida = new Map<string, string[]>()
@@ -77,6 +81,9 @@ describe('contrato base de tabla (PP-DEC-23)', () => {
       if (!sin) fallos.push(`${t}: sin contrato_aplicar`)
       else if (sin.join(',') !== Object.keys(PARCIALES[t] ?? {}).sort().join(',')) fallos.push(`${t}: omite [${sin}] sin motivo en PARCIALES`)
     }
+    // Una tabla que el módulo crea sin declararla en Modulo.tablas se
+    // saltaría la revisión de arriba
+    for (const t of tablasCreadas(c.sql)) if (!c.modulo.tablas.includes(t)) fallos.push(`${t}: creada sin figurar en Modulo.tablas`)
     expect(fallos).toEqual([])
   })
 
@@ -99,6 +106,24 @@ describe('contrato base de tabla (PP-DEC-23)', () => {
   it('el lector de contrato_aplicar entiende las dos formas de llamada', () => {
     const m = aplicaciones(`select public.contrato_aplicar('public.a');\nselect public.contrato_aplicar('public.b', array['created_by', 'archivado_en']);`)
     expect([...m.entries()]).toEqual([['a', []], ['b', ['archivado_en', 'created_by']]])
+  })
+
+  it('el lector de create table ve las tablas del módulo y no las temporales', () => {
+    expect(tablasCreadas('create table if not exists public.a (id int);\ncreate table b (id int);\ncreate temp table c (id int);')).toEqual(['a', 'b'])
+  })
+
+  // Postgres dispara los BEFORE de una tabla por orden de nombre: el sello
+  // va el último para que ningún trigger reescriba lo que selló
+  it('ningún trigger BEFORE se dispara después del sello', () => {
+    const sello = /format\('create trigger %I before insert or update on %I\.%I[^']*',\s+'(\w+)'/.exec(de('00b-contrato-tabla.sql'))![1]
+    expect(sello).toBe('zz_contrato_sellar')
+    const despues = archivos.flatMap((a) =>
+      [...a.sql.matchAll(/create\s+(?:or\s+replace\s+)?(?:constraint\s+)?trigger\s+(\w+)\s+before\b/gi)]
+        .map((m) => m[1].toLowerCase())
+        .filter((n) => n >= sello)
+        .map((n) => a.nombre + ': ' + n),
+    )
+    expect(despues).toEqual([])
   })
 
   describe('00b-contrato-tabla.sql', () => {
@@ -134,8 +159,8 @@ describe('contrato base de tabla (PP-DEC-23)', () => {
       expect(c).toMatch(/x not in \('created_by', 'archivado_en'\)/)
       expect(c).toMatch(/add column if not exists %I %s/)
       expect(c).toMatch(/a\.atttypid <> c\.tipo or \(c\.obligatoria and not a\.attnotnull\)/)
-      expect(c).toMatch(/format\('drop trigger if exists %I on %I\.%I', 'contrato_sellar'/)
-      expect(c).toMatch(/format\('create trigger %I before insert or update on %I\.%I for each row execute function public\.contrato_sellar\(\)',\s+'contrato_sellar'/)
+      expect(c).toMatch(/format\('drop trigger if exists %I on %I\.%I', 'zz_contrato_sellar'/)
+      expect(c).toMatch(/format\('create trigger %I before insert or update on %I\.%I for each row execute function public\.contrato_sellar\(\)',\s+'zz_contrato_sellar'/)
       expect(sql).not.toMatch(/function public\.contrato_aplicar\([^)]*\)[^$]*security\s+definer/i)
       expect(sql).toMatch(/revoke execute on function public\.contrato_aplicar\(regclass, text\[\]\) from public, anon, authenticated, service_role;/)
       expect(sql).not.toMatch(/grant\s+execute/i)
@@ -178,7 +203,7 @@ describe('contrato base de tabla (PP-DEC-23)', () => {
 
     it('la verificación comprueba columnas, triggers y el historial', () => {
       const v = sql.slice(sql.lastIndexOf('do $$'))
-      expect(v).toContain("g.tgname = 'contrato_sellar'")
+      expect(v).toContain("g.tgname = 'zz_contrato_sellar'")
       expect(v).toContain("(values ('updated_by'), ('creado_via'), ('created_at'), ('updated_at'))")
       expect(v).toContain("'- ''updated_at'' - ''updated_by'' - ''creado_via'''")
     })
@@ -192,10 +217,19 @@ const NOMBRE_DINERO = /^(importe|monto|precio|valor|total|subtotal|saldo|costo|i
 
 type Columna = { tabla: string; nombre: string; tipo: string }
 
+// importe y codigo_moneda sin esquema son los mismos dominios
+const tipoDeColumna = (t: string) => {
+  const x = t.toLowerCase()
+  return x === 'importe' || x === 'codigo_moneda' ? 'public.' + x : x
+}
+
 // Columnas de create table (separadas por comas de primer nivel) y de
-// alter table … add column
-function columnasDe(sql: string): { columnas: Columna[]; checks: string } {
+// alter table … add column; los checks de cada tabla son el cuerpo de su
+// create table y sus alter table … add constraint
+function columnasDe(sql: string): { columnas: Columna[]; checks: Map<string, string> } {
   const columnas: Columna[] = []
+  const checks = new Map<string, string>()
+  const anadir = (tabla: string, texto: string) => checks.set(tabla, (checks.get(tabla) ?? '') + '\n' + texto)
   const re = /create\s+table\s+(?:if\s+not\s+exists\s+)?(?:public\.)?(\w+)\s*\(/gi
   let m: RegExpExecArray | null
   while ((m = re.exec(sql))) {
@@ -214,15 +248,17 @@ function columnasDe(sql: string): { columnas: Columna[]; checks: string } {
       i++
     }
     partes.push(parte)
+    anadir(m[1], sql.slice(re.lastIndex, i))
     for (const p of partes) {
       const c = /^\s*(\w+)\s+([\w.]+)/.exec(p)
-      if (c && !/^(constraint|primary|unique|foreign|check|exclude)$/i.test(c[1])) columnas.push({ tabla: m[1], nombre: c[1], tipo: c[2].toLowerCase() })
+      if (c && !/^(constraint|primary|unique|foreign|check|exclude)$/i.test(c[1])) columnas.push({ tabla: m[1], nombre: c[1], tipo: tipoDeColumna(c[2]) })
     }
   }
   for (const a of sql.matchAll(/alter\s+table\s+(?:if\s+exists\s+)?(?:public\.)?(\w+)\s+add\s+column\s+(?:if\s+not\s+exists\s+)?(\w+)\s+([\w.]+)/gi)) {
-    columnas.push({ tabla: a[1], nombre: a[2], tipo: a[3].toLowerCase() })
+    columnas.push({ tabla: a[1], nombre: a[2], tipo: tipoDeColumna(a[3]) })
   }
-  return { columnas, checks: sql }
+  for (const a of sql.matchAll(/alter\s+table\s+(?:if\s+exists\s+)?(?:only\s+)?(?:public\.)?(\w+)\s+add\s+constraint\s[^;]*/gi)) anadir(a[1], a[0])
+  return { columnas, checks }
 }
 
 function revisarImportes(sql: string): string[] {
@@ -234,7 +270,7 @@ function revisarImportes(sql: string): string[] {
     if (c.tipo === 'public.importe') {
       if (tipoDe(c.tabla, `${c.nombre}_moneda`) !== 'public.codigo_moneda') fallos.push(`${id}: sin ${c.nombre}_moneda public.codigo_moneda`)
       const pareja = new RegExp(`check\\s*\\(\\s*\\(\\s*${c.nombre}\\s+is\\s+null\\s*\\)\\s*=\\s*\\(\\s*${c.nombre}_moneda\\s+is\\s+null\\s*\\)\\s*\\)`, 'i')
-      if (!pareja.test(checks)) fallos.push(`${id}: sin el check de pareja con ${c.nombre}_moneda`)
+      if (!pareja.test(checks.get(c.tabla) ?? '')) fallos.push(`${id}: sin el check de pareja con ${c.nombre}_moneda`)
     } else if (c.tipo === 'public.codigo_moneda') {
       const base = c.nombre.replace(/_moneda$/, '')
       if (base === c.nombre || tipoDe(c.tabla, base) !== 'public.importe') fallos.push(`${id}: código de moneda sin su importe`)
@@ -275,6 +311,23 @@ describe('moneda como par (PP-DEC-24)', () => {
     expect(revisarImportes('alter table public.t add column if not exists saldo numeric;')).toEqual(['t.saldo: un importe va en public.importe con su moneda'])
   })
 
+  it('el check de pareja cuenta solo en su tabla y los dominios sin esquema se revisan igual', () => {
+    const otra = 'create table public.a (total public.importe, total_moneda public.codigo_moneda, constraint a_check check ((total is null) = (total_moneda is null)));'
+    expect(revisarImportes(otra + '\ncreate table public.b (total public.importe, total_moneda public.codigo_moneda);')).toEqual([
+      'b.total: sin el check de pareja con total_moneda',
+    ])
+    expect(
+      revisarImportes(
+        'create table public.b (total importe, total_moneda codigo_moneda);\nalter table public.b add constraint b_check check ((total is null) = (total_moneda is null));',
+      ),
+    ).toEqual([])
+    expect(revisarImportes('create table public.t (id int, total importe);')).toEqual([
+      't.total: sin total_moneda public.codigo_moneda',
+      't.total: sin el check de pareja con total_moneda',
+    ])
+    expect(revisarImportes('create table public.t (id int, moneda codigo_moneda);')).toEqual(['t.moneda: código de moneda sin su importe'])
+  })
+
   it.each(archivos.map((a) => [a.nombre, a] as const))('%s cumple la convención de importes', (_n, a) => {
     expect(revisarImportes(a.sql)).toEqual([])
   })
@@ -286,10 +339,12 @@ describe('comprobaciones fuera de las pruebas estáticas', () => {
   const s16 = sim.split(/\n(?=-- ============ )/).find((b) => b.startsWith('-- ============ 16) '))!
 
   it('verificar.sql comprueba el contrato (15) y los importes (16)', () => {
-    expect(verificar).toContain("'tablas de negocio con el contrato base y el trigger contrato_sellar'")
+    expect(verificar).toContain("'tablas de negocio con el contrato base y el trigger zz_contrato_sellar el último'")
     expect(verificar).toContain("t.relname in ('crm_cuentas', 'crm_contactos', 'crm_actividades')")
     expect(verificar).toContain("'importes con su columna de moneda'")
     expect(verificar).toMatch(/m\.attname = a\.attname \|\| '_moneda'/)
+    expect(verificar).toContain("g.tgname = 'zz_contrato_sellar'")
+    expect(verificar).toMatch(/\(o\.tgtype::int & 2\) <> 0\s+and o\.tgname > 'zz_contrato_sellar'::name/)
   })
 
   it('la sección 16 de rls-simulacion prueba dominios, sellos falsos, sin sesión, historial y actividades', () => {

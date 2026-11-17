@@ -64,10 +64,21 @@ describe('importe con moneda', () => {
     expect(validarImporte('-0.2500', 'USD')).toBeNull()
     expect(validarImporte(1234.5678, 'USD')).toBeNull()
     expect(validarImporte(99999999999999.99, 'COP')).toBeNull()
-    expect(validarImporte(1.23456, 'USD')).toMatch(/4 decimales/)
     expect(validarImporte('1.23456', 'USD')).toMatch(/4 decimales/)
     expect(validarImporte(1e14, 'COP')).toMatch(/demasiado grande/)
+    expect(validarImporte(99999999999999.99999, 'COP')).toMatch(/demasiado grande/)
     expect(validarImporte('100000000000000', 'COP')).toMatch(/demasiado grande/)
+    expect(validarImporte('-100000000000000.5', 'COP')).toMatch(/demasiado grande/)
+  })
+
+  // Un número JSON solo es exacto hasta unas 15 cifras: el texto se valida
+  // por sus cifras y un número se redondea a 4 decimales como en la base
+  it('validarImporte: el máximo de numeric(18,4) en texto y las sumas del navegador', () => {
+    expect(Number('99999999999999.9999')).toBe(1e14)
+    expect(validarImporte('99999999999999.9999', 'COP')).toBeNull()
+    expect(validarImporte('-00099999999999999.9999', 'COP')).toBeNull()
+    expect(validarImporte(0.1 + 0.2, 'USD')).toBeNull()
+    expect(validarImporte(1.23456, 'USD')).toBeNull()
     expect(validarImporte('1.234,5', 'COP')).toMatch(/no es un número/)
     expect(validarImporte(Number.NaN, 'COP')).toMatch(/no es un número/)
     expect(validarImporte(Number.POSITIVE_INFINITY, 'COP')).toMatch(/no es un número/)
