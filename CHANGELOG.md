@@ -28,6 +28,7 @@ Formato: cada commit a `main` es un Paso `Mayor.Fase.Paso — descripción`. La 
 - 0.2.22b — CRM: exportar cuentas descarga la lista completa o no descarga nada. Si hay más de 10 000 cuentas con los filtros actuales, avisa y pide filtrar la lista para exportar por partes, en lugar de entregar un archivo cortado.
 - 0.2.23 — Núcleo: las cuentas, los contactos y las actividades del CRM guardan quién los creó, quién los cambió por última vez y cuándo, y esos datos ya no se pueden alterar desde fuera; el historial sigue mostrando solo los campos que cambian. Es la base común de los módulos de gestión que vienen: todos sus registros seguirán la misma regla y sus importes se guardarán siempre junto a su moneda. (6e20d20)
 - 0.2.24 — Núcleo: base común para numerar los documentos y llevar su estado. Cada tipo de documento tendrá su serie con prefijo, ceros a la izquierda, tope, vigencia y reinicio anual o mensual. Las series fiscales no dejan huecos: el número se asigna al publicar el documento, no al guardar el borrador, y si la serie está agotada o fuera de vigencia no se entrega número. Un documento pasa de un estado a otro solo por los pasos permitidos y cada paso exige su permiso, también para el administrador; si otra persona lo cambió antes, se avisa en lugar de pisar su cambio, y cada paso queda en la auditoría. Nuevo permiso en Roles: Gestionar series de numeración.
+- 0.2.25 — Herramientas internas del proyecto.
 
 ## 0.1 — Arranque (2026-11-07)
 
