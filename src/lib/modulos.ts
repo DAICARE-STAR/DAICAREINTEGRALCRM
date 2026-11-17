@@ -83,6 +83,7 @@ export const MODULOS: readonly Modulo[] = [
       { clave: 'manage_connectors', etiqueta: 'Gestionar conectores' },
       { clave: 'view_credentials', etiqueta: 'Ver credenciales compartidas' },
       { clave: 'manage_credentials', etiqueta: 'Gestionar credenciales compartidas' },
+      { clave: 'gestionar_series', etiqueta: 'Gestionar series de numeración' },
     ],
     // Solo lo que el shell sabe pintar (src/lib/widgets.ts); pendientes y
     // cumpleaños llegan cuando se porten sus widgets

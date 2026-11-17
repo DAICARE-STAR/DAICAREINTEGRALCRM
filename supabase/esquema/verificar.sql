@@ -5,7 +5,7 @@
 -- instalación. Las comprobaciones que leen las filas de modulos_instalacion
 -- contra el registro src/lib/modulos.ts (slugs, límites, dependencias) las
 -- hace aplicar.mjs después de esta consulta (comprobarModulos, números 9 a
--- 11; las de aquí siguen con la 12 a la 16), porque una consulta suelta no
+-- 11; las de aquí siguen con la 12 a la 18), porque una consulta suelta no
 -- puede nombrar una tabla que quizá no existe todavía.
 with
 tablas as (
@@ -59,7 +59,8 @@ nucleo as (
   select unnest(array['roles', 'profiles', 'user_roles', 'connectors', 'security_settings',
                       'api_rate_limits', 'audit_log', 'instalacion', 'modulos_instalacion',
                       'push_subscriptions', 'user_notifications', 'portal_widgets', 'portal_uso',
-                      'ai_usage']) as relname
+                      'ai_usage', 'series', 'estados_entidades', 'estados',
+                      'estados_transiciones']) as relname
 ),
 sin_modulo as (
   select t.relname from tablas t
@@ -161,6 +162,57 @@ importes_sin_moneda as (
       where m.attrelid = t.oid and m.attname = a.attname || '_moneda' and not m.attisdropped
         and m.atttypid = to_regtype('public.codigo_moneda')
     )
+),
+-- Numeración (09b-numeracion.sql, PP-DEC-25): la API no escribe actual ni
+-- periodo ni ejecuta series_siguiente, que es security definer con
+-- search_path y lock_timeout, y ninguna secuencia serie_* tiene grants
+numeracion as (
+  select distinct 'series.' || g.column_name || ' escribible por ' || g.grantee as motivo
+  from information_schema.column_privileges g
+  where g.table_schema = 'public' and g.table_name = 'series' and g.column_name in ('actual', 'periodo')
+    and g.grantee in ('anon', 'authenticated') and g.privilege_type not in ('SELECT', 'REFERENCES')
+  union all
+  select 'series_siguiente ejecutable por ' || r.rol
+  from unnest(array['anon', 'authenticated']) as r(rol)
+  where has_function_privilege(r.rol, to_regprocedure('public.series_siguiente(text,date)'), 'execute')
+  union all
+  select 'series_siguiente sin security definer, search_path o lock_timeout'
+  from pg_proc p
+  where p.oid = to_regprocedure('public.series_siguiente(text,date)')
+    and (not p.prosecdef
+         or not exists (select 1 from unnest(p.proconfig) c where c like 'search_path=%')
+         or not ('lock_timeout=2s' = any (coalesce(p.proconfig, '{}'))))
+  union all
+  select distinct 'secuencia ' || c.relname || ' con grants a la API'
+  from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+  cross join lateral aclexplode(c.relacl) x
+  where n.nspname = 'public' and c.relkind = 'S' and c.relname like 'serie\_%'
+    and (x.grantee = 0 or x.grantee in (select oid from pg_roles where rolname in ('anon', 'authenticated')))
+),
+-- Máquina de estados (09c-estados.sql, PP-DEC-26): catálogo de solo
+-- lectura para la API, aplicar_transicion security invoker con
+-- search_path, estados_registrar solo del dueño y ningún trigger
+-- estados_guardia desactivado
+maquina_estados as (
+  select distinct g.table_name || ' escribible por ' || g.grantee as motivo
+  from information_schema.role_table_grants g
+  where g.table_schema = 'public' and g.table_name in ('estados_entidades', 'estados', 'estados_transiciones')
+    and g.grantee in ('anon', 'authenticated') and g.privilege_type <> 'SELECT'
+  union all
+  select 'aplicar_transicion es security definer o no tiene search_path'
+  from pg_proc p
+  where p.oid = to_regprocedure('public.aplicar_transicion(text,uuid,text,text)')
+    and (p.prosecdef or not exists (select 1 from unnest(p.proconfig) c where c like 'search_path=%'))
+  union all
+  select 'estados_registrar ejecutable por ' || r.rol
+  from unnest(array['anon', 'authenticated', 'service_role']) as r(rol)
+  where has_function_privilege(r.rol, to_regprocedure('public.estados_registrar(text,regclass)'), 'execute')
+  union all
+  select 'estados_guardia desactivado en ' || c.relname
+  from pg_trigger g
+  join pg_class c on c.oid = g.tgrelid
+  where g.tgname = 'estados_guardia' and not g.tgisinternal and g.tgenabled = 'D'
 )
 select orden, comprobacion, estado, detalle from (
   select 1 as orden,
@@ -269,5 +321,23 @@ select orden, comprobacion, estado, detalle from (
          else 'DIFIERE' end,
     case when to_regtype('public.importe') is null then 'falta 00b-contrato-tabla.sql'
          else coalesce((select string_agg(columna, ', ' order by columna) from importes_sin_moneda), '') end
+  union all
+  select 17,
+    'numeración: contador sin escritura para la API y series_siguiente solo del servidor',
+    case when to_regclass('public.series') is null or to_regprocedure('public.series_siguiente(text,date)') is null then 'DIFIERE'
+         when (select count(*) from numeracion) = 0 then 'OK'
+         else 'DIFIERE' end,
+    case when to_regclass('public.series') is null or to_regprocedure('public.series_siguiente(text,date)') is null
+           then 'falta 09b-numeracion.sql (npm run instalar)'
+         else coalesce((select string_agg(motivo, ', ' order by motivo) from numeracion), '') end
+  union all
+  select 18,
+    'máquina de estados: catálogo de solo lectura, aplicar_transicion sin security definer y guardas activas',
+    case when to_regclass('public.estados_entidades') is null or to_regprocedure('public.aplicar_transicion(text,uuid,text,text)') is null then 'DIFIERE'
+         when (select count(*) from maquina_estados) = 0 then 'OK'
+         else 'DIFIERE' end,
+    case when to_regclass('public.estados_entidades') is null or to_regprocedure('public.aplicar_transicion(text,uuid,text,text)') is null
+           then 'falta 09c-estados.sql (npm run instalar)'
+         else coalesce((select string_agg(motivo, ', ' order by motivo) from maquina_estados), '') end
 ) v
 order by orden;

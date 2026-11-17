@@ -26,6 +26,11 @@ export const PERMISSIONS = [
     description: 'Crear y editar roles (los permisos sensibles solo los otorga un admin)',
   },
   {
+    key: 'gestionar_series',
+    label: 'Gestionar series de numeración',
+    description: 'Ver y crear las series que numeran los documentos y cambiar su prefijo, relleno, tope y vigencia; el contador no se edita',
+  },
+  {
     key: 'manage_blog',
     label: 'Gestionar blog',
     description: 'Crear, editar y publicar entradas del blog de empresa.test',

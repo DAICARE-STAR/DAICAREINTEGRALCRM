@@ -8,7 +8,7 @@ Estado: `disponible` se puede activar con `tools/instalar/modulos.mjs --activar`
 
 | Slug | Nombre | Estado | Ruta | Depende de | Integra con | Conectores | Límites | Permisos | Esquema |
 |---|---|---|---|---|---|---|---|---|---|
-| nucleo | Núcleo | disponible | / | — | — | correo | miembros, almacenamiento_mb, retencion_uso_dias | manage_members, manage_roles, manage_connectors, view_credentials, manage_credentials | — |
+| nucleo | Núcleo | disponible | / | — | — | correo | miembros, almacenamiento_mb, retencion_uso_dias | manage_members, manage_roles, manage_connectors, view_credentials, manage_credentials, gestionar_series | — |
 | ia | IA | disponible | — | — | — | — | ia_hora_miembro, ia_dia_equipo | — | — |
 | calendario | Calendario | planeado | /calendario | — | — | calendario | — | app_calendario, manage_calendars | 10-calendario.sql |
 | chat | Chat | planeado | /chat | — | — | — | — | app_chat | 11-chat.sql |
