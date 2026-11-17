@@ -1,6 +1,6 @@
 # Handoff — Bash Logistics
 
-Estado vigente al 2026-11-17 (hora de Bogotá). Lo mantiene la sesión directora «Bash Logistics»: se actualiza al cerrar cada fase u ola, antes de lanzar la siguiente. Sin secretos ni datos de personas.
+Estado vigente al 2026-11-17 (hora de Bogotá). Lo mantiene la sesión directora del producto, que conserva su nombre anterior hasta que el usuario la renombre: se actualiza al cerrar cada fase u ola, antes de lanzar la siguiente. Sin secretos ni datos de personas.
 
 ## Qué es esta sesión
 
