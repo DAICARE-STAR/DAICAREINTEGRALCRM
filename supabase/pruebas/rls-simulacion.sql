@@ -9,7 +9,7 @@
 -- transacción de la sección 0. Nunca muestra valores de la base: solo
 -- conteos, códigos (SQLSTATE) y nombres de funciones o tablas.
 --
--- Requiere: supabase/esquema 00 a 04 aplicados (05 a 09 para las secciones 8 a 11, con 06b para el caso 9.7; 21-crm.sql para la 12 y la 13, con 21b para el caso 13.9) y las cuentas de prueba de
+-- Requiere: supabase/esquema 00 a 04 aplicados (05 a 09 para las secciones 8 a 11, con 06b para el caso 9.7; 21-crm.sql para la 12 y la 13, con 21b para el caso 13.9; 01b-ultimo-administrador.sql para la 14 y 21c-crm-exportar.sql para la 15) y las cuentas de prueba de
 -- node tools/instalar/cuentas-prueba.mjs (instalador.cuentas_prueba con qa,
 -- miembro y admin). Sin una cuenta, sus casos salen OMITIDO.
 --
@@ -39,8 +39,14 @@
 --  13) salud: permiso explícito, aal2, registro de accesos, consentimiento,
 --      crm_salud cerrada a la API, consentimientos sin borrado y vigente por
 --      created_at, cuenta con salud o consentimientos que no se borra
+--  14) último administrador: nadie se quita su propio admin ni borra su
+--      perfil; sin sesión se quita admin a quien no es el último, pero no
+--      al último (delete, update, es_servicio, truncate ni baja en Auth)
+--  15) exportar del crm: sin exportar_crm no se exporta; con él, una fila
+--      crm.exportar en la auditoría; crm_exportar sin salud ni definer
 -- Las secciones 8 a 11 salen OMITIDO si falta su archivo de 05 a 09; la 12
--- y la 13, si falta 21-crm.sql.
+-- y la 13, si falta 21-crm.sql; la 14, si falta 01b-ultimo-administrador.sql;
+-- la 15, si falta 21c-crm-exportar.sql.
 -- ============================================================
 
 begin;
@@ -1372,6 +1378,196 @@ begin
        || v || ' / ' || v_n;
 
   perform set_config('request.jwt.claims', '', true);
+  perform set_config('rls.res', current_setting('rls.res') || r, true);
+end $$;
+
+-- ============ 14) Último administrador: el propio admin, el último y la baja ============
+-- Deja a la cuenta admin de prueba como único administrador real (se
+-- deshace con todo lo demás) y comprueba que ni sin sesión se le quita.
+do $$
+declare
+  r text := '';
+  v text;
+  v_n int;
+  v_miembro uuid := nullif(current_setting('rls.miembro'), '')::uuid;
+  v_admin uuid := nullif(current_setting('rls.admin'), '')::uuid;
+begin
+  if current_setting('rls.txid', true) is distinct from txid_current()::text then
+    raise exception 'rls-simulacion: correr el archivo entero de una vez (BEGIN … ROLLBACK), no una sección suelta';
+  end if;
+  if to_regprocedure('public.guarda_ultimo_admin()') is null then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 14    último administrador · falta 01b-ultimo-administrador.sql', true);
+    return;
+  end if;
+  if v_miembro is null or v_admin is null then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 14    último administrador · faltan las cuentas miembro o admin', true);
+    return;
+  end if;
+  if exists (select 1 from public.profiles where id = v_admin and es_servicio) then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 14    último administrador · la cuenta admin de prueba es de servicio y no cuenta', true);
+    return;
+  end if;
+
+  -- 14.1 El admin se quita su propio admin por la API
+  perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
+  set local role authenticated;
+  begin
+    delete from public.user_roles where user_id = v_admin and role = 'admin';
+    get diagnostics v_n = row_count;
+    v := v_n || ' filas';
+  exception when others then get stacked diagnostics v = pg_exception_hint; v := coalesce(nullif(v, ''), sqlstate);
+  end;
+  reset role;
+  r := r || E'\n' || case when v = 'admin_propio' then 'OK      ' else 'FALLA   ' end || '14.1  admin se quita su propio admin → admin_propio · ' || v;
+
+  -- 14.2 Sin sesión (service role, instalador) se quita admin a quien no es el último
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.user_roles (user_id, role) values (v_miembro, 'admin');
+  begin
+    delete from public.user_roles where user_id = v_miembro and role = 'admin';
+    get diagnostics v_n = row_count;
+    v := case when v_n = 1 then 'quitó' else v_n || ' filas' end;
+  exception when others then get stacked diagnostics v = pg_exception_hint; v := coalesce(nullif(v, ''), sqlstate);
+  end;
+  r := r || E'\n' || case when v = 'quitó' then 'OK      ' else 'FALLA   ' end || '14.2  sin sesión quita admin a quien no es el último → quitó · ' || v;
+
+  -- La cuenta admin de prueba queda como único administrador real
+  begin
+    delete from public.user_roles where role = 'admin' and user_id <> v_admin;
+    v := 'ok';
+  exception when others then get stacked diagnostics v = pg_exception_hint; v := coalesce(nullif(v, ''), sqlstate);
+  end;
+  if v <> 'ok' then
+    perform set_config('rls.res', current_setting('rls.res') || r || E'\nOMITIDO 14.3-8 no se pudo dejar a la cuenta admin de prueba como la última · ' || v, true);
+    return;
+  end if;
+
+  -- 14.3 Sin sesión, quitar el admin al último
+  begin
+    delete from public.user_roles where user_id = v_admin and role = 'admin';
+    v := 'quitó';
+  exception when others then get stacked diagnostics v = pg_exception_hint; v := coalesce(nullif(v, ''), sqlstate);
+  end;
+  r := r || E'\n' || case when v = 'ultimo_admin' then 'OK      ' else 'FALLA   ' end || '14.3  sin sesión quita admin al último → ultimo_admin · ' || v;
+
+  -- 14.4 Sin sesión, cambiar su fila admin por otro rol
+  begin
+    update public.user_roles set role = 'member' where user_id = v_admin and role = 'admin';
+    v := 'cambió';
+  exception when others then get stacked diagnostics v = pg_exception_hint; v := coalesce(nullif(v, ''), sqlstate);
+  end;
+  r := r || E'\n' || case when v = 'ultimo_admin' then 'OK      ' else 'FALLA   ' end || '14.4  sin sesión cambia la fila admin del último → ultimo_admin · ' || v;
+
+  -- 14.5 Sin sesión, marcar al último como cuenta de servicio
+  begin
+    update public.profiles set es_servicio = true where id = v_admin;
+    v := 'marcó';
+  exception when others then get stacked diagnostics v = pg_exception_hint; v := coalesce(nullif(v, ''), sqlstate);
+  end;
+  r := r || E'\n' || case when v = 'ultimo_admin' then 'OK      ' else 'FALLA   ' end || '14.5  sin sesión marca es_servicio al último → ultimo_admin · ' || v;
+
+  -- 14.6 Sin sesión, vaciar user_roles
+  begin
+    truncate public.user_roles;
+    v := 'vació';
+  exception when others then get stacked diagnostics v = pg_exception_hint; v := coalesce(nullif(v, ''), sqlstate);
+  end;
+  r := r || E'\n' || case when v = 'ultimo_admin' then 'OK      ' else 'FALLA   ' end || '14.6  sin sesión vacía user_roles → ultimo_admin · ' || v;
+
+  -- 14.7 Con sesión, borrar el propio perfil (auth.uid() lee el claim
+  -- aunque el rol sea postgres, que sí tiene delete sobre profiles)
+  perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
+  begin
+    delete from public.profiles where id = v_admin;
+    v := 'borró';
+  exception when others then get stacked diagnostics v = pg_exception_hint; v := coalesce(nullif(v, ''), sqlstate);
+  end;
+  perform set_config('request.jwt.claims', '', true);
+  r := r || E'\n' || case when v = 'borrar_propio' then 'OK      ' else 'FALLA   ' end || '14.7  con sesión borra su propio perfil → borrar_propio · ' || v;
+
+  -- 14.8 Sin sesión, la baja del último en Auth (cae en cascada a user_roles)
+  begin
+    delete from auth.users where id = v_admin;
+    v := 'borró';
+  exception when others then get stacked diagnostics v = pg_exception_hint; v := coalesce(nullif(v, ''), sqlstate);
+  end;
+  select count(*) into v_n from public.user_roles where user_id = v_admin and role = 'admin';
+  r := r || E'\n' || case when v = 'ultimo_admin' and v_n = 1 then 'OK      ' else 'FALLA   ' end || '14.8  sin sesión borra al último en Auth → ultimo_admin / 1 · ' || v || ' / ' || v_n;
+
+  perform set_config('rls.res', current_setting('rls.res') || r, true);
+end $$;
+
+-- ============ 15) CRM: exportar exige exportar_crm y queda en la auditoría ============
+do $$
+declare
+  r text := '';
+  v text;
+  v_n int;
+  v_m int;
+  v_miembro uuid := nullif(current_setting('rls.miembro'), '')::uuid;
+begin
+  if current_setting('rls.txid', true) is distinct from txid_current()::text then
+    raise exception 'rls-simulacion: correr el archivo entero de una vez (BEGIN … ROLLBACK), no una sección suelta';
+  end if;
+  if to_regprocedure('public.crm_exportar(text,text,text,text,uuid,text,boolean)') is null then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 15    exportar crm · falta 21c-crm-exportar.sql', true);
+    return;
+  end if;
+  if v_miembro is null then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 15    exportar crm · falta la cuenta miembro', true);
+    return;
+  end if;
+
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.modulos_instalacion (slug, activo) values ('crm', true)
+  on conflict (slug) do update set activo = true;
+  insert into public.roles (name, permissions) values ('prueba-rls-crm-lector', array['app_crm']);
+  insert into public.user_roles (user_id, role) values (v_miembro, 'prueba-rls-crm-lector');
+
+  -- 15.1 Lee el CRM pero no tiene exportar_crm (si un rol real de la
+  -- cuenta ya lo da, el caso no es un negativo)
+  perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+  if public.has_perm('exportar_crm') then
+    r := r || E'\nOMITIDO 15.1  miembro sin exportar_crm · la cuenta miembro ya lo tiene por un rol de la instalación';
+  else
+    set local role authenticated;
+    begin
+      perform * from public.crm_exportar();
+      v := 'exportó';
+    exception when others then get stacked diagnostics v = pg_exception_hint; v := coalesce(nullif(v, ''), sqlstate);
+    end;
+    reset role;
+    r := r || E'\n' || case when v = 'crm_exportar' then 'OK      ' else 'FALLA   ' end || '15.1  miembro con app_crm y sin exportar_crm exporta → crm_exportar · ' || v;
+  end if;
+
+  -- 15.2 Con exportar_crm exporta y la base deja la fila de auditoría
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.roles (name, permissions) values ('prueba-rls-crm-exportar', array['app_crm', 'exportar_crm']);
+  insert into public.user_roles (user_id, role) values (v_miembro, 'prueba-rls-crm-exportar');
+  select count(*) into v_m from public.audit_log where user_id = v_miembro and action = 'crm.exportar';
+  perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+  set local role authenticated;
+  begin
+    select count(*) into v_n from public.crm_exportar();
+    v := 'exportó';
+  exception when others then get stacked diagnostics v = pg_exception_hint; v := coalesce(nullif(v, ''), sqlstate);
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  select count(*) - v_m into v_m from public.audit_log where user_id = v_miembro and action = 'crm.exportar';
+  r := r || E'\n' || case when v = 'exportó' and v_m = 1 then 'OK      ' else 'FALLA   ' end || '15.2  miembro con exportar_crm exporta y deja una fila crm.exportar → exportó / 1 · ' || v || ' / ' || v_m;
+
+  -- 15.3 Sin security definer y nada de salud en el código ni en las columnas
+  select count(*) into v_n
+    from pg_catalog.pg_proc p
+   where p.oid = to_regprocedure('public.crm_exportar(text,text,text,text,uuid,text,boolean)')
+     and (p.prosecdef or p.prosrc ~* 'salud' or pg_catalog.pg_get_function_result(p.oid) ~* 'salud');
+  r := r || E'\n' || case when v_n = 0 then 'OK      ' else 'FALLA   ' end || '15.3  crm_exportar sin security definer ni salud → 0 · ' || v_n;
+
+  -- 15.4 Anónimo sin EXECUTE
+  v := case when has_function_privilege('anon', 'public.crm_exportar(text,text,text,text,uuid,text,boolean)', 'execute') then 'ejecuta' else 'no' end;
+  r := r || E'\n' || case when v = 'no' then 'OK      ' else 'FALLA   ' end || '15.4  anon ejecuta crm_exportar → no · ' || v;
+
   perform set_config('rls.res', current_setting('rls.res') || r, true);
 end $$;
 

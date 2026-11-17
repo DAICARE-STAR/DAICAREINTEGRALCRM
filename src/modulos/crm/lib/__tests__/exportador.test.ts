@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { AJUSTES_POR_DEFECTO } from '../catalogos'
 import { escribirCsv, leerCsv } from '../csv'
 import { exportarCuentas, plantilla } from '../exportador'
-import { importar, type CuentaActual } from '../importador'
+import { COLUMNAS, importar, type CuentaActual } from '../importador'
 import type { CampoDef } from '../tipos'
 
 const defs: CampoDef[] = [
@@ -39,6 +39,18 @@ describe('exportador', () => {
     const r = importar({ filas: leerCsv(texto), ajustes: AJUSTES_POR_DEFECTO, defs, responsables: { 'laura@empresa.co': 'u1' }, cuentas })
     expect(r.error).toBeNull()
     expect(r.filas.map(f => f.accion)).toEqual(['sin_cambio', 'sin_cambio'])
+  })
+
+  // PP-DEC-19: el CSV sale de una lista cerrada de columnas; un dato de salud
+  // que llegara en la fila (por error de la consulta) no se exporta
+  it('nunca exporta datos de salud aunque lleguen en la fila', () => {
+    const conSalud = cuentas.map(c => ({ ...c, salud: { diagnostico: 'DIAGNOSTICO-SECRETO' }, datos_cifrados: 'CIFRADO-SECRETO' }))
+    const filas = exportarCuentas(conSalud, AJUSTES_POR_DEFECTO, defs, {})
+    const texto = escribirCsv(filas)
+    expect(texto).not.toMatch(/SECRETO/)
+    expect(filas[0].join(' ')).not.toMatch(/salud|cifrad/i)
+    // Columnas fijas más los tres campos propios de cuenta de defs
+    expect(filas[0]).toHaveLength(COLUMNAS.length + 3)
   })
 
   it('la plantilla se importa sin filas', () => {

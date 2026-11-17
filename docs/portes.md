@@ -14,6 +14,13 @@ Cada commit que salga se anota en la tabla como «portado (hash del commit del p
 
 9d1524b (2026-11-07), el hash del commit de origen 0.1.19 (N-1). Antes: f3262bc.
 
+## Arreglos hechos aquí, a evaluar en team-portal
+
+| Fecha | Paso del producto | Qué arregla | Estado en team-portal |
+|---|---|---|---|
+| 2026-11-17 | 0.2.22 (BL-10) | Guarda del último administrador en la base: triggers en user_roles (update, delete, truncate) y profiles (delete propio, es_servicio) que impiden quitarse el propio admin y retirar, mover, vaciar o dar de baja en Auth al último administrador real, también con la service role (supabase/esquema/01b-ultimo-administrador.sql) | por evaluar |
+| 2026-11-17 | 0.2.22 (BL-12) | Exportar como permiso propio: exportar_crm, RPC crm_exportar security invoker con tope y fila en audit_log, botón solo con el permiso (supabase/esquema/21c-crm-exportar.sql). Lectura masiva por la API sin tope todavía | por evaluar |
+
 ## Portes
 
 | Fecha | Commit de team-portal | Qué arregla | Resultado |

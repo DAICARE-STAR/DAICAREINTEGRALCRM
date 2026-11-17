@@ -5,8 +5,8 @@
 -- instalación. Las comprobaciones que leen las filas de modulos_instalacion
 -- contra el registro src/lib/modulos.ts (slugs, límites, dependencias) las
 -- hace aplicar.mjs después de esta consulta (comprobarModulos, números 9 a
--- 11; la de storage de aquí es la 12), porque una consulta suelta no puede
--- nombrar una tabla que quizá no existe todavía.
+-- 11; las de aquí siguen con la 12 a la 14), porque una consulta suelta no
+-- puede nombrar una tabla que quizá no existe todavía.
 with
 tablas as (
   select c.oid, c.relname, c.relrowsecurity
@@ -98,6 +98,32 @@ listado_storage as (
     and p.cmd in ('SELECT', 'ALL') and p.permissive = 'PERMISSIVE'
     and ('anon' = any (p.roles) or 'public' = any (p.roles)
          or p.qual ~ '^\(?bucket_id = ''[^'']+''::text\)?$')
+),
+hay_user_roles as (
+  select to_regclass('public.user_roles') is not null as existe
+),
+-- Guarda del último administrador (01b-ultimo-administrador.sql): sus
+-- triggers existen y no están desactivados
+guarda_admin as (
+  select n.nombre
+  from unnest(array['user_roles_ultimo_admin', 'user_roles_ultimo_admin_vaciar', 'profiles_ultimo_admin']) as n(nombre)
+  where not exists (
+    select 1 from pg_trigger t
+    join pg_class c on c.oid = t.tgrelid
+    join pg_namespace s on s.oid = c.relnamespace
+    where s.nspname = 'public' and t.tgname = n.nombre and t.tgenabled <> 'D'
+  )
+),
+-- Exportar del CRM (21c-crm-exportar.sql), si el CRM está instalado:
+-- exige exportar_crm, no es security definer y no toca salud
+hay_crm as (
+  select to_regprocedure('public.crm_buscar(text,text,text,text,uuid,text,boolean,integer,integer)') is not null as existe
+),
+exportar_crm as (
+  select p.prosecdef, p.prosrc
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.proname = 'crm_exportar'
 )
 select orden, comprobacion, estado, detalle from (
   select 1 as orden,
@@ -168,5 +194,25 @@ select orden, comprobacion, estado, detalle from (
          else 'DIFIERE' end,
     case when not (select existe from hay_storage) then 'no existe storage.objects'
          else coalesce((select string_agg(policyname, ', ' order by policyname) from listado_storage), '') end
+  union all
+  select 13,
+    'guarda del último administrador en user_roles y profiles',
+    case when not (select existe from hay_user_roles) then 'OMITIDO'
+         when (select count(*) from guarda_admin) = 0 then 'OK'
+         else 'DIFIERE' end,
+    case when not (select existe from hay_user_roles) then 'falta 00-base.sql'
+         else coalesce('faltan o están desactivados: ' || (select string_agg(nombre, ', ' order by nombre) from guarda_admin), '') end
+  union all
+  select 14,
+    'crm_exportar exige exportar_crm, sin security definer ni salud',
+    case when not (select existe from hay_crm) then 'OMITIDO'
+         when (select count(*) from exportar_crm) = 0 then 'DIFIERE'
+         when exists (select 1 from exportar_crm
+                       where prosecdef or prosrc ~* 'salud'
+                          or position('has_perm(''exportar_crm'')' in prosrc) = 0) then 'DIFIERE'
+         else 'OK' end,
+    case when not (select existe from hay_crm) then 'el CRM no está instalado (21-crm.sql)'
+         when (select count(*) from exportar_crm) = 0 then 'falta 21c-crm-exportar.sql (modulos.mjs --activar crm)'
+         else '' end
 ) v
 order by orden;

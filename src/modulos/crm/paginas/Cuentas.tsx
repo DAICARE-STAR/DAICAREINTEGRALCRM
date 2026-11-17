@@ -36,6 +36,7 @@ type VistaProps = {
   responsables: Responsable[]
   conteo: Record<string, number>
   puedeEditar: boolean
+  puedeExportar: boolean
   error?: string | null
   alBuscar: (q: string) => void
   alFiltrar: (id: keyof FiltrosCrm, valor: string) => void
@@ -62,9 +63,11 @@ export function CuentasVista(p: VistaProps) {
             Importar
           </button>
         )}
-        <button type="button" className="btn-ghost" onClick={p.alExportar}>
-          Exportar
-        </button>
+        {p.puedeExportar && (
+          <button type="button" className="btn-ghost" onClick={p.alExportar}>
+            Exportar
+          </button>
+        )}
         {p.puedeEditar && (
           <button type="button" className="btn-primary" onClick={p.alNueva}>
             Nueva cuenta
@@ -182,6 +185,7 @@ export default function Cuentas() {
   const [recarga, setRecarga] = useState(0)
   const seq = useRef(0)
   const puedeEditar = hasPerm('edit_crm')
+  const puedeExportar = hasPerm('exportar_crm')
 
   useEffect(() => {
     leerAjustesCrm().then(setAjustes, () => {})
@@ -245,6 +249,7 @@ export default function Cuentas() {
         responsables={responsables}
         conteo={conteo}
         puedeEditar={puedeEditar}
+        puedeExportar={puedeExportar}
         error={error}
         alBuscar={setBusqueda}
         alFiltrar={(id, v) => cambiar({ ...filtros, [id]: id === 'archivadas' ? v === '1' : v })}
@@ -282,7 +287,7 @@ export default function Cuentas() {
           }}
         />
       )}
-      {dialogo === 'exportar' && (
+      {dialogo === 'exportar' && puedeExportar && (
         <Exportar filtros={filtros} total={total} ajustes={ajustes} defs={defs} responsables={responsables} onClose={() => setDialogo(null)} />
       )}
     </>

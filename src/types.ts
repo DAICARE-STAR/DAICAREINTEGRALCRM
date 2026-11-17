@@ -71,6 +71,11 @@ export const PERMISSIONS = [
     description: 'Crear y editar cuentas, contactos y actividades del CRM (ver exige Ver CRM)',
   },
   {
+    key: 'exportar_crm',
+    label: 'Exportar CRM',
+    description: 'Descargar en CSV la lista de cuentas del CRM, sin datos de salud; cada exportación queda en la auditoría',
+  },
+  {
     key: 'ver_salud',
     label: 'Ver datos de salud',
     description: 'Leer la historia de salud de las personas atendidas, con segundo factor activo; cada lectura queda registrada',

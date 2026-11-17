@@ -255,6 +255,7 @@ export const MODULOS: readonly Modulo[] = [
     permisos: [
       { clave: 'app_crm', etiqueta: 'Ver CRM' },
       { clave: 'edit_crm', etiqueta: 'Editar cuentas, contactos y actividades' },
+      { clave: 'exportar_crm', etiqueta: 'Exportar cuentas' },
       { clave: 'ver_salud', etiqueta: 'Ver datos de salud' },
       { clave: 'edit_salud', etiqueta: 'Editar datos de salud' },
     ],

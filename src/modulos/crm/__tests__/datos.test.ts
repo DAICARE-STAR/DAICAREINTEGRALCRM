@@ -18,6 +18,7 @@ describe('traducirError', () => {
     expect(traducirError({ code: '42501', hint: 'salud_sin_consentimiento' })).toMatch(/consentimiento/)
     expect(traducirError({ code: '42501', hint: 'salud_sin_clave' })).toMatch(/clave/)
     expect(traducirError({ code: 'P0001', hint: 'salud_sin_clave' })).toMatch(/clave/)
+    expect(traducirError({ code: '42501', hint: 'crm_exportar' })).toBe('No tienes permiso para exportar.')
     expect(traducirError({ code: '42501' })).toBe('No tienes permiso para esta acción.')
   })
 

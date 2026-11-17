@@ -29,7 +29,7 @@ describe('CRM: Cuentas (render estático)', () => {
   const props = {
     total: 1, filtros: FILTROS_VACIOS, busqueda: '', ajustes: AJUSTES_POR_DEFECTO, responsables: [],
     conteo: { activo: 1 }, alBuscar: nada, alFiltrar: nada, alLimpiar: nada, alNueva: nada, alImportar: nada,
-    alExportar: nada, alCargarMas: nada,
+    alExportar: nada, alCargarMas: nada, puedeExportar: true,
   }
 
   it('con datos y edit_crm: tabla, tarjetas y una sola primaria', () => {
@@ -47,6 +47,14 @@ describe('CRM: Cuentas (render estático)', () => {
     expect(html).not.toContain('Nueva cuenta')
     expect(html).not.toContain('Importar')
     expect(html).not.toMatch(/btn-primary/)
+  })
+
+  it('Exportar solo con exportar_crm', () => {
+    expect(renderEstatico(<CuentasVista {...props} cuentas={[cuenta]} puedeEditar={false} />)).toContain('Exportar')
+    const sin = renderEstatico(<CuentasVista {...props} cuentas={[cuenta]} puedeEditar puedeExportar={false} />)
+    reglas(sin)
+    expect(sin).not.toContain('Exportar')
+    expect(sin).toContain('Importar')
   })
 
   it('cargando (null) y vacío ([])', () => {

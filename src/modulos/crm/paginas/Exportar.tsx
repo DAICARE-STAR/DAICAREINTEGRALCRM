@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import Dialogo from '../../../components/Dialogo'
 import { escribirCsv } from '../lib/csv'
-import { registrarExportacion, todasLasCuentas, traducirError, type Responsable } from '../lib/datos'
+import { cuentasParaExportar, traducirError, type Responsable } from '../lib/datos'
 import { exportarCuentas, plantilla } from '../lib/exportador'
 import type { FiltrosCrm } from '../lib/filtros'
 import type { AjustesCrm, CampoDef } from '../lib/tipos'
@@ -17,7 +17,8 @@ export function descargar(nombre: string, texto: string) {
 
 const hoy = () => new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10)
 
-// Exporta la lista filtrada (nunca datos de salud: crm_buscar no los trae)
+// Exporta la lista filtrada por crm_exportar, que exige exportar_crm y deja
+// la fila de auditoría (nunca datos de salud: crm_buscar no los trae)
 export default function Exportar({
   filtros,
   total,
@@ -40,10 +41,9 @@ export default function Exportar({
     setOcupado(true)
     setError(null)
     try {
-      const cuentas = await todasLasCuentas(filtros)
+      const cuentas = await cuentasParaExportar(filtros)
       const nombres = Object.fromEntries(responsables.map((r) => [r.id, r.nombre]))
       descargar(`cuentas-${hoy()}.csv`, escribirCsv(exportarCuentas(cuentas, ajustes, defs, nombres)))
-      registrarExportacion(cuentas.length)
       onClose()
     } catch (e) {
       setError(traducirError(e))
