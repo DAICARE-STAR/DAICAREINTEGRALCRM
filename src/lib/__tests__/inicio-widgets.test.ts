@@ -11,8 +11,9 @@ describe('widgets del Inicio por módulo activo', () => {
     expect(filtrarWidgets(todos, []).map((w) => w.id)).toEqual(['clock'])
   })
 
-  it('suma los de cada módulo activo y descarta los que nadie declara', () => {
-    expect(filtrarWidgets(todos, ['calendario', 'proyectos']).map((w) => w.id)).toEqual(['clock', 'reuniones', 'proyectos'])
+  it('descarta los de un módulo planeado aunque figure activo y los que nadie declara', () => {
+    // calendario y proyectos esperan su esquema (PP-DEC-21)
+    expect(filtrarWidgets(todos, ['calendario', 'proyectos', 'crm']).map((w) => w.id)).toEqual(['clock'])
   })
 })
 

@@ -5,10 +5,16 @@
 // borrable (sin enum, sin namespace, sin imports). La parte React (rutas
 // perezosas, proveedores de Ctrl+K) vive aparte, en src/modulos/<slug>/.
 //
-// «depende» es una dependencia dura que valida el script de módulos; «integra»
-// es una integración opcional que se muestra solo si el otro módulo está activo.
-// Los módulos ERP previstos (PP-DEC-13) figuran con estado 'planeado' para que
-// el registro sea la fuente única desde el primer día; no se pueden activar.
+// «depende» es una dependencia dura (PP-DEC-22): solo el módulo cuyo modelo
+// se lee de verdad; el script de módulos la exige y, si falta, informa el
+// orden de activación. «integra» es una relación blanda: no bloquea la
+// activación y declara el puente que se aplicará cuando ambos módulos estén
+// activos (los puentes llegan con la fase de cada módulo; hoy solo están
+// declarados). Los módulos ERP previstos (PP-DEC-13) figuran con estado
+// 'planeado' para que el registro sea la fuente única desde el primer día; no
+// se pueden activar. Los módulos traídos del portal de origen cuyo archivo de
+// esquema todavía no existe también quedan 'planeado' hasta portarse
+// (PP-DEC-21): conservan su declaración completa y su archivo previsto en sql.
 
 export type Conector = 'crm' | 'archivos' | 'correo' | 'calendario' | 'facturacion' | 'licitaciones' | 'cambio'
 export type TipoLimite = 'entero' | 'lista'
@@ -111,7 +117,7 @@ export const MODULOS: readonly Modulo[] = [
     nombre: 'Calendario',
     icono: 'calendario',
     ruta: '/calendario',
-    estado: 'disponible',
+    estado: 'planeado',
     permisos: [
       { clave: 'app_calendario', etiqueta: 'Ver Calendario' },
       { clave: 'manage_calendars', etiqueta: 'Gestionar calendarios suscritos' },
@@ -130,7 +136,7 @@ export const MODULOS: readonly Modulo[] = [
     nombre: 'Chat',
     icono: 'chat',
     ruta: '/chat',
-    estado: 'disponible',
+    estado: 'planeado',
     permisos: [{ clave: 'app_chat', etiqueta: 'Ver Chat' }],
     widgets: [],
     acciones: [],
@@ -166,7 +172,7 @@ export const MODULOS: readonly Modulo[] = [
     nombre: 'Proyectos',
     icono: 'proyectos',
     ruta: '/proyectos',
-    estado: 'disponible',
+    estado: 'planeado',
     permisos: [
       { clave: 'app_proyectos', etiqueta: 'Ver Proyectos' },
       { clave: 'edit_projects', etiqueta: 'Editar proyectos' },
@@ -186,7 +192,7 @@ export const MODULOS: readonly Modulo[] = [
     nombre: 'Diseños',
     icono: 'disenos',
     ruta: '/disenos',
-    estado: 'disponible',
+    estado: 'planeado',
     permisos: [{ clave: 'app_disenos', etiqueta: 'Ver Diseños' }],
     widgets: [],
     acciones: [],
@@ -203,7 +209,7 @@ export const MODULOS: readonly Modulo[] = [
     nombre: 'Manuales',
     icono: 'manuales',
     ruta: '/manuales',
-    estado: 'disponible',
+    estado: 'planeado',
     permisos: [{ clave: 'app_manuales', etiqueta: 'Ver Manuales' }],
     widgets: [],
     acciones: [],
@@ -219,7 +225,7 @@ export const MODULOS: readonly Modulo[] = [
     nombre: 'Productos',
     icono: 'productos',
     ruta: '/productos',
-    estado: 'disponible',
+    estado: 'planeado',
     permisos: [
       { clave: 'app_productos', etiqueta: 'Ver Productos' },
       { clave: 'manage_products', etiqueta: 'Gestionar el catálogo' },
@@ -269,7 +275,7 @@ export const MODULOS: readonly Modulo[] = [
     nombre: 'Cotizador',
     icono: 'cotizador',
     ruta: '/cotizador',
-    estado: 'disponible',
+    estado: 'planeado',
     permisos: [{ clave: 'app_cotizador', etiqueta: 'Ver Cotizador' }],
     widgets: [],
     acciones: [],
@@ -285,7 +291,7 @@ export const MODULOS: readonly Modulo[] = [
     nombre: 'Gerencia',
     icono: 'gerencia',
     ruta: '/gerencia',
-    estado: 'disponible',
+    estado: 'planeado',
     permisos: [
       { clave: 'app_gerencia', etiqueta: 'Ver Gerencia' },
       { clave: 'view_billing', etiqueta: 'Ver facturación' },
@@ -304,7 +310,7 @@ export const MODULOS: readonly Modulo[] = [
     nombre: 'Licitaciones',
     icono: 'licitaciones',
     ruta: '/licitaciones',
-    estado: 'disponible',
+    estado: 'planeado',
     permisos: [
       { clave: 'app_licitaciones', etiqueta: 'Ver Licitaciones' },
       { clave: 'edit_tender_offers', etiqueta: 'Editar oportunidades y ofertas' },
@@ -327,7 +333,7 @@ export const MODULOS: readonly Modulo[] = [
     nombre: 'Sitio web',
     icono: 'sitio-web',
     ruta: '/sitio-web',
-    estado: 'disponible',
+    estado: 'planeado',
     permisos: [
       { clave: 'app_sitio-web', etiqueta: 'Ver Sitio web' },
       { clave: 'manage_blog', etiqueta: 'Gestionar el blog' },
@@ -348,13 +354,16 @@ export const MODULOS: readonly Modulo[] = [
     conectores: [],
     limites: {},
   },
-  // Módulos ERP previstos (fases 0.7 a 0.11), solo en el producto
-  planeado('inventario', 'Inventario', ['productos']),
-  planeado('compras', 'Compras', ['inventario']),
-  planeado('ventas', 'Ventas', ['cotizador', 'inventario'], ['crm']),
-  planeado('facturacion', 'Facturación', ['ventas', 'compras'], [], ['facturacion']),
+  // Módulos ERP previstos (fases 0.7 a 0.11), solo en el producto. Duro solo
+  // el modelo que se lee: el catálogo (productos) y los terceros (crm, hoy el
+  // único lugar de clientes y proveedores); lo demás es blando (PP-DEC-22).
+  // Una pyme de servicios activa facturación sin inventario ni compras.
+  planeado('inventario', 'Inventario', ['productos'], ['compras', 'ventas']),
+  planeado('compras', 'Compras', ['productos', 'crm'], ['inventario']),
+  planeado('ventas', 'Ventas', ['productos', 'crm'], ['cotizador', 'inventario']),
+  planeado('facturacion', 'Facturación', ['productos', 'crm'], ['ventas', 'compras'], ['facturacion']),
   planeado('cartera', 'Cartera', ['facturacion']),
-  planeado('contabilidad', 'Contabilidad', ['facturacion', 'cartera', 'inventario']),
+  planeado('contabilidad', 'Contabilidad', [], ['facturacion', 'cartera', 'inventario']),
   planeado('rrhh', 'Recursos humanos', []),
 ]
 
@@ -400,8 +409,17 @@ export function dependientesDe(slug: string): string[] {
   return salida
 }
 
+// Un módulo planeado (o fuera del registro) no cuenta como activo aunque su
+// fila lo esté: sin su esquema no hay nada que usar (falla cerrado)
 export function estaActivo(activos: readonly string[], slug: string): boolean {
-  return slug === NUCLEO || activos.includes(slug)
+  return slug === NUCLEO || (activos.includes(slug) && POR_SLUG.get(slug)?.estado === 'disponible')
+}
+
+// Orden en que hay que activar lo que falta para tener este módulo: sus
+// dependencias duras inactivas (cada una antes de quien la necesita) y al
+// final el propio. No mira el estado: quien lo muestre marca los planeados.
+export function ordenDeActivacion(activos: readonly string[], slug: string): string[] {
+  return [...dependenciasDe(slug).filter((d) => !estaActivo(activos, d)), slug]
 }
 
 export function validarActivacion(activos: readonly string[], slug: string): Validacion {

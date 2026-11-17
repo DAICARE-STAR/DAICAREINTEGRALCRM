@@ -375,11 +375,17 @@ describe('aplicar.mjs: --verificar', () => {
       { slug: 'cotizador', activo: true, limites: {} },
       { slug: 'ia', activo: true, limites: { ia_dia_equipo: -1 } },
     ])
-    expect(malas.map((x) => x.estado)).toEqual(['DIFIERE', 'DIFIERE', 'DIFIERE'])
-    expect(malas[0].detalle).toBe('inventario; otro')
+    // cotizador es planeado hasta portar su esquema (PP-DEC-21): cuenta como fuera del registro
+    expect(malas.map((x) => x.estado)).toEqual(['DIFIERE', 'DIFIERE', 'OK'])
+    expect(malas[0].detalle).toBe('inventario; otro; cotizador')
     expect(malas[1].detalle).toMatch(/cupo/)
     expect(malas[1].detalle).toMatch(/ia_dia_equipo/)
-    expect(malas[2].detalle).toBe('cotizador activo sin productos')
+    // Hoy ningún módulo disponible tiene dependencias duras: la comprobación 11 se
+    // prueba con un registro donde cotizador ya fuera activable
+    const conCotizador = MODULOS.map((m) => (m.slug === 'cotizador' ? { ...m, estado: 'disponible' } : m))
+    const sinProductos = comprobarModulos([{ slug: 'nucleo', activo: true, limites: { miembros: 10 } }, { slug: 'cotizador', activo: true, limites: {} }], conCotizador)
+    expect(sinProductos.map((x) => x.estado)).toEqual(['OK', 'OK', 'DIFIERE'])
+    expect(sinProductos[2].detalle).toBe('cotizador activo sin productos')
     expect(comprobarModulos([])[0].detalle).toBe('nucleo no está activo')
     // Un límite mayor que bigint no sale OK: limite_modulo fallaría en cada alta
     expect(estados([{ slug: 'nucleo', activo: true, limites: { miembros: 1e19 } }])[1]).toBe('DIFIERE')

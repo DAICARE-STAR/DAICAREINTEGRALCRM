@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
@@ -7,8 +8,10 @@ import {
   accionesDe,
   dependenciasDe,
   dependientesDe,
+  estaActivo,
   moduloDeAccion,
   moduloPorSlug,
+  ordenDeActivacion,
   tablasDe,
   validarActivacion,
   validarDesactivacion,
@@ -17,6 +20,10 @@ import {
 } from '../modulos'
 
 const SLUGS = MODULOS.map((m) => m.slug)
+const ESQUEMA = fileURLToPath(new URL('../../../supabase/esquema/', import.meta.url))
+// Los traídos del portal de origen que esperan su archivo de esquema (PP-DEC-21)
+const SIN_ESQUEMA = ['calendario', 'chat', 'proyectos', 'disenos', 'manuales', 'productos', 'cotizador', 'gerencia', 'licitaciones', 'sitio-web']
+const ERP = ['inventario', 'compras', 'ventas', 'facturacion', 'cartera', 'contabilidad', 'rrhh']
 const KEBAB = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
 // verbo_objeto (manage_members, edit_crm) o app_<slug>
 const CLAVE_PERMISO = /^(?:app_[a-z][a-z0-9]*(?:-[a-z0-9]+)*|[a-z]+_[a-z]+(?:_[a-z]+)*)$/
@@ -29,15 +36,53 @@ describe('registro de módulos', () => {
     for (const s of SLUGS) expect(s).toMatch(KEBAB)
   })
 
-  it('trae el núcleo, disponible y sin dependencias, y los 14 módulos del portal más los 7 ERP planeados', () => {
+  it('trae el núcleo, disponible y sin dependencias; 4 activables y planeados los 10 sin esquema y los 7 ERP', () => {
     const nucleo = moduloPorSlug(NUCLEO)
     expect(nucleo).toBeDefined()
     expect(nucleo?.estado).toBe('disponible')
     expect(nucleo?.depende).toEqual([])
-    expect(MODULOS.filter((m) => m.estado === 'disponible')).toHaveLength(14)
-    expect(MODULOS.filter((m) => m.estado === 'planeado').map((m) => m.slug)).toEqual([
-      'inventario', 'compras', 'ventas', 'facturacion', 'cartera', 'contabilidad', 'rrhh',
-    ])
+    expect(MODULOS.filter((m) => m.estado === 'disponible').map((m) => m.slug)).toEqual(['nucleo', 'ia', 'correo', 'crm'])
+    expect(MODULOS.filter((m) => m.estado === 'planeado').map((m) => m.slug)).toEqual([...SIN_ESQUEMA, ...ERP])
+  })
+
+  // D-1 (PP-DEC-21): un módulo activable no puede prometer un esquema que no existe
+  it('todo módulo activable con sql tiene su archivo en supabase/esquema', () => {
+    for (const m of MODULOS.filter((x) => x.estado === 'disponible' && x.sql)) {
+      expect(existsSync(ESQUEMA + m.sql), `${m.slug}: falta supabase/esquema/${m.sql}`).toBe(true)
+    }
+  })
+
+  it('las dependencias duras de un módulo activable también son activables', () => {
+    for (const m of MODULOS.filter((x) => x.estado === 'disponible')) {
+      for (const d of dependenciasDe(m.slug)) expect(moduloPorSlug(d)?.estado, `${m.slug} → ${d}`).toBe('disponible')
+    }
+  })
+
+  // BL-01 (PP-DEC-22): duro solo el modelo que se lee; el resto en integra
+  it('una pyme de servicios activa facturación sin inventario ni compras', () => {
+    const duras = dependenciasDe('facturacion')
+    expect(duras).toEqual(['productos', 'crm'])
+    for (const d of ['inventario', 'compras', 'ventas']) expect(duras).not.toContain(d)
+    expect(ordenDeActivacion([], 'facturacion')).toEqual(['productos', 'crm', 'facturacion'])
+    expect(ordenDeActivacion(['crm'], 'facturacion')).toEqual(['productos', 'facturacion'])
+    expect(moduloPorSlug('facturacion')?.integra).toEqual(['ventas', 'compras'])
+  })
+
+  it('los ERP planeados declaran duro solo catálogo, terceros o facturas; lo demás es blando', () => {
+    const duras = Object.fromEntries(ERP.map((s) => [s, moduloPorSlug(s)?.depende]))
+    expect(duras).toEqual({
+      inventario: ['productos'],
+      compras: ['productos', 'crm'],
+      ventas: ['productos', 'crm'],
+      facturacion: ['productos', 'crm'],
+      cartera: ['facturacion'],
+      contabilidad: [],
+      rrhh: [],
+    })
+    // Ningún ERP exige un módulo de operación (inventario, compras, ventas)
+    for (const s of ERP) for (const d of ['inventario', 'compras', 'ventas']) expect(dependenciasDe(s), `${s} → ${d}`).not.toContain(d)
+    // Un mismo módulo no es a la vez duro y blando
+    for (const m of MODULOS) for (const d of m.integra) expect(m.depende, `${m.slug} → ${d}`).not.toContain(d)
   })
 
   it('depende e integra apuntan a módulos existentes y nunca al propio', () => {
@@ -93,8 +138,8 @@ describe('registro de módulos', () => {
 describe('helpers puros', () => {
   it('dependenciasDe devuelve el cierre transitivo en orden de activación', () => {
     expect(dependenciasDe('cotizador')).toEqual(['productos'])
-    expect(dependenciasDe('ventas')).toEqual(['productos', 'cotizador', 'inventario'])
-    expect(dependenciasDe('contabilidad').indexOf('productos')).toBeLessThan(dependenciasDe('contabilidad').indexOf('inventario'))
+    expect(dependenciasDe('ventas')).toEqual(['productos', 'crm'])
+    expect(dependenciasDe('cartera')).toEqual(['productos', 'crm', 'facturacion'])
     expect(dependenciasDe(NUCLEO)).toEqual([])
     expect(dependenciasDe('no-existe')).toEqual([])
   })
@@ -103,19 +148,28 @@ describe('helpers puros', () => {
     const d = dependientesDe('productos')
     expect(d).toContain('cotizador')
     expect(d).toContain('inventario')
-    expect(d.indexOf('ventas')).toBeLessThan(d.indexOf('cotizador'))
-    expect(d.indexOf('contabilidad')).toBeLessThan(d.indexOf('inventario'))
+    expect(d.indexOf('cartera')).toBeLessThan(d.indexOf('facturacion'))
     expect(dependientesDe('chat')).toEqual([])
+    // integra no cuenta: nadie depende de cotizador ni de inventario
+    expect(dependientesDe('cotizador')).toEqual([])
+    expect(dependientesDe('inventario')).toEqual([])
   })
 
-  it('validarActivacion rechaza un módulo con dependencias inactivas, uno planeado o desconocido', () => {
-    expect(validarActivacion([], 'cotizador')).toEqual({ ok: false, errores: ['depende de productos, que no está activo'] })
-    expect(validarActivacion(['productos'], 'cotizador').ok).toBe(true)
+  it('validarActivacion rechaza un módulo planeado (ERP o sin esquema) o desconocido', () => {
     expect(validarActivacion(['productos'], 'inventario').ok).toBe(false)
     expect(validarActivacion(['productos'], 'inventario').errores[0]).toMatch(/planeado/)
+    expect(validarActivacion([], 'calendario').errores).toEqual(['módulo planeado, todavía sin fase: calendario'])
+    expect(validarActivacion(['productos'], 'cotizador').ok).toBe(false)
     expect(validarActivacion([], 'nada').errores[0]).toMatch(/desconocido/)
     // El núcleo cuenta como activo sin figurar en la lista
-    expect(validarActivacion([], 'calendario').ok).toBe(true)
+    expect(validarActivacion([], 'crm').ok).toBe(true)
+  })
+
+  it('ordenDeActivacion pone las dependencias duras inactivas antes del propio y salta las activas', () => {
+    expect(ordenDeActivacion([], 'cartera')).toEqual(['productos', 'crm', 'facturacion', 'cartera'])
+    expect(ordenDeActivacion(['crm'], 'cartera')).toEqual(['productos', 'facturacion', 'cartera'])
+    expect(ordenDeActivacion([], 'crm')).toEqual(['crm'])
+    expect(ordenDeActivacion([], 'contabilidad')).toEqual(['contabilidad'])
   })
 
   it('validarDesactivacion rechaza si hay dependientes activos salvo con cascada, y nunca el núcleo', () => {
@@ -153,7 +207,16 @@ describe('helpers puros', () => {
 
   it('widgetsActivos incluye siempre los del núcleo y suma los de los módulos activos', () => {
     expect(widgetsActivos([])).toEqual(['clock'])
-    expect(widgetsActivos(['calendario', 'gerencia'])).toEqual(['clock', 'reuniones', 'facturacion'])
+    // Un planeado no aporta widgets aunque su fila figure activa
+    expect(widgetsActivos(['calendario', 'gerencia', 'crm'])).toEqual(['clock'])
+  })
+
+  it('estaActivo: el núcleo siempre; un planeado o desconocido nunca, aunque su fila figure activa', () => {
+    expect(estaActivo([], NUCLEO)).toBe(true)
+    expect(estaActivo(['crm'], 'crm')).toBe(true)
+    expect(estaActivo([], 'crm')).toBe(false)
+    expect(estaActivo(['chat'], 'chat')).toBe(false)
+    expect(estaActivo(['viejo'], 'viejo')).toBe(false)
   })
 
   it('accionesDe, moduloDeAccion y tablasDe', () => {

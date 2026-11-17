@@ -97,32 +97,47 @@ describe('modulos.mjs: opciones', () => {
 })
 
 describe('modulos.mjs: activar', () => {
-  it('sin las dependencias activas sale con 1 y nombra la que falta', async () => {
-    const r = await correr(['--activar', 'cotizador'])
+  it('con dependencias duras inactivas sale con 1 e informa el orden de activación, marcando los planeados', async () => {
+    const r = await correr(['--activar', 'facturacion'])
     expect(r.codigo).toBe(1)
-    expect(r.errores.join('\n')).toMatch(/depende de productos/)
+    expect(r.errores).toContain('AVISO orden de activación: productos (planeado), crm, facturacion (planeado)')
     expect(r.escritas(INSERT_MODULO)).toEqual([])
     expect(r.escritas(ACTIVAR_MODULO)).toEqual([])
+    // Las activas no figuran; inventario y compras (blandas) nunca
+    const conCrm = await correr(['--activar', 'facturacion'], { filas: [fila('nucleo'), fila('crm')] })
+    expect(conCrm.errores).toContain('AVISO orden de activación: productos (planeado), facturacion (planeado)')
+    expect(conCrm.texto).not.toMatch(/inventario|compras/)
+    // Sin dependencias que falten no hay orden que informar
+    const sinDeps = await correr(['--activar', 'contabilidad'])
+    expect(sinDeps.codigo).toBe(1)
+    expect(sinDeps.texto).not.toMatch(/orden de activación/)
   })
 
-  it('un módulo desconocido o planeado no se activa', async () => {
+  it('un módulo desconocido, planeado o sin esquema todavía no se activa', async () => {
     expect((await correr(['--activar', 'nada'])).codigo).toBe(1)
     const r = await correr(['--activar', 'inventario'], { filas: [fila('nucleo'), fila('productos')] })
     expect(r.codigo).toBe(1)
     expect(r.errores.join('\n')).toMatch(/planeado/)
+    // Aunque su archivo apareciera en la carpeta: manda el registro (PP-DEC-21)
+    const chat = await correr(['--activar', 'chat'])
+    expect(chat.codigo).toBe(1)
+    expect(chat.errores).toEqual(['DIFIERE módulo planeado, todavía sin fase: chat'])
+    expect(chat.aplicadas).toEqual([])
+    expect(chat.escritas(INSERT_MODULO)).toEqual([])
   })
 
   it('aplica el SQL del módulo una sola vez: si ya figura en esquema_aplicado no lo vuelve a aplicar', async () => {
-    const primera = await correr(['--activar', 'chat'])
+    writeFileSync(join(carpeta, '21-crm.sql'), 'select 1;\n')
+    const primera = await correr(['--activar', 'crm'])
     expect(primera.codigo).toBe(0)
-    expect(primera.aplicadas).toEqual([join(carpeta, '11-chat.sql')])
-    expect(primera.escritas(CONSULTA_APLICADO)).toEqual([['11-chat.sql']])
-    expect(primera.escritas(INSERT_MODULO)).toEqual([['chat', '{}']])
+    expect(primera.aplicadas).toEqual([join(carpeta, '21-crm.sql')])
+    expect(primera.escritas(CONSULTA_APLICADO)).toEqual([['21-crm.sql']])
+    expect(primera.escritas(INSERT_MODULO)).toEqual([['crm', '{}']])
 
-    const segunda = await correr(['--activar', 'chat'], { filas: [fila('nucleo'), fila('chat', false)], aplicados: ['11-chat.sql'] })
+    const segunda = await correr(['--activar', 'crm'], { filas: [fila('nucleo'), fila('crm', false)], aplicados: ['21-crm.sql'] })
     expect(segunda.codigo).toBe(0)
     expect(segunda.aplicadas).toEqual([])
-    expect(segunda.escritas(ACTIVAR_MODULO)).toEqual([['chat', '{}']])
+    expect(segunda.escritas(ACTIVAR_MODULO)).toEqual([['crm', '{}']])
   })
 
   it('aplica en orden el archivo del módulo y sus correcciones con letra, y solo las del mismo número', async () => {
@@ -166,15 +181,17 @@ describe('modulos.mjs: activar', () => {
   })
 
   it('si el SQL del módulo falla, la fila no se escribe y sale con 1', async () => {
-    const r = await correr(['--activar', 'chat'], { codigoAplicar: 1 })
+    writeFileSync(join(carpeta, '21-crm.sql'), 'select 1;\n')
+    const r = await correr(['--activar', 'crm'], { codigoAplicar: 1 })
     expect(r.codigo).toBe(1)
+    expect(r.aplicadas).toEqual([join(carpeta, '21-crm.sql')])
     expect(r.escritas(INSERT_MODULO)).toEqual([])
   })
 
   it('sin el archivo del módulo en supabase/esquema sale con 2 sin escribir', async () => {
-    const r = await correr(['--activar', 'manuales'])
+    const r = await correr(['--activar', 'crm'])
     expect(r.codigo).toBe(2)
-    expect(r.errores[0]).toMatch(/13-manuales\.sql/)
+    expect(r.errores[0]).toMatch(/21-crm\.sql/)
     expect(r.aplicadas).toEqual([])
     expect(r.escritas(INSERT_MODULO)).toEqual([])
   })
@@ -246,26 +263,29 @@ describe('modulos.mjs: límites y listado', () => {
   })
 
   it('--listar muestra nucleo activo con sus límites y los demás del registro', async () => {
-    const r = await correr(['--listar'], { filas: [fila('nucleo', true, { miembros: 10 }), fila('chat', false), fila('viejo', true)] })
+    const r = await correr(['--listar'], { filas: [fila('nucleo', true, { miembros: 10 }), fila('correo', false), fila('chat', false), fila('viejo', true)] })
     expect(r.codigo).toBe(0)
     expect(r.salida).toContain('nucleo · activo · límites {"miembros":10}')
-    expect(r.salida).toContain('chat · inactivo · límites {}')
+    expect(r.salida).toContain('correo · inactivo · límites {}')
+    expect(r.salida).toContain('chat · planeado · límites {}')
     expect(r.salida).toContain('inventario · planeado')
     expect(r.salida).toContain('viejo · fuera del registro · activo')
   })
 
-  it('--listar avisa las correcciones pendientes de un módulo activo y no las de uno inactivo', async () => {
+  it('--listar avisa las correcciones pendientes de un módulo activo y no las de uno inactivo ni planeado', async () => {
     writeFileSync(join(carpeta, '21-crm.sql'), 'select 1;\n')
     writeFileSync(join(carpeta, '21b-crm-correccion.sql'), 'select 2;\n')
     writeFileSync(join(carpeta, '11b-chat-correccion.sql'), 'select 2;\n')
-    const filas = [fila('nucleo'), fila('crm'), fila('chat', false)]
+    const filas = [fila('nucleo'), fila('crm'), fila('chat')]
     const r = await correr(['--listar'], { filas, aplicados: ['21-crm.sql', '11-chat.sql'] })
     expect(r.codigo).toBe(0)
     expect(r.salida).toContain('crm · activo · límites {} · correcciones pendientes: 21b-crm-correccion.sql')
-    expect(r.salida).toContain('chat · inactivo · límites {}')
+    expect(r.salida).toContain('chat · planeado · límites {}')
     expect(r.aplicadas).toEqual([])
     const alDia = await correr(['--listar'], { filas, aplicados: ['21-crm.sql', '21b-crm-correccion.sql'] })
     expect(alDia.salida).toContain('crm · activo · límites {}')
+    const inactivo = await correr(['--listar'], { filas: [fila('nucleo'), fila('crm', false)], aplicados: ['21-crm.sql'] })
+    expect(inactivo.salida).toContain('crm · inactivo · límites {}')
   })
 })
 

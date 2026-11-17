@@ -47,14 +47,16 @@ describe('rutas de los módulos', () => {
 
   it('un módulo inactivo no aporta columnas', () => {
     const columnas = gruposPermisos([], PERMISSIONS.map((p) => p.key)).flatMap((g) => g.keys)
-    expect(columnas).not.toContain('app_calendario')
+    expect(columnas).not.toContain('app_crm')
     expect(columnas).toContain('manage_members')
   })
 
-  it('los permisos del sitio van con Sitio web y nada de módulo cae en «Otros»', () => {
-    const grupos = gruposPermisos(['sitio-web'], PERMISSIONS.map((p) => p.key))
-    const sitio = grupos.find((g) => g.label === 'Sitio web')?.keys ?? []
-    for (const k of ['manage_projects', 'manage_brands', 'manage_notice', 'view_analytics']) expect(sitio).toContain(k)
+  it('un módulo planeado no aporta columnas aunque figure activo y lo suyo no cae en «Otros»', () => {
+    // Sitio web y Licitaciones esperan su esquema (PP-DEC-21)
+    const grupos = gruposPermisos(['sitio-web', 'licitaciones'], PERMISSIONS.map((p) => p.key))
+    expect(grupos.find((g) => g.label === 'Sitio web')).toBeUndefined()
+    const columnas = grupos.flatMap((g) => g.keys)
+    for (const k of ['manage_projects', 'manage_brands', 'manage_notice', 'view_analytics', 'edit_tender_offers']) expect(columnas).not.toContain(k)
     const otros = grupos.find((g) => g.label === 'Otros')?.keys ?? []
     expect(otros).not.toContain('edit_tender_offers')
     expect(otros).not.toContain('delete_tender_offers')
