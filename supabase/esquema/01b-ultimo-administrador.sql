@@ -15,6 +15,15 @@
 --
 -- Administrador real: fila de user_roles con role = 'admin' cuyo perfil no
 -- tiene es_servicio (una cuenta de servicio no administra por el cliente).
+-- La cuenta admin de tools/instalar/cuentas-prueba.mjs no lleva es_servicio
+-- y cuenta como administrador real: mientras exista, se puede retirar al
+-- último administrador humano del cliente. Por eso se borra antes de
+-- entregar la instalación (HANDOFF).
+--
+-- Lo que no cubre: solo mira filas borradas o cambiadas en user_roles y
+-- profiles. Bloquear al último administrador en Auth (banned_until) o darlo
+-- de baja con el borrado suave de la API Admin (deleted_at, sin borrar la
+-- fila) no pasa por aquí y lo deja sin poder entrar.
 --
 -- Reglas, para todos (también la service role, el instalador y el SQL
 -- Editor):

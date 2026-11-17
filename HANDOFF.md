@@ -20,6 +20,8 @@ Directora: orquesta agentes de investigación, desarrollo y pruebas de TailorSui
 - Push de `clientes\daicare-crm`: pendiente de orden.
 - Push de TailorSuite 0.2.11 a 0.2.16: pendiente de orden.
 - Antes de entregar a DAI CARE: Site URL y SMTP de Auth, borrar las cuentas de prueba, texto del consentimiento informado, sitio público y DNS.
+- Despliegue de 0.2.22 en una instalación hecha: primero `npm.cmd run instalar` (aplica 01b) y `node --env-file=.env tools/instalar/modulos.mjs --activar crm` (aplica 21c), después `--verificar` (comprobaciones 13 y 14) y solo entonces publicar el frontend; sin 21c nadie puede exportar del CRM. Mientras exista la cuenta admin de prueba, cuenta como administrador real para la guarda de 01b.
+- Pendiente de seguridad (BL-12, otra unidad): exportar_crm solo gobierna crm_exportar. Quien tiene app_crm puede recorrer crm_buscar (páginas de 200) o leer crm_cuentas por la API sin el permiso y sin fila crm.exportar; falta acotar p_desde y p_limite de crm_buscar sin has_perm('exportar_crm'). 01b tampoco cubre el bloqueo ni el borrado suave en Auth del último administrador.
 
 ## Plan en curso (aprobado el 2026-11-17)
 

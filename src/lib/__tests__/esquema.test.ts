@@ -544,6 +544,10 @@ describe('supabase/pruebas/rls-simulacion.sql', () => {
     expect(s15).toMatch(/if public\.has_perm\('exportar_crm'\) then\s+r := r \|\| E'\\nOMITIDO 15\.1/)
     expect(s15).toMatch(/action = 'crm\.exportar'/)
     expect(s15).toMatch(/pg_get_function_result\(p\.oid\) ~\* 'salud'/)
+    expect(s15).toMatch(/or p\.proretset or p\.prorettype <> 'jsonb'::regtype/)
+    for (const caso of ['15.1', '15.2', '15.3', '15.4', '15.5']) expect(s15, caso).toContain(`'${caso}  `)
+    expect(s15).toContain('generate_series(1, 10001)')
+    expect(s15).toMatch(/when v = 'crm_exportar_tope' and v_m = 0 then 'OK/)
   })
 
   it('la sección 11 prueba el tope con almacenamiento_mb = 0 y vuelve a null', () => {
@@ -839,19 +843,40 @@ describe('esquema: 21c-crm-exportar (BL-12)', () => {
     const c = cuerpo(sql, 'crm_exportar')
     const permiso = c.search(/if not public\.has_perm\('exportar_crm'\) then\s+raise exception[^;]*errcode = '42501', hint = 'crm_exportar'/)
     expect(permiso).toBeGreaterThan(-1)
-    expect(permiso).toBeLessThan(c.indexOf('return query'))
-    expect([...c.matchAll(/from\s+(public\.\w+)/gi)].map((m) => m[1])).toEqual(['public.crm_buscar'])
+    expect(permiso).toBeLessThan(c.indexOf('public.crm_buscar'))
+    expect([...c.matchAll(/from\s+(public\.\w+)/gi)].map((m) => m[1])).toEqual(['public.crm_buscar', 'public.crm_buscar'])
     expect(c).toMatch(/for i in 0 \.\. 49 loop/)
-    expect(c).toMatch(/insert into public\.audit_log \(user_id, action, detail, entity, origen\)\s+values \(auth\.uid\(\), 'crm\.exportar'/)
+    expect(c).toMatch(/insert into public\.audit_log \(user_id, action, detail, entity, origen\)\s+values \(auth\.uid\(\), 'crm\.exportar', 'Exportó ' \|\| v_total \|\| ' cuentas'/)
     expect(sql).toMatch(/revoke execute on function public\.crm_exportar\(text, text, text, text, uuid, text, boolean\) from public, anon;/)
     expect(sql).toMatch(/grant execute on function public\.crm_exportar\(text, text, text, text, uuid, text, boolean\) to authenticated;/)
   })
 
+  // PostgREST corta en su «Max rows» (1000 por defecto) toda respuesta de
+  // varias filas, también la de una función, sin avisar: la exportación
+  // devuelve un solo jsonb y se niega antes que entregar la lista cortada
+  it('crm_exportar devuelve un solo jsonb, se niega con más de 10 000 y comprueba el total antes de auditar', () => {
+    const f = funciones(sql).find((x) => x.nombre === 'crm_exportar')!
+    expect(f.cabecera).toMatch(/^\s*returns\s+jsonb\s/i)
+    expect(f.cabecera).not.toMatch(/returns\s+(setof|table)\b/i)
+    const c = cuerpo(sql, 'crm_exportar')
+    const tope = c.search(/if v_total > 10000 then\s+raise exception[^;]*errcode = '54000', hint = 'crm_exportar_tope'/)
+    const bucle = c.indexOf('for i in 0 .. 49 loop')
+    const cambio = c.search(/if jsonb_array_length\(v_filas\) <> v_total then\s+raise exception[^;]*hint = 'crm_exportar_cambio'/)
+    const auditoria = c.indexOf('insert into public.audit_log')
+    expect(tope).toBeGreaterThan(-1)
+    expect(tope).toBeLessThan(bucle)
+    expect(cambio).toBeGreaterThan(bucle)
+    expect(cambio).toBeLessThan(auditoria)
+    expect(c).toMatch(/return jsonb_build_object\('total', v_total, 'filas', v_filas\);/)
+    // 50 páginas de 200 cubren el tope: ninguna fila se queda fuera
+    expect(c).toMatch(/p_archivadas, 200, i \* 200\) with ordinality b/)
+    expect(c).toMatch(/jsonb_agg\(to_jsonb\(b\) - 'total' - 'ordinality' order by b\.ordinality\)/)
+  })
+
   // PP-DEC-19: nada de salud en ninguna exportación
-  it('la exportación no lleva salud: mismas columnas que crm_buscar sin total y nada de salud en el código', () => {
-    expect(columnas(sql, 'crm_exportar')).toEqual(columnas(crm, 'crm_buscar').filter((c) => c !== 'total bigint'))
+  it('la exportación no lleva salud: las filas son las de crm_buscar, que no tiene salud, y nada de salud en el código', () => {
+    expect(columnas(crm, 'crm_buscar').join(' ')).not.toMatch(/salud|cifrad/i)
     expect(cuerpo(sql, 'crm_exportar')).not.toMatch(/salud/i)
-    expect(columnas(sql, 'crm_exportar').join(' ')).not.toMatch(/salud|cifrad/i)
   })
 
   it('la semilla da exportar_crm a los roles con app_crm, salvo admin, sin repetirlo', () => {
@@ -871,7 +896,7 @@ describe('esquema: 21c-crm-exportar (BL-12)', () => {
     const datos = readFileSync(raiz + 'lib/datos.ts', 'utf8')
     const exportar = readFileSync(raiz + 'paginas/Exportar.tsx', 'utf8')
     const cuentas = readFileSync(raiz + 'paginas/Cuentas.tsx', 'utf8')
-    expect(datos).toMatch(/supabase\.rpc\('crm_exportar'/)
+    expect(datos).toMatch(/supabase\.rpc\('crm_exportar', filtros\)\s+if \(error\) throw error\s+return filasExportadas\(data\)/)
     expect(datos).not.toMatch(/logAction\('crm\.exportar'/)
     expect(exportar).toMatch(/cuentasParaExportar\(filtros\)/)
     expect(exportar).not.toMatch(/buscarCuentas|todasLasCuentas|rpc\(/)
@@ -881,7 +906,8 @@ describe('esquema: 21c-crm-exportar (BL-12)', () => {
 
   it('verificar.sql comprueba crm_exportar si el CRM está instalado', () => {
     const verificar = readFileSync(CARPETA + 'verificar.sql', 'utf8')
-    expect(verificar).toContain("'crm_exportar exige exportar_crm, sin security definer ni salud'")
+    expect(verificar).toContain("'crm_exportar exige exportar_crm, sin security definer ni salud, devuelve un jsonb'")
+    expect(verificar).toMatch(/or proretset or prorettype <> 'jsonb'::regtype/)
     expect(verificar).toMatch(/position\('has_perm\(''exportar_crm''\)' in prosrc\) = 0\) then 'DIFIERE'/)
   })
 })

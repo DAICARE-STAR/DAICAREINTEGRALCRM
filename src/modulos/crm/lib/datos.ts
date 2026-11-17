@@ -16,6 +16,14 @@ export class SinFilas extends Error {
   }
 }
 
+/** La exportación llegó con menos o más filas que su total: no se descarga. */
+export class ExportacionIncompleta extends Error {
+  constructor() {
+    super('exportacion_incompleta')
+    this.name = 'ExportacionIncompleta'
+  }
+}
+
 function afectadas<T>(rows: T[] | null): T[] {
   if (!rows || rows.length === 0) throw new SinFilas()
   return rows
@@ -52,6 +60,7 @@ const PERMISO: Record<string, string> = {
  */
 export function traducirError(err: unknown, opciones: { etiquetas?: Record<string, string>; entidad?: 'cuenta' | 'contacto' } = {}): string {
   if (err instanceof SinFilas) return 'No se guardó nada: no tienes permiso o el registro ya no existe.'
+  if (err instanceof ExportacionIncompleta) return 'La exportación llegó incompleta y no se descargó. Intenta de nuevo.'
   const e = (typeof err === 'object' && err !== null ? err : {}) as ErrorPg
   const code = typeof e.code === 'string' ? e.code : ''
   const hint = typeof e.hint === 'string' ? e.hint : ''
@@ -77,6 +86,12 @@ export function traducirError(err: unknown, opciones: { etiquetas?: Record<strin
       return hint === 'salud_datos' ? 'Los datos de salud no tienen el formato esperado.' : 'Algún dato no es válido.'
     case 'PGRST116':
       return 'El registro no existe o no tienes acceso.'
+    case '54000':
+      return hint === 'crm_exportar_tope'
+        ? 'Hay más de 10 000 cuentas con estos filtros. Filtra la lista y exporta por partes.'
+        : 'No se pudo completar la operación.'
+    case '40001':
+      return hint === 'crm_exportar_cambio' ? 'La lista cambió mientras se exportaba. Intenta de nuevo.' : 'No se pudo completar la operación.'
     default:
       return 'No se pudo completar la operación.'
   }
@@ -168,13 +183,22 @@ export async function contarPorEtapa(f: FiltrosCrm, etapas: string[]): Promise<R
 
 /**
  * Cuentas de la lista filtrada para exportar. crm_exportar exige
- * exportar_crm, corta en 10 000 y deja la fila crm.exportar en la auditoría.
+ * exportar_crm, se niega con más de 10 000 y deja la fila crm.exportar en la
+ * auditoría. Devuelve un solo jsonb {total, filas}: una función que devuelve
+ * filas la cortaría el «Max rows» de la API sin avisar.
  */
 export async function cuentasParaExportar(f: FiltrosCrm): Promise<Cuenta[]> {
   const { p_limite: _l, p_desde: _d, ...filtros } = aParametrosRpc(f, 0, 1)
   const { data, error } = await supabase.rpc('crm_exportar', filtros)
   if (error) throw error
-  return (data ?? []) as Cuenta[]
+  return filasExportadas(data)
+}
+
+/** Desempaqueta la respuesta de crm_exportar; si no están todas, falla. */
+export function filasExportadas(data: unknown): Cuenta[] {
+  const d = (typeof data === 'object' && data !== null ? data : {}) as { total?: unknown; filas?: unknown }
+  if (!Array.isArray(d.filas) || typeof d.total !== 'number' || d.filas.length !== d.total) throw new ExportacionIncompleta()
+  return d.filas as Cuenta[]
 }
 
 export async function leerCuenta(id: string): Promise<Cuenta> {

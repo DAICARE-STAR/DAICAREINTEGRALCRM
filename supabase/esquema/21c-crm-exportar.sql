@@ -12,10 +12,13 @@
 -- navegador con páginas de crm_buscar y registraba la exportación desde el
 -- cliente; bastaba leer el CRM para descargar la base de cuentas. Ahora la
 -- pantalla exporta solo por crm_exportar, que exige exportar_crm (un
--- administrador lo tiene por serlo, como todo permiso de has_perm), corta
--- en 10 000 filas y deja la fila crm.exportar en audit_log en la misma
--- transacción. Lo que no cierra: quien lee el CRM sigue pudiendo recorrer
--- crm_cuentas o crm_buscar por la API; acotar ese volumen es otra pieza.
+-- administrador lo tiene por serlo, como todo permiso de has_perm), devuelve
+-- la lista entera en un solo jsonb (fuera del «Max rows» de PostgREST), se
+-- niega con más de 10 000 cuentas y deja la fila crm.exportar en audit_log
+-- en la misma transacción. Lo que no cierra: quien lee el CRM sigue
+-- pudiendo recorrer crm_cuentas o crm_buscar por la API sin exportar_crm y
+-- sin fila crm.exportar; el permiso gobierna la exportación de la pantalla,
+-- no la lectura masiva. Acotar ese volumen es otra pieza (HANDOFF).
 --
 -- Semilla: exportar_crm va a todo rol (salvo admin) que tenga app_crm,
 -- porque hasta aquí todo el que veía el CRM tenía el botón Exportar. Nadie
@@ -33,7 +36,7 @@
 --   | Objeto           | Qué                                                         |
 --   |------------------|-------------------------------------------------------------|
 --   | crm_exportar(…)  | exportación con exportar_crm, tope y fila en audit_log      |
---   |                  | (security invoker: la RLS decide las filas)                 |
+--   |                  | (security invoker: la RLS decide las filas; returns jsonb)  |
 --   | roles            | exportar_crm en los roles con app_crm                       |
 -- ============================================================
 
@@ -53,10 +56,14 @@ end $$;
 
 -- ============ 1) Exportación ============
 -- security invoker: lee con la RLS de quien exporta, por crm_buscar (que
--- topa cada página en 200), hasta 50 páginas. La fila de auditoría va como
--- 'cliente' porque la escribe la sesión de quien exporta (la política de
--- audit_log no admite otra), pero la pone la base: la pantalla no puede
--- saltársela.
+-- topa cada página en 200), hasta 50 páginas. Devuelve un solo valor jsonb
+-- ({total, filas}) y no un conjunto de filas: PostgREST corta en su «Max
+-- rows» (1000 por defecto) toda respuesta con varias filas, también la de
+-- una función, sin avisar al navegador. Con más de 10 000 cuentas, o si la
+-- lista cambia entre páginas, falla sin exportar nada en vez de entregar
+-- un archivo incompleto. La fila de auditoría va como 'cliente' porque la
+-- escribe la sesión de quien exporta (la política de audit_log no admite
+-- otra), pero la pone la base: la pantalla no puede saltársela.
 create or replace function public.crm_exportar(
   p_q text default null,
   p_tipo text default null,
@@ -66,36 +73,39 @@ create or replace function public.crm_exportar(
   p_etiqueta text default null,
   p_archivadas boolean default false
 )
-returns table (
-  id uuid, tipo text, nombre text, documento text, etapa text, origen text, tipo_empresa text,
-  responsable_id uuid, telefono text, email text, direccion text, ciudad text, pais text,
-  etiquetas text[], campos jsonb, notas text, archivado_en timestamptz, created_by uuid,
-  created_at timestamptz, updated_at timestamptz
-)
+returns jsonb
 language plpgsql security invoker set search_path = public, pg_temp as $$
 declare
-  v_pagina int;
-  v_n int := 0;
+  v_total bigint;
+  v_filas jsonb := '[]'::jsonb;
 begin
   if not public.has_perm('exportar_crm') then
     raise exception 'crm: no tienes permiso para exportar' using errcode = '42501', hint = 'crm_exportar';
   end if;
 
+  select b.total into v_total
+    from public.crm_buscar(p_q, p_tipo, p_etapa, p_origen, p_responsable, p_etiqueta,
+                           p_archivadas, 1, 0) b;
+  v_total := coalesce(v_total, 0);
+  if v_total > 10000 then
+    raise exception 'crm: más de 10 000 cuentas para exportar' using errcode = '54000', hint = 'crm_exportar_tope';
+  end if;
+
   for i in 0 .. 49 loop
-    return query
-      select b.id, b.tipo, b.nombre, b.documento, b.etapa, b.origen, b.tipo_empresa,
-             b.responsable_id, b.telefono, b.email, b.direccion, b.ciudad, b.pais,
-             b.etiquetas, b.campos, b.notas, b.archivado_en, b.created_by,
-             b.created_at, b.updated_at
+    exit when i * 200 >= v_total;
+    v_filas := v_filas || coalesce((
+      select jsonb_agg(to_jsonb(b) - 'total' - 'ordinality' order by b.ordinality)
         from public.crm_buscar(p_q, p_tipo, p_etapa, p_origen, p_responsable, p_etiqueta,
-                               p_archivadas, 200, i * 200) b;
-    get diagnostics v_pagina = row_count;
-    v_n := v_n + v_pagina;
-    exit when v_pagina < 200;
+                               p_archivadas, 200, i * 200) with ordinality b), '[]'::jsonb);
   end loop;
 
+  if jsonb_array_length(v_filas) <> v_total then
+    raise exception 'crm: la lista cambió durante la exportación' using errcode = '40001', hint = 'crm_exportar_cambio';
+  end if;
+
   insert into public.audit_log (user_id, action, detail, entity, origen)
-  values (auth.uid(), 'crm.exportar', 'Exportó ' || v_n || ' cuentas', 'crm_cuentas', 'cliente');
+  values (auth.uid(), 'crm.exportar', 'Exportó ' || v_total || ' cuentas', 'crm_cuentas', 'cliente');
+  return jsonb_build_object('total', v_total, 'filas', v_filas);
 end;
 $$;
 
@@ -122,9 +132,11 @@ begin
     from pg_catalog.pg_proc p
    where p.oid = to_regprocedure('public.crm_exportar(text,text,text,text,uuid,text,boolean)')
      and not p.prosecdef
+     and not p.proretset
+     and p.prorettype = 'jsonb'::regtype
      and exists (select 1 from unnest(p.proconfig) c where c like 'search_path=%');
   if v_src is null then
-    raise exception '21c-crm-exportar: crm_exportar falta, quedó security definer o sin search_path';
+    raise exception '21c-crm-exportar: crm_exportar falta, quedó security definer, sin search_path o no devuelve un solo jsonb';
   end if;
   if position('has_perm(''exportar_crm'')' in v_src) = 0 or v_src ~* 'salud' then
     raise exception '21c-crm-exportar: crm_exportar no exige exportar_crm o toca salud';

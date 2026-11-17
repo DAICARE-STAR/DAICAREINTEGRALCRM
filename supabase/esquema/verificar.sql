@@ -116,12 +116,13 @@ guarda_admin as (
   )
 ),
 -- Exportar del CRM (21c-crm-exportar.sql), si el CRM está instalado:
--- exige exportar_crm, no es security definer y no toca salud
+-- exige exportar_crm, no es security definer, no toca salud y devuelve un
+-- solo jsonb (un conjunto de filas lo corta el «Max rows» de PostgREST)
 hay_crm as (
   select to_regprocedure('public.crm_buscar(text,text,text,text,uuid,text,boolean,integer,integer)') is not null as existe
 ),
 exportar_crm as (
-  select p.prosecdef, p.prosrc
+  select p.prosecdef, p.prosrc, p.proretset, p.prorettype
   from pg_proc p
   join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'public' and p.proname = 'crm_exportar'
@@ -301,11 +302,12 @@ select orden, comprobacion, estado, detalle from (
          else coalesce('faltan o están desactivados: ' || (select string_agg(nombre, ', ' order by nombre) from guarda_admin), '') end
   union all
   select 14,
-    'crm_exportar exige exportar_crm, sin security definer ni salud',
+    'crm_exportar exige exportar_crm, sin security definer ni salud, devuelve un jsonb',
     case when not (select existe from hay_crm) then 'OMITIDO'
          when (select count(*) from exportar_crm) = 0 then 'DIFIERE'
          when exists (select 1 from exportar_crm
                        where prosecdef or prosrc ~* 'salud'
+                          or proretset or prorettype <> 'jsonb'::regtype
                           or position('has_perm(''exportar_crm'')' in prosrc) = 0) then 'DIFIERE'
          else 'OK' end,
     case when not (select existe from hay_crm) then 'el CRM no está instalado (21-crm.sql)'

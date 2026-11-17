@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { leerDatosSalud, nombreArchivoSeguro, SinFilas, traducirError } from '../lib/datos'
+import { ExportacionIncompleta, filasExportadas, leerDatosSalud, nombreArchivoSeguro, SinFilas, traducirError } from '../lib/datos'
 
 describe('traducirError', () => {
   it('23514 por hint de catálogo y de campo', () => {
@@ -22,6 +22,13 @@ describe('traducirError', () => {
     expect(traducirError({ code: '42501' })).toBe('No tienes permiso para esta acción.')
   })
 
+  it('exportar: tope, lista cambiada y llegada incompleta', () => {
+    expect(traducirError({ code: '54000', hint: 'crm_exportar_tope' })).toMatch(/más de 10 000 cuentas/)
+    expect(traducirError({ code: '40001', hint: 'crm_exportar_cambio' })).toMatch(/cambió/)
+    expect(traducirError({ code: '54000' })).toBe('No se pudo completar la operación.')
+    expect(traducirError(new ExportacionIncompleta())).toMatch(/incompleta/)
+  })
+
   it('23505 según la entidad', () => {
     expect(traducirError({ code: '23505' }, { entidad: 'cuenta' })).toMatch(/documento/)
     expect(traducirError({ code: '23505' }, { entidad: 'contacto' })).toMatch(/principal/)
@@ -33,6 +40,25 @@ describe('traducirError', () => {
     expect(traducirError(new Error('cualquier cosa'))).toBe('No se pudo completar la operación.')
     expect(traducirError(null)).toBe('No se pudo completar la operación.')
     expect(traducirError(new SinFilas())).toMatch(/No se guardó nada/)
+  })
+})
+
+describe('filasExportadas', () => {
+  it('devuelve las filas solo si están todas', () => {
+    const filas = [{ id: 'a' }, { id: 'b' }]
+    expect(filasExportadas({ total: 2, filas })).toEqual(filas)
+    expect(filasExportadas({ total: 0, filas: [] })).toEqual([])
+  })
+
+  // Una respuesta cortada (como la de una función que devuelve filas, por
+  // el «Max rows» de la API) o sin total no se descarga
+  it('falla si faltan filas, sobran o la forma no es la esperada', () => {
+    const mil = Array.from({ length: 1000 }, (_, i) => ({ id: String(i) }))
+    expect(() => filasExportadas({ total: 3500, filas: mil })).toThrow(ExportacionIncompleta)
+    expect(() => filasExportadas({ total: 1, filas: [{ id: 'a' }, { id: 'b' }] })).toThrow(ExportacionIncompleta)
+    expect(() => filasExportadas(mil)).toThrow(ExportacionIncompleta)
+    expect(() => filasExportadas({ filas: [] })).toThrow(ExportacionIncompleta)
+    expect(() => filasExportadas(null)).toThrow(ExportacionIncompleta)
   })
 })
 

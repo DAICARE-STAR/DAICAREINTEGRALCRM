@@ -42,8 +42,9 @@
 --  14) último administrador: nadie se quita su propio admin ni borra su
 --      perfil; sin sesión se quita admin a quien no es el último, pero no
 --      al último (delete, update, es_servicio, truncate ni baja en Auth)
---  15) exportar del crm: sin exportar_crm no se exporta; con él, una fila
---      crm.exportar en la auditoría; crm_exportar sin salud ni definer
+--  15) exportar del crm: sin exportar_crm no se exporta; con él, la lista
+--      entera en un jsonb y una fila crm.exportar en la auditoría; más de
+--      10 000 cuentas se niega; crm_exportar sin salud ni definer
 --  16) contrato de tabla: dominios de moneda y vía; en el crm, autoría,
 --      fechas y creado_via sellados aunque el cliente mande otros, y el
 --      historial sin updated_by ni creado_via
@@ -1515,6 +1516,7 @@ declare
   v text;
   v_n int;
   v_m int;
+  v_j jsonb;
   v_miembro uuid := nullif(current_setting('rls.miembro'), '')::uuid;
 begin
   if current_setting('rls.txid', true) is distinct from txid_current()::text then
@@ -1551,33 +1553,60 @@ begin
     r := r || E'\n' || case when v = 'crm_exportar' then 'OK      ' else 'FALLA   ' end || '15.1  miembro con app_crm y sin exportar_crm exporta → crm_exportar · ' || v;
   end if;
 
-  -- 15.2 Con exportar_crm exporta y la base deja la fila de auditoría
+  -- 15.2 Con exportar_crm exporta la lista entera en un solo jsonb (sin
+  -- la columna total) y la base deja la fila de auditoría con el total
   perform set_config('request.jwt.claims', '', true);
   insert into public.roles (name, permissions) values ('prueba-rls-crm-exportar', array['app_crm', 'exportar_crm']);
   insert into public.user_roles (user_id, role) values (v_miembro, 'prueba-rls-crm-exportar');
+  insert into public.crm_cuentas (tipo, nombre)
+  select 'persona', 'Prueba RLS exportar ' || g from generate_series(1, 3) g;
+  select count(*) into v_m from public.audit_log
+   where user_id = v_miembro and action = 'crm.exportar' and detail = 'Exportó 3 cuentas';
+  perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+  set local role authenticated;
+  begin
+    v_j := public.crm_exportar(p_q => 'Prueba RLS exportar');
+    v := 'exportó';
+  exception when others then get stacked diagnostics v = pg_exception_hint; v := coalesce(nullif(v, ''), sqlstate);
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  select count(*) - v_m into v_m from public.audit_log
+   where user_id = v_miembro and action = 'crm.exportar' and detail = 'Exportó 3 cuentas';
+  v_n := coalesce(jsonb_array_length(v_j -> 'filas'), -1);
+  if v = 'exportó' and (v_j ->> 'total' is distinct from '3' or (v_j -> 'filas' -> 0) ? 'total') then
+    v := 'filas con total o total distinto';
+  end if;
+  r := r || E'\n' || case when v = 'exportó' and v_n = 3 and v_m = 1 then 'OK      ' else 'FALLA   ' end || '15.2  miembro con exportar_crm exporta 3 cuentas y deja una fila crm.exportar → exportó / 3 / 1 · ' || v || ' / ' || v_n || ' / ' || v_m;
+
+  -- 15.3 Sin security definer y nada de salud en el código ni en las columnas
+  select count(*) into v_n
+    from pg_catalog.pg_proc p
+   where p.oid = to_regprocedure('public.crm_exportar(text,text,text,text,uuid,text,boolean)')
+     and (p.prosecdef or p.prosrc ~* 'salud' or pg_catalog.pg_get_function_result(p.oid) ~* 'salud'
+          or p.proretset or p.prorettype <> 'jsonb'::regtype);
+  r := r || E'\n' || case when v_n = 0 then 'OK      ' else 'FALLA   ' end || '15.3  crm_exportar sin security definer ni salud y devuelve un solo jsonb → 0 · ' || v_n;
+
+  -- 15.4 Anónimo sin EXECUTE
+  v := case when has_function_privilege('anon', 'public.crm_exportar(text,text,text,text,uuid,text,boolean)', 'execute') then 'ejecuta' else 'no' end;
+  r := r || E'\n' || case when v = 'no' then 'OK      ' else 'FALLA   ' end || '15.4  anon ejecuta crm_exportar → no · ' || v;
+
+  -- 15.5 Con más de 10 000 cuentas se niega sin exportar ni dejar fila de
+  -- auditoría, en vez de entregar un archivo cortado
+  insert into public.crm_cuentas (tipo, nombre)
+  select 'persona', 'Prueba RLS tope ' || g from generate_series(1, 10001) g;
   select count(*) into v_m from public.audit_log where user_id = v_miembro and action = 'crm.exportar';
   perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal1')::text, true);
   set local role authenticated;
   begin
-    select count(*) into v_n from public.crm_exportar();
+    v_j := public.crm_exportar(p_q => 'Prueba RLS tope');
     v := 'exportó';
   exception when others then get stacked diagnostics v = pg_exception_hint; v := coalesce(nullif(v, ''), sqlstate);
   end;
   reset role;
   perform set_config('request.jwt.claims', '', true);
   select count(*) - v_m into v_m from public.audit_log where user_id = v_miembro and action = 'crm.exportar';
-  r := r || E'\n' || case when v = 'exportó' and v_m = 1 then 'OK      ' else 'FALLA   ' end || '15.2  miembro con exportar_crm exporta y deja una fila crm.exportar → exportó / 1 · ' || v || ' / ' || v_m;
-
-  -- 15.3 Sin security definer y nada de salud en el código ni en las columnas
-  select count(*) into v_n
-    from pg_catalog.pg_proc p
-   where p.oid = to_regprocedure('public.crm_exportar(text,text,text,text,uuid,text,boolean)')
-     and (p.prosecdef or p.prosrc ~* 'salud' or pg_catalog.pg_get_function_result(p.oid) ~* 'salud');
-  r := r || E'\n' || case when v_n = 0 then 'OK      ' else 'FALLA   ' end || '15.3  crm_exportar sin security definer ni salud → 0 · ' || v_n;
-
-  -- 15.4 Anónimo sin EXECUTE
-  v := case when has_function_privilege('anon', 'public.crm_exportar(text,text,text,text,uuid,text,boolean)', 'execute') then 'ejecuta' else 'no' end;
-  r := r || E'\n' || case when v = 'no' then 'OK      ' else 'FALLA   ' end || '15.4  anon ejecuta crm_exportar → no · ' || v;
+  r := r || E'\n' || case when v = 'crm_exportar_tope' and v_m = 0 then 'OK      ' else 'FALLA   ' end || '15.5  exportar 10 001 cuentas → crm_exportar_tope / 0 · ' || v || ' / ' || v_m;
 
   perform set_config('rls.res', current_setting('rls.res') || r, true);
 end $$;
