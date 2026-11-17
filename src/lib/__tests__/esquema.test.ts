@@ -483,14 +483,14 @@ describe('supabase/pruebas/rls-simulacion.sql', () => {
     expect(sinComentarios(sim)).not.toMatch(/\bcommit\b/i)
   })
 
-  it('tiene las secciones 0 a 15 y la 0 lee instalador.cuentas_prueba', () => {
-    for (let n = 0; n <= 15; n++) expect(sim).toContain(`-- ============ ${n}) `)
+  it('tiene las secciones 0 a 16 y la 0 lee instalador.cuentas_prueba', () => {
+    for (let n = 0; n <= 16; n++) expect(sim).toContain(`-- ============ ${n}) `)
     expect(bloques.find((b) => b.startsWith('-- ============ 0) '))).toMatch(/from instalador\.cuentas_prueba where rol = 'qa'/)
   })
 
   it('cada sección después de la 0 se niega a correr suelta', () => {
     const secciones = bloques.filter((b) => /^-- ============ [1-9]\d*\) /.test(b))
-    expect(secciones.length).toBe(15)
+    expect(secciones.length).toBe(16)
     for (const s of secciones) expect(s).toMatch(/current_setting\('rls\.txid', true\) is distinct from txid_current\(\)::text then\s+raise exception/)
   })
 

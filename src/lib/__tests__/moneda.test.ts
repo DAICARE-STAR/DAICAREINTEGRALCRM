@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fmtDinero, fmtNumero } from '../moneda'
+import { esCodigoMoneda, fmtDinero, fmtImporte, fmtNumero, validarImporte } from '../moneda'
 
 // Formato de dinero del shell (las apps estáticas no viajan al producto)
 describe('fmtDinero', () => {
@@ -35,5 +35,51 @@ describe('fmtNumero', () => {
     expect(fmtNumero(1234)).toBe('1.234')
     expect(fmtNumero(-12.5, 2)).toBe('-12,50')
     expect(fmtNumero(null)).toBe('—')
+  })
+})
+
+// Importe con moneda (PP-DEC-24): las mismas reglas que los dominios
+// importe y codigo_moneda y el check de pareja de 00b-contrato-tabla.sql
+describe('importe con moneda', () => {
+  it('esCodigoMoneda: tres letras mayúsculas', () => {
+    expect(esCodigoMoneda('COP')).toBe(true)
+    expect(esCodigoMoneda('cop')).toBe(false)
+    expect(esCodigoMoneda('CO')).toBe(false)
+    expect(esCodigoMoneda('COPS')).toBe(false)
+    expect(esCodigoMoneda(null)).toBe(false)
+  })
+
+  it('validarImporte: los dos o ninguno', () => {
+    expect(validarImporte(null, null)).toBeNull()
+    expect(validarImporte('', undefined)).toBeNull()
+    expect(validarImporte(1500, 'COP')).toBeNull()
+    expect(validarImporte(0, 'USD')).toBeNull()
+    expect(validarImporte(1500, null)).toMatch(/Falta la moneda/)
+    expect(validarImporte(null, 'COP')).toMatch(/Falta el importe/)
+    expect(validarImporte(1500, 'cop')).toMatch(/tres letras/)
+  })
+
+  it('validarImporte: número o texto de la API, hasta 4 decimales y 14 cifras enteras', () => {
+    expect(validarImporte('1234.5', 'COP')).toBeNull()
+    expect(validarImporte('-0.2500', 'USD')).toBeNull()
+    expect(validarImporte(1234.5678, 'USD')).toBeNull()
+    expect(validarImporte(99999999999999.99, 'COP')).toBeNull()
+    expect(validarImporte(1.23456, 'USD')).toMatch(/4 decimales/)
+    expect(validarImporte('1.23456', 'USD')).toMatch(/4 decimales/)
+    expect(validarImporte(1e14, 'COP')).toMatch(/demasiado grande/)
+    expect(validarImporte('100000000000000', 'COP')).toMatch(/demasiado grande/)
+    expect(validarImporte('1.234,5', 'COP')).toMatch(/no es un número/)
+    expect(validarImporte(Number.NaN, 'COP')).toMatch(/no es un número/)
+    expect(validarImporte(Number.POSITIVE_INFINITY, 'COP')).toMatch(/no es un número/)
+    expect(validarImporte({}, 'COP')).toMatch(/no es un número/)
+  })
+
+  it('fmtImporte: formato es-CO con el código, — si el par no es válido', () => {
+    expect(fmtImporte(1234567, 'COP')).toBe('COP $ 1.234.567')
+    expect(fmtImporte('1234567.5', 'COP', 2)).toBe('COP $ 1.234.567,50')
+    expect(fmtImporte(-12.5, 'EUR', 2)).toBe('EUR € -12,50')
+    expect(fmtImporte(1500, null)).toBe('—')
+    expect(fmtImporte(null, 'COP')).toBe('—')
+    expect(fmtImporte(1500, 'usd')).toBe('—')
   })
 })

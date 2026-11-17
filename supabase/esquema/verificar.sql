@@ -5,7 +5,7 @@
 -- instalación. Las comprobaciones que leen las filas de modulos_instalacion
 -- contra el registro src/lib/modulos.ts (slugs, límites, dependencias) las
 -- hace aplicar.mjs después de esta consulta (comprobarModulos, números 9 a
--- 11; las de aquí siguen con la 12 a la 14), porque una consulta suelta no
+-- 11; las de aquí siguen con la 12 a la 16), porque una consulta suelta no
 -- puede nombrar una tabla que quizá no existe todavía.
 with
 tablas as (
@@ -124,6 +124,37 @@ exportar_crm as (
   from pg_proc p
   join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'public' and p.proname = 'crm_exportar'
+),
+-- Contrato base de tabla (00b-contrato-tabla.sql, PP-DEC-23): toda tabla
+-- con creado_via lleva el trigger contrato_sellar activo, y con el CRM
+-- instalado lo tienen cuentas, contactos y actividades (21d-crm-contrato.sql)
+hay_contrato as (
+  select to_regprocedure('public.contrato_sellar()') is not null
+     and to_regprocedure('public.contrato_aplicar(regclass,text[])') is not null as existe
+),
+sin_contrato as (
+  select t.relname
+  from tablas t
+  where (exists (select 1 from pg_attribute a where a.attrelid = t.oid and a.attname = 'creado_via' and not a.attisdropped)
+         or ((select existe from hay_crm) and t.relname in ('crm_cuentas', 'crm_contactos', 'crm_actividades')))
+    and not exists (
+      select 1 from pg_trigger g
+      where g.tgrelid = t.oid and g.tgname = 'contrato_sellar' and not g.tgisinternal and g.tgenabled <> 'D'
+        and g.tgfoid = to_regprocedure('public.contrato_sellar()')
+    )
+),
+-- Moneda como par (PP-DEC-24): cada columna public.importe tiene al lado
+-- <columna>_moneda de tipo public.codigo_moneda
+importes_sin_moneda as (
+  select t.relname || '.' || a.attname as columna
+  from tablas t
+  join pg_attribute a on a.attrelid = t.oid and not a.attisdropped
+  where a.atttypid = to_regtype('public.importe')
+    and not exists (
+      select 1 from pg_attribute m
+      where m.attrelid = t.oid and m.attname = a.attname || '_moneda' and not m.attisdropped
+        and m.atttypid = to_regtype('public.codigo_moneda')
+    )
 )
 select orden, comprobacion, estado, detalle from (
   select 1 as orden,
@@ -214,5 +245,23 @@ select orden, comprobacion, estado, detalle from (
     case when not (select existe from hay_crm) then 'el CRM no está instalado (21-crm.sql)'
          when (select count(*) from exportar_crm) = 0 then 'falta 21c-crm-exportar.sql (modulos.mjs --activar crm)'
          else '' end
+  union all
+  select 15,
+    'tablas de negocio con el contrato base y el trigger contrato_sellar',
+    case when not (select existe from hay_contrato) then 'DIFIERE'
+         when (select count(*) from sin_contrato) = 0 then 'OK'
+         else 'DIFIERE' end,
+    case when not (select existe from hay_contrato) then 'falta 00b-contrato-tabla.sql (npm run instalar)'
+         when (select count(*) from sin_contrato) = 0 then ''
+         else 'sin contrato_sellar (con el CRM, falta 21d-crm-contrato.sql: modulos.mjs --activar crm): '
+              || (select string_agg(relname, ', ' order by relname) from sin_contrato) end
+  union all
+  select 16,
+    'importes con su columna de moneda',
+    case when to_regtype('public.importe') is null then 'OMITIDO'
+         when (select count(*) from importes_sin_moneda) = 0 then 'OK'
+         else 'DIFIERE' end,
+    case when to_regtype('public.importe') is null then 'falta 00b-contrato-tabla.sql'
+         else coalesce((select string_agg(columna, ', ' order by columna) from importes_sin_moneda), '') end
 ) v
 order by orden;

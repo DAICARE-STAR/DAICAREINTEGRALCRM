@@ -9,7 +9,7 @@
 -- transacción de la sección 0. Nunca muestra valores de la base: solo
 -- conteos, códigos (SQLSTATE) y nombres de funciones o tablas.
 --
--- Requiere: supabase/esquema 00 a 04 aplicados (05 a 09 para las secciones 8 a 11, con 06b para el caso 9.7; 21-crm.sql para la 12 y la 13, con 21b para el caso 13.9; 01b-ultimo-administrador.sql para la 14 y 21c-crm-exportar.sql para la 15) y las cuentas de prueba de
+-- Requiere: supabase/esquema 00 a 04 aplicados (05 a 09 para las secciones 8 a 11, con 06b para el caso 9.7; 21-crm.sql para la 12 y la 13, con 21b para el caso 13.9; 01b-ultimo-administrador.sql para la 14 y 21c-crm-exportar.sql para la 15; 00b-contrato-tabla.sql para la 16, con 21d-crm-contrato.sql para sus casos del CRM) y las cuentas de prueba de
 -- node tools/instalar/cuentas-prueba.mjs (instalador.cuentas_prueba con qa,
 -- miembro y admin). Sin una cuenta, sus casos salen OMITIDO.
 --
@@ -44,9 +44,13 @@
 --      al último (delete, update, es_servicio, truncate ni baja en Auth)
 --  15) exportar del crm: sin exportar_crm no se exporta; con él, una fila
 --      crm.exportar en la auditoría; crm_exportar sin salud ni definer
+--  16) contrato de tabla: dominios de moneda y vía; en el crm, autoría,
+--      fechas y creado_via sellados aunque el cliente mande otros, y el
+--      historial sin updated_by ni creado_via
 -- Las secciones 8 a 11 salen OMITIDO si falta su archivo de 05 a 09; la 12
 -- y la 13, si falta 21-crm.sql; la 14, si falta 01b-ultimo-administrador.sql;
--- la 15, si falta 21c-crm-exportar.sql.
+-- la 15, si falta 21c-crm-exportar.sql; la 16, si falta 00b-contrato-tabla.sql
+-- (sus casos del CRM, si falta 21d-crm-contrato.sql).
 -- ============================================================
 
 begin;
@@ -1570,6 +1574,147 @@ begin
 
   perform set_config('rls.res', current_setting('rls.res') || r, true);
 end $$;
+
+-- ============ 16) Contrato de tabla y moneda: sellos que el cliente no falsea ============
+-- Dominios de 00b-contrato-tabla.sql y, con 21d-crm-contrato.sql, el
+-- contrato en cuentas y actividades del CRM: el miembro manda autoría,
+-- fechas y creado_via falsos y la base los sella; el historial no anota
+-- updated_by ni creado_via.
+do $
+declare
+  r text := '';
+  v text;
+  v_n int;
+  v_m int;
+  v_cuenta uuid;
+  v_act uuid;
+  v_miembro uuid := nullif(current_setting('rls.miembro'), '')::uuid;
+  v_otro uuid := gen_random_uuid();
+begin
+  if current_setting('rls.txid', true) is distinct from txid_current()::text then
+    raise exception 'rls-simulacion: correr el archivo entero de una vez (BEGIN … ROLLBACK), no una sección suelta';
+  end if;
+  if to_regprocedure('public.contrato_sellar()') is null then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 16    contrato de tabla · falta 00b-contrato-tabla.sql', true);
+    return;
+  end if;
+
+  -- 16.1 Dominios: moneda en minúscula, importe NaN y vía desconocida
+  perform set_config('request.jwt.claims', '', true);
+  v := '';
+  begin
+    perform 'cop'::public.codigo_moneda;
+    v := v || 'entró';
+  exception when others then v := v || sqlstate;
+  end;
+  begin
+    perform 'NaN'::public.importe;
+    v := v || ' / entró';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  begin
+    perform 'otra'::public.via_creacion;
+    v := v || ' / entró';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  begin
+    perform 'COP'::public.codigo_moneda, 1234.5::public.importe, 'importacion'::public.via_creacion;
+    v := v || ' / válidos';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  r := r || E'\n' || case when v = '23514 / 23514 / 23514 / válidos' then 'OK      ' else 'FALLA   ' end || '16.1  dominios rechazan cop, NaN y una vía desconocida → 23514 ×3 / válidos · ' || v;
+
+  if to_regclass('public.crm_cuentas') is null
+     or not exists (select 1 from pg_catalog.pg_trigger g
+                     where g.tgrelid = 'public.crm_cuentas'::regclass and g.tgname = 'contrato_sellar') then
+    perform set_config('rls.res', current_setting('rls.res') || r || E'\nOMITIDO 16.2-6 contrato en el crm · falta 21d-crm-contrato.sql', true);
+    return;
+  end if;
+  if v_miembro is null then
+    perform set_config('rls.res', current_setting('rls.res') || r || E'\nOMITIDO 16.2-6 contrato en el crm · falta la cuenta miembro', true);
+    return;
+  end if;
+
+  insert into public.modulos_instalacion (slug, activo) values ('crm', true)
+  on conflict (slug) do update set activo = true;
+  insert into public.roles (name, permissions) values ('prueba-rls-contrato', array['app_crm', 'edit_crm']);
+  insert into public.user_roles (user_id, role) values (v_miembro, 'prueba-rls-contrato');
+
+  -- 16.2 Alta con autoría, fechas y vía mandadas por el cliente
+  perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+  set local role authenticated;
+  begin
+    insert into public.crm_cuentas (tipo, nombre, created_by, updated_by, created_at, updated_at, creado_via)
+    values ('persona', 'Prueba RLS contrato', v_otro, v_otro, '2000-01-01', '2000-01-01', 'importacion')
+    returning id into v_cuenta;
+    v := 'entró';
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  select count(*) into v_n from public.crm_cuentas
+   where id = v_cuenta and created_by = v_miembro and updated_by = v_miembro
+     and created_at = now() and updated_at = now() and creado_via = 'importacion';
+  r := r || E'\n' || case when v = 'entró' and v_n = 1 then 'OK      ' else 'FALLA   ' end || '16.2  miembro crea una cuenta con autoría y fechas falsas → entró / 1 sellada · ' || v || ' / ' || v_n;
+
+  if v_cuenta is null then
+    perform set_config('request.jwt.claims', '', true);
+    perform set_config('rls.res', current_setting('rls.res') || r || E'\nOMITIDO 16.3-6 contrato en el crm · no se creó la cuenta de prueba', true);
+    return;
+  end if;
+
+  -- 16.3 Cambio que intenta reescribir autoría, fecha de alta y vía
+  set local role authenticated;
+  begin
+    update public.crm_cuentas
+       set nombre = 'Prueba RLS contrato 2', created_by = v_otro, created_at = '2000-01-01',
+           creado_via = 'api', updated_by = v_otro
+     where id = v_cuenta;
+    get diagnostics v_n = row_count;
+    v := v_n || ' filas';
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  select count(*) into v_n from public.crm_cuentas
+   where id = v_cuenta and created_by = v_miembro and updated_by = v_miembro
+     and created_at = now() and creado_via = 'importacion';
+  r := r || E'\n' || case when v = '1 filas' and v_n = 1 then 'OK      ' else 'FALLA   ' end || '16.3  miembro cambia la cuenta y reescribe autoría y vía → 1 filas / 1 sin cambio · ' || v || ' / ' || v_n;
+
+  -- 16.4 Sin sesión (service role, instalador): updated_by queda null y
+  -- created_by se conserva
+  perform set_config('request.jwt.claims', '', true);
+  update public.crm_cuentas set nombre = 'Prueba RLS contrato 3' where id = v_cuenta;
+  select count(*) into v_n from public.crm_cuentas where id = v_cuenta and updated_by is null and created_by = v_miembro;
+  r := r || E'\n' || case when v_n = 1 then 'OK      ' else 'FALLA   ' end || '16.4  sin sesión cambia la cuenta → updated_by null y created_by intacto · ' || v_n;
+
+  -- 16.5 El historial no anota updated_by ni creado_via: los dos cambios de
+  -- nombre quedan con campos = {nombre}
+  select count(*) into v_n from public.crm_cambios
+   where entidad = 'cuenta' and entidad_id = v_cuenta
+     and (campos && array['updated_by', 'creado_via', 'updated_at']
+          or coalesce(despues, '{}') ?| array['updated_by', 'creado_via']
+          or coalesce(antes, '{}') ?| array['updated_by', 'creado_via']);
+  select count(*) into v_m from public.crm_cambios
+   where entidad = 'cuenta' and entidad_id = v_cuenta and operacion = 'update' and campos = array['nombre'];
+  r := r || E'\n' || case when v_n = 0 and v_m = 2 then 'OK      ' else 'FALLA   ' end || '16.5  historial sin updated_by ni creado_via; dos cambios de nombre → 0 / 2 · ' || v_n || ' / ' || v_m;
+
+  -- 16.6 Actividad: autor_id y updated_by sellados, vía manual por defecto
+  perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+  set local role authenticated;
+  begin
+    insert into public.crm_actividades (tipo, cuenta_id, asunto, autor_id, updated_by)
+    values ('nota', v_cuenta, 'Prueba RLS contrato', v_otro, v_otro)
+    returning id into v_act;
+    v := 'entró';
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  select count(*) into v_n from public.crm_actividades
+   where id = v_act and autor_id = v_miembro and updated_by = v_miembro and creado_via = 'manual';
+  r := r || E'\n' || case when v = 'entró' and v_n = 1 then 'OK      ' else 'FALLA   ' end || '16.6  miembro crea una actividad con autor falso → entró / 1 sellada · ' || v || ' / ' || v_n;
+
+  perform set_config('rls.res', current_setting('rls.res') || r, true);
+end $;
 
 -- ============ Resultado (error a propósito: deshace todo) ============
 do $$
