@@ -29,7 +29,7 @@ Plan completo: `C:\Users\enzov\.claude\plans\en-la-repo-tailorsuite-peppy-lemon.
 |---|---|---|
 | 0 | Handoff, memoria, commit | hecho (0.2.14 ef53c2c) |
 | 2 | Perfil sin sugerencias ni ejemplos | hecho en el producto: 0.2.15 c1e34bf y 0.2.16 c06243b (ayudante campoPersona en src/lib/campos.ts, PP-DEC-20). Traído a clientes/daicare-crm por pull local, batería en verde (1265 pruebas). Falta: prueba del usuario en un Chrome real con autorrelleno guardado; si el teléfono o el correo aún sugieren, cambiar su type. Encargo al portal enviado el 2026-11-17, sin acuse: reenviar si su sesión no lo recoge. |
-| 3 | Nombre nuevo | finalistas en docs/analisis/nombre-nuevo.md: Trenza (recomendado), Telar, Trama, Sovia, Medida. Espera la elección del usuario; luego WHOIS y SIC, y el renombre en código como paso propio. |
+| 3 | Nombre nuevo | Decidido por el usuario el 2026-11-17: **Bash Logistics**, definitivo (los cinco finalistas quedan descartados). Repo de GitHub ya renombrado a valdrighilorenzo-star/Bash_Logistics y remotos locales actualizados (origin aquí y producto en clientes/daicare-crm). Pendiente: renombre en código como paso propio cuando termine el lote 1 (nombre visible, documentos, PP-DEC nueva, prefijo ts- de campoPersona, claves pt_ del navegador, pruebas de neutralidad). No se verificaron dominios ni marcas de este nombre. |
 | 1 | Análisis de odoo, twenty, erpnext, monica y huly. Workflow `analisis-erp-crm` (script en la carpeta de workflows de la sesión, se relanza con args repos). Entregable en `docs/analisis/erp-crm-opensource/` | Hecho el 2026-11-17: fichas odoo, erpnext, twenty, monica y platform (117 propuestas, 777 citas verificadas, 91 corregidas, 2 descartadas), `comparativa.md` (decisiones D-1 a D-13) y `backlog.md` (73 BL; primer lote: BL-01, 02, 05, 06, 08, 10, 11, 12, 15, 16, 18, 20). Espera que el usuario decida D-1 a D-13 y apruebe el primer lote. Huecos comprobados: nueve módulos «disponible» sin archivo de esquema (10, 11, 13, 20, 22, 23, 26, 27, 28); sin guarda del último administrador; exportar el CRM no pide permiso propio. No se hizo el Artifact de resumen. |
 
 ## Reparto de modelos
@@ -44,3 +44,11 @@ Lectura masiva y verificación: Sonnet. Mecánico: Haiku. Síntesis, implementac
 - Las áreas no se mezclan: nada del portal de origen en TailorSuite ni en los clientes. Datos de salud y de personas del cliente, nunca en el chat.
 - Un archivo de esquema ya aplicado no se edita: las correcciones van en archivos con letra (06b, 21b).
 - En PowerShell, `npm.cmd`. Los scripts con barras invertidas se escriben como archivo, no en heredoc.
+
+## Rama de pruebas y lotes del backlog
+
+- El usuario pidió aplicar las 73 propuestas del backlog, por lotes. Rama `pruebas/mejoras-backlog` en el worktree `personal/wt/tailorsuite-pruebas` (node_modules es un junction: desmontarlo antes de quitar el worktree). `main` queda en lo probado.
+- Lote 1 (núcleo) lanzado el 2026-11-17 como workflow `tailorsuite-lote-1-nucleo`: pasos 0.2.21 a 0.2.24 (módulos sin esquema y dependencias blandas; último administrador y permiso de exportar; contrato base y moneda; numeración y máquina de estados). El 0.2.20 queda reservado para los documentos corregidos por la revisión crítica en main.
+- Sin base de pruebas todavía: el SQL nuevo solo tiene pruebas estáticas. El usuario está creando un proyecto Supabase gratuito propio (no el del cliente) para correr instalador y simulación.
+- Revisión crítica de comparativa.md y backlog.md en curso (workflow `critica-comparativa-backlog`); después, Artifact de resumen.
+- Decisiones tomadas por defecto, reversibles: módulos sin esquema a planeado, dependencias blandas, cliente y proveedor como roles sobre la cuenta del CRM, el administrador sin excepción en aprobaciones. La de notas crédito no se toca hasta facturación.

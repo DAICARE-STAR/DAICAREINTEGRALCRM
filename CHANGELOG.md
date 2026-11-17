@@ -22,7 +22,8 @@ Formato: cada commit a `main` es un Paso `Mayor.Fase.Paso — descripción`. La 
 - 0.2.16 — Formularios: el correo y el nombre al invitar a un miembro y los campos personalizados de texto y número del CRM tampoco ofrecen lo escrito en otros sitios. Las novedades describen solo lo que cambia en la aplicación. (c06243b)
 - 0.2.17 — Documentación interna del proyecto. (cfb266a)
 - 0.2.18 — Documentación interna del proyecto. (02f804f)
-- 0.2.19 — Seguridad: el escáner de secretos ya no confunde con una clave los nombres de archivo que contienen «sk-» en medio de una palabra.
+- 0.2.19 — Seguridad: el escáner de secretos ya no confunde con una clave los nombres de archivo que contienen «sk-» en medio de una palabra. (504ce7b)
+- 0.2.20 — Documentación interna del proyecto.
 
 ## 0.1 — Arranque (2026-11-07)
 
