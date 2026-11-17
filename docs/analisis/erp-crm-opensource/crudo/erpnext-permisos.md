@@ -59,11 +59,11 @@ Convención de citas: las rutas son relativas a `C:\Users\enzov\IA\personal\inve
 - **Máscara añadida aparte de lectura.** Por qué: hay quien debe saber que existe un teléfono o correo sin ver el valor; se resuelve en lectura y listados y se restaura el valor real al guardar.
 - **Historial por documento opt-in y bitácora de permisos aparte.** Por qué: registrar todo cuesta almacenamiento; lo que siempre importa (quién cambió los permisos) tiene tabla propia.
 - **Registros de acceso y autenticación en SQLite separado.** Por qué: no engordan ni bloquean la base principal y se purgan por antigüedad.
-- **Aislamiento por empresa lógico (filtros), no físico.** Por qué: contabilidad consolidada entre empresas de un mismo dueño. En TailorSuite no aplica.
+- **Aislamiento por empresa lógico (filtros), no físico.** Por qué: contabilidad consolidada entre empresas de un mismo dueño. En Bash Logistics no aplica.
 - **Bloqueos contables en tres capas con rol exento nombrado y sin atajo para el administrador.** Por qué: cumplimiento; el cierre debe resistir incluso al superusuario.
 - **El motor explica sus negativas.** `debug` con registro paso a paso y Permission Inspector. Por qué: las capas múltiples son difíciles de depurar sin traza.
 
-## Adoptable para TailorSuite (lista numerada A1, A2…: la idea, la cita que la respalda, por qué le sirve a una pyme, y el esfuerzo estimado bajo, medio o alto sobre Postgres con RLS y React)
+## Adoptable para Bash Logistics (lista numerada A1, A2…: la idea, la cita que la respalda, por qué le sirve a una pyme, y el esfuerzo estimado bajo, medio o alto sobre Postgres con RLS y React)
 
 - **A1. Separar "qué puede hacer el rol" de "a qué filas llega el usuario".** Una matriz rol x módulo x acción y una tabla de reglas de fila usuario x tipo x valor (sede, bodega, equipo, centro de costo). Cita: `frappe/frappe/permissions.py:237-289`, `frappe/frappe/core/doctype/user_permission/user_permission.json:23-90`. Sirve a una pyme con 2 o 3 sedes: el mismo rol "Ventas" ve solo su sede sin crear roles por sede. Esfuerzo: medio (política RLS que consulta la tabla de reglas con función estable y caché por sesión).
 - **A2. Alcance por tipo (`applicable_for`) y valor por defecto (`is_default`) en la regla de fila.** "Ve las bodegas A y B solo en inventario, todas las cuentas en CRM" y la sede se preselecciona en formularios nuevos. Cita: `frappe/frappe/core/doctype/user_permission/user_permission.py:36-82,113-135`. Evita reglas globales demasiado anchas. Esfuerzo: bajo sobre A1.
@@ -86,14 +86,14 @@ Convención de citas: las rutas son relativas a `C:\Users\enzov\IA\personal\inve
 
 ## No conviene copiar (y por qué)
 
-- **Aislamiento por empresa con User Permission de Company más Company Restriction.** TailorSuite es una instalación por cliente, sin multiempresa en una base; no hace falta la herencia hacia transacciones ni las excepciones (`erpnext/erpnext/stock/doctype/company_restriction/company_restriction.py:150-290`). Si algún día se añade, es otro diseño con RLS por `company_id`.
-- **Aplicar permisos en la capa de aplicación con SQL armado a mano.** Frappe arma el WHERE en Python (`frappe/frappe/model/db_query.py:1157-1320`) y depende de que todo acceso pase por esa capa. TailorSuite tiene RLS, más seguro. Se toma el modelo de datos, no el mecanismo.
+- **Aislamiento por empresa con User Permission de Company más Company Restriction.** Bash Logistics es una instalación por cliente, sin multiempresa en una base; no hace falta la herencia hacia transacciones ni las excepciones (`erpnext/erpnext/stock/doctype/company_restriction/company_restriction.py:150-290`). Si algún día se añade, es otro diseño con RLS por `company_id`.
+- **Aplicar permisos en la capa de aplicación con SQL armado a mano.** Frappe arma el WHERE en Python (`frappe/frappe/model/db_query.py:1157-1320`) y depende de que todo acceso pase por esa capa. Bash Logistics tiene RLS, más seguro. Se toma el modelo de datos, no el mecanismo.
 - **Niveles de permiso como único eje por campo.** El nivel lo comparten todos los roles del DocType y expresa poco; con RLS se puede modelar mejor (vistas por sensibilidad o columnas separadas). Se toma la idea, no el esquema numérico.
 - **Permiso "solo si soy propietario" por fila de rol.** Combinado con User Permission y compartidos genera ramas confusas (`frappe/frappe/permissions.py:263-285`, `frappe/frappe/model/db_query.py:1592-1614`). En una pyme es mejor una regla explícita "responsable de la cuenta".
 - **Cifrado por campo con una clave única en la configuración del sitio.** Fernet con clave en `site_config` (`frappe/frappe/utils/password.py:323-335`): perder la clave es perder el dato. Ya tienen cifrado de salud propio; mantener la clave en Supabase Vault o variables de Netlify con rotación.
 - **Access Log en SQLite aparte.** Resuelve la carga de la base principal de Frappe; en Supabase es más simple una tabla particionada por mes.
 - **Hooks globales con `"*"`** (`erpnext/erpnext/hooks.py:349-358,410-415`). Una condición para todo DocType por nombre es potente pero oculta; preferir políticas declaradas por tabla.
-- **Roles mapeados por nombre en código** (`ROLE_PARTY_TYPES`, `erpnext/erpnext/crm/doctype/contract/contract.py:12`). En TailorSuite los permisos viven en datos.
+- **Roles mapeados por nombre en código** (`ROLE_PARTY_TYPES`, `erpnext/erpnext/crm/doctype/contract/contract.py:12`). En Bash Logistics los permisos viven en datos.
 
 ## No leído o dudoso
 

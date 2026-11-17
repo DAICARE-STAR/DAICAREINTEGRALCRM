@@ -75,7 +75,7 @@ Rutas relativas a `C:\Users\enzov\IA\personal\investigacion-erp\odoo`. Licencia 
 11. Segregación por vendedor mediante reglas de fila (propios más sin asignar), no por pantallas (`addons/crm/security/ir.access.csv:2-5`). Encaja con RLS.
 12. El equipo es el punto de configuración (etapas visibles, campos personalizados, dominio de asignación, plantillas de cotización): una instalación con varias líneas de venta no necesita varios embudos duplicados (`addons/crm/models/crm_stage.py:31`, `addons/crm/models/crm_team.py:51`, `addons/sale_management/models/sale_order_template.py:75`).
 
-## Adoptable para TailorSuite (lista numerada A1, A2…: la idea, la cita que la respalda, por qué le sirve a una pyme, y el esfuerzo estimado bajo, medio o alto sobre Postgres con RLS y React)
+## Adoptable para Bash Logistics (lista numerada A1, A2…: la idea, la cita que la respalda, por qué le sirve a una pyme, y el esfuerzo estimado bajo, medio o alto sobre Postgres con RLS y React)
 
 A1. Estado ganado/perdido derivado, no editable: ganado = etapa marcada `is_won`; perdido = archivado con motivo. Una columna generada o vista calculada. Cita: `addons/crm/models/crm_lead.py:562-570, 905-914, 257-261`. Le sirve porque elimina estados contradictorios y simplifica tableros. Esfuerzo: bajo.
 
@@ -85,11 +85,11 @@ A3. Etapas con `is_won`, `fold`, `requirements` (texto de criterio de salida) y 
 
 A4. Marca de "estancada" calculada a partir de la fecha de último cambio de etapa y el umbral de la etapa, solo para pendientes. Cita: `addons/mail/models/mail_tracking_duration_mixin.py:60-98`; `addons/crm/models/crm_lead.py:379-387`. Le sirve para que el dueño vea qué oportunidades se enfrían, a coste casi cero. Esfuerzo: bajo (columna `date_last_stage_update` mantenida por trigger o función).
 
-A5. Historial de tiempo por etapa (JSON con minutos acumulados por etapa). Cita: `addons/mail/models/mail_tracking_duration_mixin.py:14-47`. Le sirve para medir cuello de botella del embudo. Esfuerzo: medio; en TailorSuite ya hay auditoría, bastaría derivarlo de la tabla de historial de cambios de etapa en vez de un JSON.
+A5. Historial de tiempo por etapa (JSON con minutos acumulados por etapa). Cita: `addons/mail/models/mail_tracking_duration_mixin.py:14-47`. Le sirve para medir cuello de botella del embudo. Esfuerzo: medio; en Bash Logistics ya hay auditoría, bastaría derivarlo de la tabla de historial de cambios de etapa en vez de un JSON.
 
 A6. Fechas de ciclo calculadas: tiempo a asignar y tiempo a cerrar (`date_open`, `date_closed`, `day_open`, `day_close`) y fecha de conversión. Cita: `addons/crm/models/crm_lead.py:155-164, 358-377, 777-792`. Le sirve para KPI de respuesta comercial. Esfuerzo: bajo.
 
-A7. Prospecto con datos de contacto propios y creación diferida del tercero al convertir; el cliente se busca por correo normalizado antes de crearlo y, si hay empresa y persona, crea la persona bajo la empresa. Cita: `addons/crm/models/crm_lead.py:1950-1985, 1844-1858`. Le sirve porque el CRM de TailorSuite ya distingue persona y empresa; evita cuentas basura de contactos fríos. Esfuerzo: medio.
+A7. Prospecto con datos de contacto propios y creación diferida del tercero al convertir; el cliente se busca por correo normalizado antes de crearlo y, si hay empresa y persona, crea la persona bajo la empresa. Cita: `addons/crm/models/crm_lead.py:1950-1985, 1844-1858`. Le sirve porque el CRM de Bash Logistics ya distingue persona y empresa; evita cuentas basura de contactos fríos. Esfuerzo: medio.
 
 A8. Duplicados por señales baratas y como advertencia: correo normalizado, teléfono sanitizado, misma cuenta; con tope de resultados y excluyendo dominios públicos para no marcar todo `@gmail.com`. Cita: `addons/crm/models/crm_lead.py:462-467, 574-628`. Le sirve porque el dolor real de una pyme es el mismo cliente cargado dos veces. En Postgres: índices sobre correo normalizado y teléfono sanitizado y una función de búsqueda. Esfuerzo: medio.
 
@@ -103,13 +103,13 @@ A12. Equipos de venta con líder, miembros y reparto rotativo con capacidad mens
 
 A13. Lead sin vendedor creado por un canal entrante cae al líder del equipo y se deja nota en el historial. Cita: `addons/crm/models/crm_lead.py:1423-1433, 2105-2125`. Le sirve como regla por defecto para entrada de correo, formulario web y bot. Esfuerzo: bajo.
 
-A14. Reglas de fila de dos niveles para ventas: el vendedor ve lo suyo y lo sin asignar; un permiso "ver todo" y el gerente ven todo. Cita: `addons/crm/security/ir.access.csv:2-5`. Le sirve directo en RLS con `user_id = auth.uid() or user_id is null`. Esfuerzo: bajo (TailorSuite ya tiene roles y permisos).
+A14. Reglas de fila de dos niveles para ventas: el vendedor ve lo suyo y lo sin asignar; un permiso "ver todo" y el gerente ven todo. Cita: `addons/crm/security/ir.access.csv:2-5`. Le sirve directo en RLS con `user_id = auth.uid() or user_id is null`. Esfuerzo: bajo (Bash Logistics ya tiene roles y permisos).
 
 A15. Actividades como tabla única polimórfica con tipo configurable, vencimiento, estado calculado (vencida, hoy, planificada), responsable y feedback al completar que queda en el historial; con "siguiente actividad sugerida" y retraso relativo al cierre o a la fecha límite previa. Cita: `addons/mail/models/mail_activity.py:59-141, 178, 689-720`; `addons/mail/models/mail_activity_type.py:27-69`; `addons/mail/models/mail_activity.py:668-687`. Le sirve como base de la bandeja de seguimiento de todos los módulos. Esfuerzo: medio; en Postgres `entity_type + entity_id` sin FK real, con función que valide existencia.
 
 A16. Planes de actividad (plantilla de pasos con retraso y responsable) para estandarizar el seguimiento de un cliente nuevo. Cita: `addons/mail/models/mail_activity_plan.py:7-33`; `addons/mail/models/mail_activity_plan_template.py:16-60`. Le sirve para que una pyme repita su proceso comercial sin depender de la memoria del vendedor. Esfuerzo: medio.
 
-A17. Campos personalizados cuya definición pertenece al equipo y cuyos valores se guardan en JSON en el lead. Cita: `addons/crm/models/crm_lead.py:117-119`; `addons/crm/models/crm_team.py:51`. Le sirve porque TailorSuite ya tiene campos personalizados; la idea es atar la definición a un equipo o línea de negocio. Esfuerzo: bajo si ya existe el mecanismo.
+A17. Campos personalizados cuya definición pertenece al equipo y cuyos valores se guardan en JSON en el lead. Cita: `addons/crm/models/crm_lead.py:117-119`; `addons/crm/models/crm_team.py:51`. Le sirve porque Bash Logistics ya tiene campos personalizados; la idea es atar la definición a un equipo o línea de negocio. Esfuerzo: bajo si ya existe el mecanismo.
 
 A18. Probabilidad doble, manual y automática, con sincronización mientras no se edite manualmente. Aunque se empiece con probabilidad fija por etapa, dejar los dos campos permite agregar un modelo después. Cita: `addons/crm/models/crm_lead.py:218-222, 502-516`. Esfuerzo: bajo (solo los campos y la regla).
 
@@ -121,16 +121,16 @@ A21. Plantillas de cotización con líneas, términos, validez, firma y anticipo
 
 A22. Estado de facturación calculado en el pedido (nada, por facturar, facturado, venta adicional) en lugar de un campo manual. Cita: `addons/sale/models/sale_order.py:367-372, 876-917`. Le sirve para conectar ventas con facturación y cartera cuando existan. Esfuerzo: medio.
 
-A23. Identificación colombiana: tipo de documento con código DIAN (NIT 31, CC 13, CE 22, etc.) y número, derivados del identificador preferido de la entidad comercial. Cita: `addons/l10n_co/models/res_partner.py:18-52`; `addons/l10n_co/tools/partner_identifiers.py:6-18`. Le sirve porque TailorSuite apunta a Colombia y necesitará esos códigos para facturación electrónica; no depende de módulos Enterprise. Esfuerzo: bajo (tabla de códigos y campo).
+A23. Identificación colombiana: tipo de documento con código DIAN (NIT 31, CC 13, CE 22, etc.) y número, derivados del identificador preferido de la entidad comercial. Cita: `addons/l10n_co/models/res_partner.py:18-52`; `addons/l10n_co/tools/partner_identifiers.py:6-18`. Le sirve porque Bash Logistics apunta a Colombia y necesitará esos códigos para facturación electrónica; no depende de módulos Enterprise. Esfuerzo: bajo (tabla de códigos y campo).
 
 ## No conviene copiar (y por qué)
 
-1. Tabla única `res.partner` para persona, empresa, dirección de factura y de entrega. Mezcla roles y obliga a condicionales; TailorSuite ya separa cuentas persona/empresa y contactos, que es más claro. Cita: `odoo/addons/base/models/res_partner.py:348-355`.
+1. Tabla única `res.partner` para persona, empresa, dirección de factura y de entrega. Mezcla roles y obliga a condicionales; Bash Logistics ya separa cuentas persona/empresa y contactos, que es más claro. Cita: `odoo/addons/base/models/res_partner.py:348-355`.
 2. Fusión genérica de FK y campos de referencia por introspección del esquema. Es un mecanismo para un ORM con cientos de tablas; en Postgres con RLS y un modelo conocido es más seguro una función explícita con lista cerrada de tablas. Cita: `odoo/addons/base/wizard/base_partner_merge.py:79-135, 208-340`.
 3. Reparto de leads con azar ponderado entre equipos, cuotas de 30 días y dominios por miembro con evaluación de expresiones. Complejidad desproporcionada para una pyme y los dominios se guardan como texto evaluado. Cita: `addons/crm/models/crm_team.py:349-452, 613-760`; `addons/crm/models/crm_team_member.py:88-115`.
 4. Puntaje predictivo desde el primer día: sin cientos de oportunidades cerradas por equipo no produce señal, y devuelve 0 si falta alguna de las dos clases. Cita: `addons/crm/models/crm_lead.py:2300-2306`.
-5. Lead que mezcla prospecto y oportunidad con campos de contacto repetidos y reglas por tipo. Es una concesión histórica; si TailorSuite ya tiene cuentas y contactos, un prospecto puede ser una oportunidad sin cuenta formal con un solo enlace opcional. Cita: `addons/crm/models/crm_lead.py:167-217`.
-6. Mixins heredados de mensajería (`mail.thread`, seguimiento por campo, correo entrante) como base de actividades e historial. Atan el modelo a un framework; en TailorSuite el equivalente es la tabla de auditoría y avisos ya existente. Cita: `addons/crm/models/crm_lead.py:89-97`.
+5. Lead que mezcla prospecto y oportunidad con campos de contacto repetidos y reglas por tipo. Es una concesión histórica; si Bash Logistics ya tiene cuentas y contactos, un prospecto puede ser una oportunidad sin cuenta formal con un solo enlace opcional. Cita: `addons/crm/models/crm_lead.py:167-217`.
+6. Mixins heredados de mensajería (`mail.thread`, seguimiento por campo, correo entrante) como base de actividades e historial. Atan el modelo a un framework; en Bash Logistics el equivalente es la tabla de auditoría y avisos ya existente. Cita: `addons/crm/models/crm_lead.py:89-97`.
 7. Moneda de la empresa más campos prorrateados almacenados en el lead para cada combinación (MRR, prorrateado, etc.). Cinco campos de dinero derivados que sirven a tableros de Odoo; en Postgres se resuelven con vistas. Cita: `addons/crm/models/crm_lead.py:143-151`.
 8. Dependencia de `sales_team`, `sale_crm`, `account` para que el flujo funcione: Odoo reparte la lógica de equipo y oportunidad-pedido entre módulos que no están en el clon, así que no se puede validar el diseño completo.
 

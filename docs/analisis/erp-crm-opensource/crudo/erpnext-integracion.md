@@ -101,7 +101,7 @@ Las rutas son relativas a `C:\Users\enzov\IA\personal\investigacion-erp`, que co
 - **Importación guiada, no carga ciega.** Validar, mostrar advertencias que bloquean, mapear valores y solo entonces escribir; los usuarios de una pyme migran desde Excel y se equivocan. (`frappe/frappe/core/doctype/data_import/importer.py:162-205`)
 - **Idioma por capas.** Variantes regionales sin duplicar el catálogo, traducciones editables por el usuario y contenido de negocio traducible. (`frappe/frappe/translate.py:148-200`)
 
-## Adoptable para TailorSuite (lista numerada A1, A2…: la idea, la cita que la respalda, por qué le sirve a una pyme, y el esfuerzo estimado bajo, medio o alto sobre Postgres con RLS y React)
+## Adoptable para Bash Logistics (lista numerada A1, A2…: la idea, la cita que la respalda, por qué le sirve a una pyme, y el esfuerzo estimado bajo, medio o alto sobre Postgres con RLS y React)
 
 **A1. Bitácora de entregas de webhook con estados y reintento escalonado.** Tabla de entregas (`pendiente`, `entregado`, `fallido`, `agotado`, `intento`, `proximo_reintento`) y un job periódico que toma las vencidas en tandas con espaciado creciente (5 min, 30 min, 2 h, 5 h, 10 h). Cita: `frappe/frappe/integrations/doctype/webhook/webhook.py:23-25`, `:243-337`, `frappe/frappe/integrations/doctype/webhook_request_log/webhook_request_log.json:93-108`. Cuando el sistema de un tercero (contador, tienda) se cae, la pyme no pierde pedidos y ve qué quedó pendiente y por qué. Esfuerzo: medio (tabla con RLS, función programada, pantalla de bitácora).
 
@@ -123,7 +123,7 @@ Las rutas son relativas a `C:\Users\enzov\IA\personal\investigacion-erp`, que co
 
 **A10. Exportar como plantilla reimportable (CSV o Excel) con un permiso de exportación aparte del de lectura.** Permiso `exportar` propio y plantilla con los campos obligatorios. Cita: `frappe/frappe/core/doctype/data_import/exporter.py:13-21`, `:24-66`. Quien quiere sacar su base puede hacerlo, y no cualquier lector se lleva todo. Esfuerzo: bajo a medio.
 
-**A11. Atar el correo entrante a la cuenta o actividad correcta con la cascada de Frappe.** Orden: `In-Reply-To` o `Message-ID` de un correo enviado por el sistema, identificador corto en el asunto (por ejemplo `#CUE-0123`), remitente más asunto en los últimos 60 días. En TailorSuite: `message_id` e `in_reply_to` en la tabla de actividades. Cita: `frappe/frappe/email/receive.py:839-955`. El historial del cliente se arma solo. Esfuerzo: medio; la lectura del buzón es A12.
+**A11. Atar el correo entrante a la cuenta o actividad correcta con la cascada de Frappe.** Orden: `In-Reply-To` o `Message-ID` de un correo enviado por el sistema, identificador corto en el asunto (por ejemplo `#CUE-0123`), remitente más asunto en los últimos 60 días. En Bash Logistics: `message_id` e `in_reply_to` en la tabla de actividades. Cita: `frappe/frappe/email/receive.py:839-955`. El historial del cliente se arma solo. Esfuerzo: medio; la lectura del buzón es A12.
 
 **A12. Sincronización incremental por UID con control de `UIDVALIDITY` y cursor que no avanza tras un fallo.** Guardar `uidvalidity` y `ultimo_uid` por buzón y carpeta. Cita: `frappe/frappe/email/receive.py:221-285`, `frappe/frappe/email/doctype/email_account/email_account.py:713-762`. En funciones sin estado de Netlify un cliente IMAP es incómodo; conviene empezar con reenvío a una dirección propia mediante el webhook de entrada de un proveedor de correo y dejar IMAP para después. Esfuerzo: alto.
 
@@ -139,7 +139,7 @@ Las rutas son relativas a `C:\Users\enzov\IA\personal\investigacion-erp`, que co
 
 ## No conviene copiar (y por qué)
 
-- **Cada documento como API sin lista de exposición.** En Frappe los permisos de documento son la única defensa. En TailorSuite conviene una lista explícita de entidades expuestas a integraciones para no filtrar tablas internas (auditoría, datos de salud cifrados). (`frappe/frappe/api/v2.py:705-721`)
+- **Cada documento como API sin lista de exposición.** En Frappe los permisos de documento son la única defensa. En Bash Logistics conviene una lista explícita de entidades expuestas a integraciones para no filtrar tablas internas (auditoría, datos de salud cifrados). (`frappe/frappe/api/v2.py:705-721`)
 - **Condiciones y plantillas de webhook como código ejecutable (`safe_eval`, Jinja).** Superficie de ataque grande que solo se sostiene con el entorno restringido del propio framework. Usar filtros declarativos y sustitución simple. (`frappe/frappe/integrations/doctype/webhook/__init__.py:56`, `frappe/frappe/integrations/doctype/webhook/webhook.py:97-110`)
 - **Portal servido con permisos elevados y filtrado a mano.** Cada lista usa `ignore_permissions = True` y depende de que el filtro por tercero esté bien escrito; en Postgres la barrera va en RLS y vistas. (`erpnext/erpnext/controllers/website_list_for_contact.py:128`)
 - **Usuario interno y externo en la misma tabla con tipo "Website User".** Funciona porque todo gira en torno a roles; con Supabase conviene separar el miembro del equipo de la identidad de portal para no mezclar sus políticas.

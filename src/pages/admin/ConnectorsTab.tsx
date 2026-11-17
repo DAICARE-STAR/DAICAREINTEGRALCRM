@@ -224,7 +224,7 @@ export default function ConnectorsTab() {
                 ref={primerCampo}
                 value={form.name}
                 onChange={(e) => set('name', e.target.value)}
-                name="ts-herramienta-nombre"
+                name="bl-herramienta-nombre"
                 autoComplete="off"
                 placeholder="Nombre de la herramienta"
               />
@@ -234,7 +234,7 @@ export default function ConnectorsTab() {
               <input
                 value={form.url}
                 onChange={(e) => set('url', e.target.value)}
-                name="ts-herramienta-url"
+                name="bl-herramienta-url"
                 autoComplete="off"
                 placeholder="https://…"
               />
@@ -244,7 +244,7 @@ export default function ConnectorsTab() {
               <input
                 value={form.category ?? ''}
                 onChange={(e) => set('category', e.target.value)}
-                name="ts-herramienta-categoria"
+                name="bl-herramienta-categoria"
                 autoComplete="off"
                 placeholder="Ej. Gestión"
               />
@@ -258,7 +258,7 @@ export default function ConnectorsTab() {
               </span>
               <input
                 id="herr-icono"
-                name="ts-herramienta-icono"
+                name="bl-herramienta-icono"
                 autoComplete="off"
                 value={form.icon ?? ''}
                 onChange={(e) => set('icon', e.target.value)}
@@ -270,7 +270,7 @@ export default function ConnectorsTab() {
               <input
                 value={form.description ?? ''}
                 onChange={(e) => set('description', e.target.value)}
-                name="ts-herramienta-descripcion"
+                name="bl-herramienta-descripcion"
                 autoComplete="off"
                 placeholder="Para qué usa el equipo esta herramienta"
               />

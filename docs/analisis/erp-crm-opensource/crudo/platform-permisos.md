@@ -65,9 +65,9 @@ Nota de arquitectura: el repo no es un ERP con tablas Postgres y RLS. Es un moto
 - **Fallo cerrado para invitados.** Clase no cubierta y sin mixin: se prohíbe (`foundations/server/packages/middleware/src/guestPermissions.ts:179-180`).
 - **Historial por event sourcing barato.** Como todo cambio ya es una transacción con autor y fecha, la auditoría no requiere un sistema aparte; el historial de usuario es una proyección (hechos 24 y 25).
 - **Autoría no falsificable:** el cliente construye la transacción pero el servidor verifica que el autor sea la sesión (hecho 21).
-- **Tenant por workspace con columna `workspaceId` en las mismas tablas**, no una base por cliente (hecho 26). Es lo contrario de la decisión de TailorSuite (una instalación por cliente).
+- **Tenant por workspace con columna `workspaceId` en las mismas tablas**, no una base por cliente (hecho 26). Es lo contrario de la decisión de Bash Logistics (una instalación por cliente).
 
-## Adoptable para TailorSuite (lista numerada A1, A2…: la idea, la cita que la respalda, por qué le sirve a una pyme, y el esfuerzo estimado bajo, medio o alto sobre Postgres con RLS y React)
+## Adoptable para Bash Logistics (lista numerada A1, A2…: la idea, la cita que la respalda, por qué le sirve a una pyme, y el esfuerzo estimado bajo, medio o alto sobre Postgres con RLS y React)
 
 - **A1. Roles con peso numérico y comparación "al menos este rol".** Una columna de rol por miembro y una función `tiene_rol_minimo`. Cita: `foundations/core/packages/core/src/classes.ts:605-626`, `foundations/core/packages/core/src/utils.ts:801-803`. Le sirve porque simplifica políticas RLS y la interfaz (un solo número en vez de listas). Esfuerzo: bajo.
 - **A2. No se puede otorgar un rol superior al propio.** Validar en la función que invita o cambia rol. Cita: `server/account/src/utils.ts:1849-1861`, `server/account/src/operations.ts:722-723`. Evita que un administrador de módulo se haga dueño. Esfuerzo: bajo.
@@ -82,22 +82,22 @@ Nota de arquitectura: el repo no es un ERP con tablas Postgres y RLS. Es un moto
 - **A11. Invitado solo edita lo que creó.** Política RLS `creado_por = auth.uid()` para el rol externo (contador, auditor, cliente con portal). Cita: `foundations/server/packages/middleware/src/guestPermissions.ts:280-293`. Esfuerzo: bajo.
 - **A12. Rol externo de solo lectura y rol externo de documento único.** Sirve para el contador externo que revisa y para compartir una cotización por enlace. Cita: `foundations/core/packages/core/src/classes.ts:605-613`, `server/account/src/operations.ts:2148-2272` (guest por documento). Esfuerzo: medio.
 - **A13. Fallo cerrado para roles externos: sin regla explícita, se prohíbe.** Aplicar como política por defecto en RLS (denegar salvo lista). Cita: `foundations/server/packages/middleware/src/guestPermissions.ts:179-180`, y la prueba `foundations/server/packages/middleware/src/tests/guestPermissions.test.ts:542`. Coincide con el principio "fallar cerrado" de la casa. Esfuerzo: bajo.
-- **A14. Matriz módulo x rol con interruptor `enabled` y `disabledPermissions`.** Pantalla de "qué puede hacer cada rol en cada módulo", con cache invalidada al cambiar. Cita: `foundations/core/packages/core/src/classes.ts:592-600`, `foundations/server/packages/middleware/src/guestPermissions.ts:56-121`. Calza con los módulos a la carta de TailorSuite. Esfuerzo: medio.
+- **A14. Matriz módulo x rol con interruptor `enabled` y `disabledPermissions`.** Pantalla de "qué puede hacer cada rol en cada módulo", con cache invalidada al cambiar. Cita: `foundations/core/packages/core/src/classes.ts:592-600`, `foundations/server/packages/middleware/src/guestPermissions.ts:56-121`. Calza con los módulos a la carta de Bash Logistics. Esfuerzo: medio.
 - **A15. Edición de preferencias personales solo por su dueño u Owner.** Cita: `foundations/server/packages/middleware/src/private.ts:60-80`. Esfuerzo: bajo.
 - **A16. Rol de cuenta consultable en un solo lugar, con historial de cambios de rol (quién subió a quién).** Tabla de miembros con rol. Cita: `server/account/src/collections/postgres/postgres.ts:838-897`. La auditoría de cambios de rol es crítica en un ERP y aquí no se verificó que exista; hay que añadirla (ver "No leído o dudoso"). Esfuerzo: bajo.
 
 ## No conviene copiar (y por qué)
 
-- **Seguridad solo en middleware de servidor sin RLS.** Un fallo de la capa deja datos expuestos; TailorSuite ya tiene RLS en Postgres y debe mantenerlo como defensa principal. Cita: `server/server-pipeline/src/pipeline.ts:143-167`.
+- **Seguridad solo en middleware de servidor sin RLS.** Un fallo de la capa deja datos expuestos; Bash Logistics ya tiene RLS en Postgres y debe mantenerlo como defensa principal. Cita: `server/server-pipeline/src/pipeline.ts:143-167`.
 - **Decisión de permisos con mapas en memoria del servidor** (espacios y permisos cargados al arrancar). No escala a Netlify Functions sin estado. Cita: `foundations/server/packages/middleware/src/spacePermissions.ts:46-60`.
 - **Filtro del 85 % que trae todo y filtra en el cliente.** Expone datos al navegador antes de filtrarlos; inaceptable para datos de salud. Cita: `foundations/server/packages/middleware/src/spaceSecurity.ts:673-679`.
 - **Interpolación de valores en el SQL de seguridad** (el uuid de la cuenta se concatena en la cadena de la consulta en varios puntos). Debe parametrizarse siempre. Cita: `foundations/server/packages/postgres/src/storage.ts:636`, `:644`.
-- **Multiempresa por columna `workspaceId` en las mismas tablas.** TailorSuite decidió una instalación por cliente, que mantiene el aislamiento más fuerte. Cita: `foundations/server/packages/postgres/src/storage.ts:342`.
+- **Multiempresa por columna `workspaceId` en las mismas tablas.** Bash Logistics decidió una instalación por cliente, que mantiene el aislamiento más fuerte. Cita: `foundations/server/packages/postgres/src/storage.ts:342`.
 - **Dos modelos de permisos de invitado superpuestos** (matriz nueva y mixin heredado). Es deuda de migración; copiar solo el modelo nuevo. Cita: `foundations/server/packages/middleware/src/guestPermissions.ts:159-181`.
 - **Modelo de documentos con clases dinámicas y mixins, y espacio como único eje.** Complejidad innecesaria para un ERP con tablas relacionales tipadas. Cita: `models/core/src/security.ts:60-166`.
 - **Declarar `AttributePermission` sin aplicarlo.** Un permiso declarado que no se evalúa da falsa seguridad; si se adopta A8, debe venir con una prueba que ejercite el bloqueo. Cita: `models/core/src/security.ts:152-155`.
 - **Secreto de servicio compartido único entre todos los servicios.** Mejor una llave por servicio y rotación. Cita: `ARCHITECTURE_OVERVIEW.md:354`.
-- **Rol Admin con bypass total de lectura.** En TailorSuite el acceso del soporte debe ser explícito y auditado. Cita: `foundations/server/packages/postgres/src/storage.ts:628`.
+- **Rol Admin con bypass total de lectura.** En Bash Logistics el acceso del soporte debe ser explícito y auditado. Cita: `foundations/server/packages/postgres/src/storage.ts:628`.
 
 ## No leído o dudoso
 

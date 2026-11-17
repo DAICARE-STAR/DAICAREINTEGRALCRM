@@ -60,13 +60,13 @@ Alcance leído: `erpnext/crm`, `erpnext/selling` (Quotation, Customer, Sales Tea
 8. El embudo es deliberadamente tosco: etapa sin orden ni probabilidad, probabilidad manual. Es una debilidad, no un acierto (ver "No conviene copiar").
 9. Motivos de pérdida obligatorios y estructurados. Alimentan informes y evitan el texto libre inútil.
 
-## Adoptable para TailorSuite (lista numerada A1, A2…: la idea, la cita que la respalda, por qué le sirve a una pyme, y el esfuerzo estimado bajo, medio o alto sobre Postgres con RLS y React)
+## Adoptable para Bash Logistics (lista numerada A1, A2…: la idea, la cita que la respalda, por qué le sirve a una pyme, y el esfuerzo estimado bajo, medio o alto sobre Postgres con RLS y React)
 
 A1. Estado del Lead derivado por reglas ordenadas, con estado terminal `no contactar` que no se recalcula. Cita: `erpnext/erpnext/controllers/status_updater.py:27-33,295-338` y `erpnext/erpnext/crm/doctype/lead/lead.py:101-103`. Sirve porque el equipo no mantiene estados a mano y el embudo no miente. En Postgres: vista o función `crm_estado_lead(id)` más trigger al cambiar cotizaciones. Esfuerzo medio.
 
 A2. Oportunidad bloqueada por sus cotizaciones: no se puede declarar perdida con una cotización vigente, ni "ganada" sin pedido. Cita: `erpnext/erpnext/crm/doctype/opportunity/opportunity.py:190-224`. Evita datos incoherentes que la pyme descubre al cierre de mes. Constraint trigger en Postgres. Esfuerzo medio.
 
-A3. Conversión de prospecto a cliente idempotente con trazas de origen (`lead_id`, `oportunidad_id`, `prospecto_id` en la cuenta) y error si ya se convirtió. Cita: `erpnext/erpnext/selling/doctype/customer/customer.json:186,566,676`; `erpnext/erpnext/selling/doctype/customer/customer.py:226-237,478-491`. TailorSuite ya tiene cuentas persona o empresa: bastan tres columnas nulables con índice único parcial y una función `convertir_a_cuenta()` transaccional. Esfuerzo bajo.
+A3. Conversión de prospecto a cliente idempotente con trazas de origen (`lead_id`, `oportunidad_id`, `prospecto_id` en la cuenta) y error si ya se convirtió. Cita: `erpnext/erpnext/selling/doctype/customer/customer.json:186,566,676`; `erpnext/erpnext/selling/doctype/customer/customer.py:226-237,478-491`. Bash Logistics ya tiene cuentas persona o empresa: bastan tres columnas nulables con índice único parcial y una función `convertir_a_cuenta()` transaccional. Esfuerzo bajo.
 
 A4. Si la cuenta es una sola tabla con estado "prospecto/cliente", la conversión es un cambio de estado y no hay que reapuntar oportunidades ni cotizaciones, que ERPNext sí reapunta. Cita del problema que se evita: `erpnext/erpnext/selling/doctype/customer/customer.py:404-429`. Es una ventaja del diseño de cuenta única frente al esquema de ERPNext. Esfuerzo bajo.
 
@@ -82,7 +82,7 @@ A9. Cotización con revisiones: `revision_de`, `activa`, numeración `-R1`, una 
 
 A10. Cotización con vigencia por defecto desde ajustes y estado "vencida" calculado por fecha. Cita: `erpnext/erpnext/selling/doctype/quotation/quotation.py:197-204`; patrón de estado por fecha en `erpnext/erpnext/controllers/status_updater.py:53-61`. Esfuerzo bajo.
 
-A11. Actividades ligadas a cualquier registro por par tipo+id, con "abiertas" frente a "historial", y arrastre de las abiertas cuando el lead pasa a oportunidad. Cita: `erpnext/erpnext/crm/utils.py:177-250`; `erpnext/erpnext/crm/doctype/opportunity/opportunity.py:116-125`. TailorSuite ya tiene actividades en el CRM: lo adoptable es el arrastre al convertir y la vista abiertas/historial. Esfuerzo bajo.
+A11. Actividades ligadas a cualquier registro por par tipo+id, con "abiertas" frente a "historial", y arrastre de las abiertas cuando el lead pasa a oportunidad. Cita: `erpnext/erpnext/crm/utils.py:177-250`; `erpnext/erpnext/crm/doctype/opportunity/opportunity.py:116-125`. Bash Logistics ya tiene actividades en el CRM: lo adoptable es el arrastre al convertir y la vista abiertas/historial. Esfuerzo bajo.
 
 A12. Reapertura automática por agenda y autocierre por inactividad: tarea diaria que reabre registros cuyo evento cae hoy y cierra los "respondidos" sin movimiento tras N días. Cita: `erpnext/erpnext/crm/utils.py:7-8,264-287`; `erpnext/erpnext/crm/doctype/opportunity/opportunity.py:577-591`. Es el seguimiento que una pyme no hace por falta de disciplina. Un trabajo programado de servidor (Netlify Function programada o `pg_cron`), no una espera de la IA. Esfuerzo bajo.
 
@@ -100,13 +100,13 @@ A18. Tiempo de primera respuesta medido en la oportunidad. Cita: `erpnext/erpnex
 
 ## No conviene copiar (y por qué)
 
-1. Cuenta con dos entidades (Lead y Prospect) más Customer con tablas espejo sincronizadas a mano. Cita: `erpnext/erpnext/crm/doctype/lead/lead.py:214-227`; `erpnext/erpnext/crm/doctype/opportunity/opportunity.py:277-305`. Tres entidades parecidas y copias de lectura que se desfasan. TailorSuite ya tiene una cuenta única (persona o empresa) con contactos: mantenerla y tratar "prospecto" como estado de la cuenta.
+1. Cuenta con dos entidades (Lead y Prospect) más Customer con tablas espejo sincronizadas a mano. Cita: `erpnext/erpnext/crm/doctype/lead/lead.py:214-227`; `erpnext/erpnext/crm/doctype/opportunity/opportunity.py:277-305`. Tres entidades parecidas y copias de lectura que se desfasan. Bash Logistics ya tiene una cuenta única (persona o empresa) con contactos: mantenerla y tratar "prospecto" como estado de la cuenta.
 2. Referencia polimórfica `opportunity_from` + `party_name` (Dynamic Link). Cita: `erpnext/erpnext/crm/doctype/opportunity/opportunity.json:115-134`. Sin llave foránea real y con reapuntado al convertir. En Postgres usar `cuenta_id` con FK; el polimorfismo desaparece con la cuenta única.
 3. Sales Stage sin orden ni probabilidad, y probabilidad libre. Cita: `erpnext/erpnext/crm/doctype/sales_stage/sales_stage.json:16`; `erpnext/erpnext/crm/doctype/opportunity/opportunity.json:236-241`. Para un embudo que se pueda graficar hacen falta `orden`, `probabilidad_por_defecto` y marca de ganada o perdida; diseñar la etapa con esos tres campos.
 4. Estados mezclados en Lead (Lead, Open, Replied, Opportunity, Quotation, Lost Quotation, Interested, Converted, Do Not Contact). Cita: `erpnext/erpnext/crm/doctype/lead/lead.json:157`. Mezcla ciclo de vida, avance comercial y consentimiento en un solo campo. Separar: estado, calificación y "no contactar" como bandera aparte (que también sirve para cumplimiento de datos personales).
 5. Árbol de Sales Person y Territory (NestedSet). Cita: `erpnext/erpnext/setup/doctype/sales_person/sales_person.py:20,44`. Sobredimensionado para una pyme; una lista plana de vendedores y un campo de zona bastan, y los árboles complican RLS.
-6. Actividades por ToDo, Event y Communication del framework. Cita: `erpnext/erpnext/crm/utils.py:217-250`. Son tres tablas de plataforma sin equivalente en TailorSuite; mantener una tabla de actividades propia con tipo y estado.
-7. Motor genérico de Custom Field y Assignment Rule como documentos del framework. Cita: `frappe/frappe/custom/doctype/custom_field/custom_field.json:83-168`. TailorSuite ya tiene campos personalizados propios; copiar solo el comportamiento de asignación, no la maquinaria.
+6. Actividades por ToDo, Event y Communication del framework. Cita: `erpnext/erpnext/crm/utils.py:217-250`. Son tres tablas de plataforma sin equivalente en Bash Logistics; mantener una tabla de actividades propia con tipo y estado.
+7. Motor genérico de Custom Field y Assignment Rule como documentos del framework. Cita: `frappe/frappe/custom/doctype/custom_field/custom_field.json:83-168`. Bash Logistics ya tiene campos personalizados propios; copiar solo el comportamiento de asignación, no la maquinaria.
 8. Fusión basada en "todo es Link descubrible". Cita: `frappe/frappe/model/rename_doc.py:108-125`. No se traduce directo a SQL (ver A8): hace falta lista explícita de tablas.
 9. Lead que crea Contact por defecto y Prospect por acción manual. Cita: `erpnext/erpnext/crm/doctype/lead/lead.py:109-125,260-270`. Flujo propio del modelo de tres entidades; no aporta con cuenta única.
 10. Mapeadores `get_mapped_doc` con nombres de campo cableados. Cita: `erpnext/erpnext/crm/doctype/lead/mapper.py:16-63`. La idea (mapa declarativo origen-destino) es buena, pero en TypeScript basta una función tipada por conversión.

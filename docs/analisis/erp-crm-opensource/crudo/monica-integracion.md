@@ -58,7 +58,7 @@ Resumen del alcance: la API REST es mínima (usuarios y bóvedas); la integraci�
 - **Errores de API con códigos numéricos propios** además del estado HTTP (`config/api.php:42`), pensado para clientes que no quieren depender del texto.
 - **Idioma por usuario, no por instalación**, con varios detectores y lista permitida validada en servidor (`config/localizer.php:26-35`).
 
-## Adoptable para TailorSuite (lista numerada A1, A2…: la idea, la cita que la respalda, por qué le sirve a una pyme, y el esfuerzo estimado bajo, medio o alto sobre Postgres con RLS y React)
+## Adoptable para Bash Logistics (lista numerada A1, A2…: la idea, la cita que la respalda, por qué le sirve a una pyme, y el esfuerzo estimado bajo, medio o alto sobre Postgres con RLS y React)
 
 **A1. Sincronizar contactos y fechas con el teléfono vía CardDAV/CalDAV.** Idea: exponer cuentas persona y contactos como libreta, y actividades y vencimientos como calendario de solo lectura. Cita: `app/Providers/DAVServiceProvider.php:63-90`; `app/Domains/Contact/Dav/Web/Backend/CalDAV/CalDAVDates.php:21-40`. Le sirve porque el vendedor ve y llama a sus clientes desde la libreta del celular y ve citas en su calendario sin otra app. Esfuerzo: alto para un servidor DAV completo (los métodos WebDAV casan mal con Netlify Functions; habría que valorar un servicio aparte); bajo si se limita a exportar `.vcf` y feed `.ics` (ver A2 y A3).
 
@@ -96,8 +96,8 @@ Resumen del alcance: la API REST es mínima (usuarios y bóvedas); la integraci�
 
 - **Servidor DAV completo dentro de funciones serverless.** Monica usa una librería PHP madura y un servidor persistente (`app/Providers/DAVServiceProvider.php:42-90`); en TypeScript no hay equivalente y PROPFIND o REPORT casan mal con Netlify Functions. Mejor un servicio aparte o solo exportación `.vcf` e `.ics`.
 - **Cálculo de cambios cargando todos los objetos de la colección** (`app/Domains/Contact/Dav/Web/Backend/SyncDAVBackend.php:74-79`, `:131-199`). Aceptable en un CRM personal; con miles de movimientos de ventas o inventario se necesita una versión monótona por fila y consulta SQL.
-- **API REST de cobertura mínima** (`routes/api.php:18-24`): no sirve de modelo de alcance; TailorSuite necesita cuentas, contactos, actividades y luego documentos comerciales.
-- **Servicios que comprueban pertenencia a cuenta en cada llamada** (`ImportVCard.php:96-104`, permisos `author_must_belong_to_account`): es el patrón de un sistema multicuenta; en TailorSuite, con una instalación por cliente y RLS, la defensa debe estar en la política de la base de datos.
+- **API REST de cobertura mínima** (`routes/api.php:18-24`): no sirve de modelo de alcance; Bash Logistics necesita cuentas, contactos, actividades y luego documentos comerciales.
+- **Servicios que comprueban pertenencia a cuenta en cada llamada** (`ImportVCard.php:96-104`, permisos `author_must_belong_to_account`): es el patrón de un sistema multicuenta; en Bash Logistics, con una instalación por cliente y RLS, la defensa debe estar en la política de la base de datos.
 - **Motor de búsqueda externo (Algolia por defecto)** (`config/scout.php:23`): Postgres ya trae búsqueda de texto completo y evita un tercero y su costo.
 - **Telegram como canal principal de avisos** (`app/Notifications/ReminderTriggered.php:34-45`): en Latinoamérica el canal real es WhatsApp (ver decisiones sobre WhatsApp y el número comercial); la idea de canal por usuario es adoptable, el canal concreto no.
 

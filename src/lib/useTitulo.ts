@@ -1,12 +1,12 @@
 import { useEffect } from 'react'
 import { NOMBRE_PORTAL } from './instalacion'
 
-// document.title por ruta y por ventana: «Inicio · TailorSuite»,
-// «Proyectos — Perdidos · TailorSuite». Sin título se deja el de
+// document.title por ruta y por ventana: «Inicio · Bash Logistics»,
+// «Proyectos — Perdidos · Bash Logistics». Sin título se deja el de
 // siempre (index.html y NotificationsContext).
 //
 // NotificationsContext escribe el título entero con el contador de no leídos
-// («(3) TailorSuite») cada vez que cambia. En vez de
+// («(3) Bash Logistics») cada vez que cambia. En vez de
 // pelear por el orden de los efectos, se vigila el <title>: si alguien lo
 // reescribe, se toma su contador y se recompone con el título de la ruta.
 

@@ -1,13 +1,13 @@
 # odoo
 
-Ficha para el equipo de TailorSuite. Fuente: los nueve informes de `crudo/odoo-*.md` y sus dos verificaciones (215 elementos revisados: 203 confirmados, 12 corregidos, ninguno descartado). Aquí entra solo lo confirmado o lo corregido, con la corrección aplicada. Todas las citas de Odoo son relativas a `C:\Users\enzov\IA\personal\investigacion-erp\odoo`. Licencia LGPL-3: se describen ideas y modelos con palabras propias; no se copia código ni los CSV de localización.
+Ficha para el equipo de Bash Logistics. Fuente: los nueve informes de `crudo/odoo-*.md` y sus dos verificaciones (215 elementos revisados: 203 confirmados, 12 corregidos, ninguno descartado). Aquí entra solo lo confirmado o lo corregido, con la corrección aplicada. Todas las citas de Odoo son relativas a `C:\Users\enzov\IA\personal\investigacion-erp\odoo`. Licencia LGPL-3: se describen ideas y modelos con palabras propias; no se copia código ni los CSV de localización.
 
 ## En resumen
 
 - Qué es: Odoo Community, un ERP y CRM en Python sobre Postgres en el que todo, también lo transversal (actividades, importación, portal, automatización), es un módulo con manifiesto, permisos en CSV y datos semilla. El clon es parcial y de versión reciente (19 o posterior).
 - En qué es fuerte: el modelo contable (la factura es un asiento, la cartera son cruces, los impuestos son datos), el inventario por movimientos con saldo materializado y la mecánica de módulos con dependencias, puentes que se instalan solos e interruptores de función.
 - También: los permisos son aditivos por grupo con restricciones globales sin grupo, que se traducen casi uno a uno a políticas RLS permisivas y restrictivas de Postgres.
-- Qué le sirve a TailorSuite: los modelos de facturación, cartera, compras e inventario antes de escribir sus esquemas; revisar ya las dependencias duras de los módulos planeados; y cerrar huecos del CRM 0.2 (tipo de documento DIAN, «lo mío o sin asignar», estancamiento, actividades con vencimiento).
+- Qué le sirve a Bash Logistics: los modelos de facturación, cartera, compras e inventario antes de escribir sus esquemas; revisar ya las dependencias duras de los módulos planeados; y cerrar huecos del CRM 0.2 (tipo de documento DIAN, «lo mío o sin asignar», estancamiento, actividades con vencimiento).
 - Qué no sirve: el motor genérico (ORM, vistas XML con herencia, dominios evaluados como código, ALTER TABLE desde la app, multicompañía) ni la factura electrónica DIAN, que es Enterprise y no está en el repo.
 
 ## Arquitectura y modelo de módulos
@@ -26,7 +26,7 @@ Ficha para el equipo de TailorSuite. Fuente: los nueve informes de `crudo/odoo-*
 
 **Localización como datos.** El plan de cuentas colombiano (802 líneas) y los impuestos (71) son CSV más un decorador por país (`addons/l10n_co/data/template/account.account-co.csv`, `account.tax-co.csv`, `addons/l10n_co/models/template_co.py:7-30`).
 
-**Frente a TailorSuite.** `src/lib/modulos.ts` ya cumple el papel del catálogo (dependencias, integraciones, estado `planeado`, permisos, tablas, archivo de esquema) y `modulos_instalacion` el de la fila por instalación; activa el instalador con service role (PP-DEC-04). Diferencias que importan:
+**Frente a Bash Logistics.** `src/lib/modulos.ts` ya cumple el papel del catálogo (dependencias, integraciones, estado `planeado`, permisos, tablas, archivo de esquema) y `modulos_instalacion` el de la fila por instalación; activa el instalador con service role (PP-DEC-04). Diferencias que importan:
 
 1. `validarActivacion` rechaza si falta una dependencia en lugar de activarla en cadena; solo la desactivación tiene `--cascada`.
 2. `integra` existe, pero no hay puente que se active al coexistir dos módulos.
@@ -77,7 +77,7 @@ Ficha para el equipo de TailorSuite. Fuente: los nueve informes de `crudo/odoo-*
 - La fórmula de acceso es la unión de los permisos de los grupos del usuario intersectada con todas las restricciones globales; sin permisos, nada (`odoo/orm/models.py:3603-3647`, `odoo/addons/base/models/ir_access.py:64-93,128-131`). En Postgres es exactamente la combinación de políticas `permissive` y `restrictive`.
 - Patrón «lo mío o sin asignar» frente a «todo» con dos filas (`addons/crm/security/ir.access.csv:2-4`). La escritura depende del estado del documento (`addons/hr_holidays/security/ir.access.csv:2-24`). Las líneas y los adjuntos heredan el permiso del padre (`odoo/orm/domains.py:1928-1967`, `odoo/addons/base/models/ir_attachment.py:673-723`).
 - Exportar es un permiso aparte de leer, aunque solo se comprueba en el método de exportación y no cubre la API directa (`odoo/addons/base/security/base_groups.xml:66-71`, `odoo/orm/models.py:937-938`). Pide la contraseña otra vez para acciones sensibles pasados 10 minutos (`odoo/addons/base/models/res_users.py:97-137`). Las claves de API van con prefijo de índice, hash y vencimiento con tope por grupo (`odoo/addons/base/models/res_users.py:1598-1640,1668-1680,1814-1846`, `odoo/addons/base/models/res_groups.py:40-41`).
-- El mensaje de denegación lista los grupos que permitirían la operación (`odoo/addons/base/models/ir_access.py:326-409`). Personalizar una regla desactiva la estándar y edita una copia (`odoo/addons/base/models/ir_access.py:88-92,261-276`). Los cambios de reglas quedan rastreados (`addons/mail/models/ir_access.py:5-12`); TailorSuite ya lo cubre con `auditar_cambio` sobre `roles` y `user_roles` (`supabase/esquema/02-auditoria.sql`).
+- El mensaje de denegación lista los grupos que permitirían la operación (`odoo/addons/base/models/ir_access.py:326-409`). Personalizar una regla desactiva la estándar y edita una copia (`odoo/addons/base/models/ir_access.py:88-92,261-276`). Los cambios de reglas quedan rastreados (`addons/mail/models/ir_access.py:5-12`); Bash Logistics ya lo cubre con `auditar_cambio` sobre `roles` y `user_roles` (`supabase/esquema/02-auditoria.sql`).
 
 ### Extensibilidad
 
@@ -99,7 +99,7 @@ Ficha para el equipo de TailorSuite. Fuente: los nueve informes de `crudo/odoo-*
 - Enlace de portal con token, comprobado en tiempo constante solo si falla el control normal (`addons/portal/models/portal_mixin.py:10-42`, `addons/portal/controllers/portal.py:1093-1112`). Aceptación de cotización con firma, fecha y PDF archivado (`addons/sale/controllers/portal.py:347-405`).
 - Tipos de documento DIAN: NIT 31, CC 13, CE 22, pasaporte 41, PEP 47, PPT 48, documento extranjero 42 y NIT de otro país 50, guardados por separado del número (`addons/l10n_co/tools/partner_identifiers.py:6-31`, `addons/l10n_co/models/res_partner.py:18-50`).
 
-## Propuestas para TailorSuite
+## Propuestas para Bash Logistics
 
 Orden: valor y, dentro del mismo valor, esfuerzo. «Fase» remite al registro: CRM es la 0.2; los ERP planeados van de la 0.7 a la 0.11 según `src/lib/modulos.ts`.
 
@@ -166,7 +166,7 @@ Orden: valor y, dentro del mismo valor, esfuerzo. «Fase» remite al registro: C
 - **Ajustes que instalan módulos desde la interfaz del cliente** (`module_<x>`, `odoo/addons/base/models/res_config.py:104-135`). Contradice PP-DEC-04: activa quien instala, con el script. Los interruptores de función dentro de un módulo activo sí caben en `instalacion.ajustes`.
 - **Dominios, condiciones y cálculos como texto evaluado** (`safe_eval` en reglas, `record_getter`, campos calculados en Python: `addons/base_automation/models/base_automation.py:150-151,721-748`, `odoo/addons/base/models/ir_model.py:54-58`). Con RLS sería inyección de código. Todo predicado es SQL revisado o JSON declarativo.
 - **Campos y modelos manuales con ALTER TABLE en caliente** (`odoo/addons/base/models/ir_model.py:1183-1215,1276-1302`). Choca con el esquema por archivos que no se editan (PP-DEC-02) y con los tipos generados. Lo del cliente va a JSONB.
-- **Tercero único para persona, empresa y direcciones** (`odoo/addons/base/models/res_partner.py:348-355`). TailorSuite ya separa cuentas y contactos, que es más claro.
+- **Tercero único para persona, empresa y direcciones** (`odoo/addons/base/models/res_partner.py:348-355`). Bash Logistics ya separa cuentas y contactos, que es más claro.
 - **El hilo de mensajes como contenedor de la auditoría** (`mail.thread`, seguimiento por campo; `addons/crm/models/crm_lead.py:89-97`). Ya existen `audit_log` y `crm_cambios`; de Odoo solo se toma la idea de marcar qué campos se auditan.
 - **Texto de «requisitos» en la etapa** (`addons/crm/models/crm_stage.py:25-35`). Es una leyenda de ayuda en pantalla, y la decisión cerrada «Sin párrafos de ayuda ni leyendas explicativas» lo excluye.
 - **Puntuación predictiva de leads desde el primer día** (`addons/crm/models/crm_lead.py:2174-2200`). Sin cientos de cierres por equipo no da señal. Tampoco el reparto con azar ponderado entre equipos y dominios por miembro (`addons/crm/models/crm_team.py:349-452`).
@@ -197,5 +197,5 @@ Orden: valor y, dentro del mismo valor, esfuerzo. «Fase» remite al registro: C
   - La exclusión de dominios públicos en la búsqueda de duplicados: sale de las pruebas, porque la función vive en `iap_tools`, fuera del clon.
   - La cita `addons/crm/models/crm_lead.py:2300-2306`, que un informe usaba para «el puntaje devuelve 0 si falta una clase», dice otra cosa y no se usa aquí.
   - La segregación contable por grupos no es una cadena acumulativa simple: depende de qué módulo esté instalado (`addons/account/security/account_security.xml:3-37`).
-- **Del lado de TailorSuite.** Se leyeron `src/lib/modulos.ts`, `docs/modulos.md`, el listado de `supabase/esquema`, las tablas y políticas de `21-crm.sql`, los roles de `00-base.sql`, el encabezado de `02-auditoria.sql`, el instalador de módulos y las decisiones PP-DEC-01 a 20. El registro declara archivos de esquema (`10-calendario.sql`, `20-proyectos.sql`, `22-catalogo.sql`, `23-cotizador.sql`, `26-gerencia.sql` y otros) que no están en `supabase/esquema`, que solo contiene de `00` a `09`, `21` y `21b`. Las comparaciones con productos, cotizador y gerencia se apoyan en los nombres de tabla del registro, no en su esquema.
+- **Del lado de Bash Logistics.** Se leyeron `src/lib/modulos.ts`, `docs/modulos.md`, el listado de `supabase/esquema`, las tablas y políticas de `21-crm.sql`, los roles de `00-base.sql`, el encabezado de `02-auditoria.sql`, el instalador de módulos y las decisiones PP-DEC-01 a 20. El registro declara archivos de esquema (`10-calendario.sql`, `20-proyectos.sql`, `22-catalogo.sql`, `23-cotizador.sql`, `26-gerencia.sql` y otros) que no están en `supabase/esquema`, que solo contiene de `00` a `09`, `21` y `21b`. Las comparaciones con productos, cotizador y gerencia se apoyan en los nombres de tabla del registro, no en su esquema.
 - **Sin pruebas.** No se ejecutó nada de ningún repo. Valor y esfuerzo son estimaciones sobre Postgres con RLS y React, no medidas.

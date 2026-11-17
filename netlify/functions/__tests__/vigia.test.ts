@@ -424,7 +424,7 @@ describe('revision-seguridad', () => {
 
     const [destinatarios, contenido, remitente] = vi.mocked(sendEmailTo).mock.calls[0] ?? []
     expect(destinatarios).toEqual(['admin@empresa.test'])
-    expect(remitente).toBe('Seguridad — TailorSuite')
+    expect(remitente).toBe('Seguridad — Bash Logistics')
     expect(contenido?.subject).toBe('Revisión de seguridad: 1 punto para revisar')
 
     expect(avisos).toEqual([

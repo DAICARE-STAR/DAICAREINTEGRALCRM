@@ -1,6 +1,6 @@
 # erpnext
 
-Ficha para el equipo de TailorSuite. Fuentes: los ocho informes crudos `crudo/erpnext-*.md` y sus dos verificaciones (193 elementos revisados: 165 confirmados, 28 corregidos, ninguno descartado). Donde una verificación corrigió un dato, aquí va la versión corregida. Licencia del repo: GPL v3 (el motor Automation Flow de Frappe declara MIT); no se copió código, todo está descrito con palabras propias.
+Ficha para el equipo de Bash Logistics. Fuentes: los ocho informes crudos `crudo/erpnext-*.md` y sus dos verificaciones (193 elementos revisados: 165 confirmados, 28 corregidos, ninguno descartado). Donde una verificación corrigió un dato, aquí va la versión corregida. Licencia del repo: GPL v3 (el motor Automation Flow de Frappe declara MIT); no se copió código, todo está descrito con palabras propias.
 
 Convención de citas: rutas relativas a `C:\Users\enzov\IA\personal\investigacion-erp\`. `E/` abrevia `erpnext/erpnext/` y `F/` abrevia `frappe/frappe/`. Los números de línea son del commit clonado.
 
@@ -9,8 +9,8 @@ Convención de citas: rutas relativas a `C:\Users\enzov\IA\personal\investigacio
 1. ERPNext es una app del framework Frappe: 21 módulos en un solo paquete (contabilidad, ventas, CRM, compras, inventario, fabricación, proyectos, soporte…), con el esquema descrito como datos y la plataforma (permisos, campos, flujos, automatización, integración) en Frappe.
 2. Es fuerte en la cadena documental con libros auxiliares (stock, mayor, pagos), en estados que se derivan de los documentos y no se editan, y en finanzas completas: impuestos como filas, retenciones con vigencia, pagos con asignaciones, cierre por periodos, conciliación.
 3. Para Colombia trae poco: el plan de cuentas PUC (completo y simple) y un IVA genérico del 16 % desactualizado; nada de DIAN, retenciones colombianas ni UVT.
-4. A TailorSuite le sirve sobre todo como modelo de datos para las fases ERP planeadas (inventario, compras, facturación, cartera, contabilidad) y como catálogo de controles internos baratos de llevar a Postgres con RLS: numeración atómica, autorización por monto, cierre, libro de solo inserción.
-5. En módulos TailorSuite ya va por delante (manifiesto con dependencias, esquema solo de módulos activos, política restrictiva por módulo); no conviene traer el metamodelo DocType, el código ejecutable de usuario ni la valoración de inventario completa.
+4. A Bash Logistics le sirve sobre todo como modelo de datos para las fases ERP planeadas (inventario, compras, facturación, cartera, contabilidad) y como catálogo de controles internos baratos de llevar a Postgres con RLS: numeración atómica, autorización por monto, cierre, libro de solo inserción.
+5. En módulos Bash Logistics ya va por delante (manifiesto con dependencias, esquema solo de módulos activos, política restrictiva por módulo); no conviene traer el metamodelo DocType, el código ejecutable de usuario ni la valoración de inventario completa.
 
 ## Arquitectura y modelo de módulos
 
@@ -23,9 +23,9 @@ Convención de citas: rutas relativas a `C:\Users\enzov\IA\personal\investigacio
 - **Permiso por registro con ganchos de código** (`E/hooks.py:349-371`), con comodín `"*"` que aplica a todo.
 - **Localización por carpeta de país** (`E/regional/`: Australia, Italia, Sudáfrica, Turquía, Emiratos, EE. UU.). Colombia solo aparece en un impuesto «VAT» al 16 % (`E/setup/setup_wizard/data/country_wise_tax.json:447-452`) y en dos PUC verificados (`E/accounts/doctype/account/chart_of_accounts/verified/co_plan_unico_de_cuentas.json` y `..._simple.json`).
 
-Comparación con TailorSuite hoy:
+Comparación con Bash Logistics hoy:
 
-| Aspecto | ERPNext | TailorSuite |
+| Aspecto | ERPNext | Bash Logistics |
 |---|---|---|
 | Catálogo de módulos | lista plana sin dependencias | `src/lib/modulos.ts` con `depende`, `integra`, tablas, permisos y límites; `validarActivacion` y `validarDesactivacion` |
 | Activar un módulo | ocultar; esquema siempre presente | se aplica su `NN-*.sql` y una política restrictiva `modulo_<slug>` (`aplicar_politica_modulo` en `04-instalacion-modulos.sql`) |
@@ -34,7 +34,7 @@ Comparación con TailorSuite hoy:
 | Historial | Version por DocType, opt-in | `crm_cambios` (CRM) y `audit_log` (núcleo, incluye cambios de roles) |
 | Localización | carpeta por país | ninguna; `pais` por defecto `CO` en `crm_cuentas` |
 
-Conclusión: de la arquitectura solo vale la pena tomar dos detalles (perfiles de rol aportados por cada módulo y onboarding por módulo); el valor de ERPNext para TailorSuite está en los modelos de dominio.
+Conclusión: de la arquitectura solo vale la pena tomar dos detalles (perfiles de rol aportados por cada módulo y onboarding por módulo); el valor de ERPNext para Bash Logistics está en los modelos de dominio.
 
 ## Lo que hace bien, por dominio
 
@@ -43,13 +43,13 @@ Conclusión: de la arquitectura solo vale la pena tomar dos detalles (perfiles d
 - **Estados derivados.** El estado del Lead sale de una tabla de reglas ordenadas evaluada de la última a la primera (`E/controllers/status_updater.py:26-33,319-338`); «Do Not Contact» es terminal y no se recalcula (`E/crm/doctype/lead/lead.py:101-103`).
 - **Oportunidad con estado, etapa y probabilidad separados** (`E/crm/doctype/opportunity/opportunity.json:170-183,229-241`), bloqueada por sus cotizaciones: no se declara perdida con una cotización activa ni «convertida» si las cotizaciones no lo dicen (`E/crm/doctype/opportunity/opportunity.py:190-224`).
 - **Pérdida estructurada:** motivo obligatorio de un maestro, competidores, detalle y fecha (`opportunity.py:219-224,369-392`). La cotización usa otro maestro, `Quotation Lost Reason` (`E/selling/doctype/quotation/quotation.py:366-404`).
-- **Conversión idempotente con trazas:** el cliente guarda `lead_name`, `opportunity_name` y `prospect_name` y se rechaza un segundo cliente del mismo origen (`E/selling/doctype/customer/customer.json:186,566,676`; `customer.py:226-237,478-491`). El costo de tener tres entidades (Lead, Prospect, Customer) es reapuntar oportunidades y cotizaciones al convertir (`customer.py:404-429`); la cuenta única de TailorSuite lo evita.
+- **Conversión idempotente con trazas:** el cliente guarda `lead_name`, `opportunity_name` y `prospect_name` y se rechaza un segundo cliente del mismo origen (`E/selling/doctype/customer/customer.json:186,566,676`; `customer.py:226-237,478-491`). El costo de tener tres entidades (Lead, Prospect, Customer) es reapuntar oportunidades y cotizaciones al convertir (`customer.py:404-429`); la cuenta única de Bash Logistics lo evita.
 - **Cotización con revisiones** `-R<n>`, una sola activa, sin revisar una perdida (`E/selling/doctype/quotation/quotation.py:139-150,210-251,429-434`); vigencia por defecto (`:197-204`) y estado vencida que fija un trabajo diario (`:620-649`, `E/hooks.py:558`).
 - **Seguimiento automático:** reabre lo que tiene un evento hoy y cierra lo «respondido» sin movimiento tras N días (`E/crm/utils.py:7-8,264-287`; `opportunity.py:577-591`).
 - **Calificación aparte del estado** (`E/crm/doctype/lead/lead.json:392-406`), UTM y tipo de solicitud (`lead.json:237-266,518-544`), equipo de ventas con reparto que suma 100 % (`E/controllers/selling_controller.py:293-318`), informe de embudo por etapa o dueño (`E/crm/report/sales_pipeline_analytics/sales_pipeline_analytics.py:63-120`).
 - **Duplicados:** unicidad de correo configurable con enlace a los existentes (`lead.py:179-196`); la búsqueda por teléfono normalizado existe pero solo la usa el registro de llamadas (`E/crm/doctype/utils.py:74-84`). Fusión genérica que reapunta vínculos y deja comentario de auditoría (`F/model/rename_doc.py:108-130,195-210`).
 
-Frente a TailorSuite: el CRM nativo ya tiene cuenta única persona o empresa, etapas con orden y marca de cierre ganada o perdida en `instalacion.ajustes.crm` (mejor que `Sales Stage`, que no tiene orden ni probabilidad: `E/crm/doctype/sales_stage/sales_stage.json:16-17`) y documento único. Le faltan oportunidad como entidad, motivos de pérdida, actividades pendientes con fecha y alerta de duplicados por teléfono.
+Frente a Bash Logistics: el CRM nativo ya tiene cuenta única persona o empresa, etapas con orden y marca de cierre ganada o perdida en `instalacion.ajustes.crm` (mejor que `Sales Stage`, que no tiene orden ni probabilidad: `E/crm/doctype/sales_stage/sales_stage.json:16-17`) y documento único. Le faltan oportunidad como entidad, motivos de pérdida, actividades pendientes con fecha y alerta de duplicados por teléfono.
 
 ### Operaciones (inventario, compras, fabricación ligera)
 
@@ -62,13 +62,13 @@ Frente a TailorSuite: el CRM nativo ya tiene cuenta única persona o empresa, et
 - **Un documento de movimiento con propósito** (13 propósitos, `E/stock/doctype/stock_entry_type/stock_entry_type.json:18-22`) y un conteo físico que sirve de apertura, conciliación o ajuste (`E/stock/doctype/stock_reconciliation/stock_reconciliation.json:57-62`).
 - **Fabricación ligera:** BOM con versión y control de ciclos (`E/manufacturing/doctype/bom/bom.py:959-993`), orden de trabajo y movimiento de propósito «Manufacture»; mínimo de pedido validado al sumar líneas (`E/buying/doctype/purchase_order/purchase_order.py:319-345`); ubicación sugerida con capacidad (`E/stock/doctype/putaway_rule/putaway_rule.py:164-269`).
 
-Frente a TailorSuite: el registro ya declara lotes, variantes y atributos en el catálogo (`productos`, tablas `product_lotes`, `product_variantes`, `atributos_def`), así que lo nuevo para Inventario y Compras es el libro, el saldo, el reorden y la recepción.
+Frente a Bash Logistics: el registro ya declara lotes, variantes y atributos en el catálogo (`productos`, tablas `product_lotes`, `product_variantes`, `atributos_def`), así que lo nuevo para Inventario y Compras es el libro, el saldo, el reorden y la recepción.
 
 ### Finanzas
 
 - **Libro mayor único** al que cada documento publica por una sola función que valida presupuesto, periodo, cuentas deshabilitadas y cuadre (`E/accounts/general_ledger.py:34-75,429-460`), con tolerancia y línea de redondeo (`:449-450,486-492,510`). La anulación por asiento inverso existe (`:647-766`), pero por defecto marca el original y el libro inmutable es un ajuste opcional (`E/accounts/doctype/accounts_settings/accounts_settings.json:486-491`).
 - **Libro de pagos** con signo por tipo de cuenta y suma por factura de origen (`E/accounts/utils.py:2139-2210,2470-2531`); el propio ERPNext necesitó un monitor para detectar descuadres entre ese libro y el mayor (`E/accounts/doctype/ledger_health/ledger_health.json:16-38`).
-- **Estado de factura derivado** de saldo y vencimiento (`E/accounts/doctype/sales_invoice/services/status.py:35-110`); **nota crédito** como factura marcada que referencia la original con las mismas validaciones (`E/controllers/sales_and_purchase_return.py:46-100`). Su saldo queda en 0 y mueve el de la factura (`E/controllers/taxes_and_totals.py:1222-1238`): esto choca con la decisión cerrada global «Las notas crédito parciales no restan de la factura» (2026-10-14), que se tomó para Gerencia de team-portal; si TailorSuite quiere el comportamiento de ERPNext, la decisión habría que reabrirla para este producto con el contador.
+- **Estado de factura derivado** de saldo y vencimiento (`E/accounts/doctype/sales_invoice/services/status.py:35-110`); **nota crédito** como factura marcada que referencia la original con las mismas validaciones (`E/controllers/sales_and_purchase_return.py:46-100`). Su saldo queda en 0 y mueve el de la factura (`E/controllers/taxes_and_totals.py:1222-1238`): esto choca con la decisión cerrada global «Las notas crédito parciales no restan de la factura» (2026-10-14), que se tomó para Gerencia de team-portal; si Bash Logistics quiere el comportamiento de ERPNext, la decisión habría que reabrirla para este producto con el contador.
 - **Pago con asignaciones** a varias facturas, saldo sin asignar como anticipo y deducciones a su cuenta; no se guarda con diferencia (`E/accounts/doctype/payment_entry/payment_entry.json:300-427`; `payment_entry.py:268-269,1388-1411`). Aplicación de anticipos y notas, con deshacer (`E/accounts/doctype/unreconcile_payment/unreconcile_payment.py:45-84`).
 - **Condiciones de pago** como plantilla de cuotas que suma 100 % y se materializa por factura (`E/accounts/doctype/payment_term/payment_term.json:39-69`; `E/accounts/doctype/payment_schedule/payment_schedule.json:39-175`).
 - **Impuestos como filas** con cinco tipos de cálculo, cuenta por fila e «incluido en precio» (`E/accounts/doctype/sales_taxes_and_charges/sales_taxes_and_charges.json:40-46,60,98`; `taxes_and_totals.py:401-463,544-640`); plantilla por ítem (`E/accounts/doctype/item_tax_template/item_tax_template.json:22-57`) y regla que elige la plantilla según el tercero (`E/accounts/doctype/tax_rule/tax_rule.py:42-66`, aplicada en `E/accounts/party.py:854-888`).
@@ -78,7 +78,7 @@ Frente a TailorSuite: el registro ya declara lotes, variantes y atributos en el 
 - **Tesorería:** conciliación bancaria con asignación a varios comprobantes y desconciliación (`E/accounts/doctype/bank_transaction/bank_transaction.json:63-274`; `E/accounts/doctype/bank_reconciliation_tool/bank_reconciliation_tool.py:172,338`), antigüedad de cartera con rangos configurables (`E/accounts/report/accounts_receivable/accounts_receivable.py:64-67,819-854`), estado de cuenta en PDF por lote (`E/accounts/doctype/process_statement_of_accounts/process_statement_of_accounts.py:190-244,423-435,548-604`) y cobranza escalonada por niveles (`E/accounts/doctype/dunning/dunning.py:75-85,113-131,322-333,585-608`).
 - **Localización aislada** (Italia: valida al enviar, genera XML, adjunto privado, consecutivo por NIT; `E/regional/italy/utils.py:321-376,388-398,463-474`): sirve de patrón de ubicación para un módulo DIAN, no de diseño, porque no firma ni envía.
 
-Frente a TailorSuite: Gerencia guarda facturas que llegan por el conector de facturación (`facturas`, `factura_lineas`, `factura_vinculos`); no hay libro, impuestos ni cartera propios.
+Frente a Bash Logistics: Gerencia guarda facturas que llegan por el conector de facturación (`facturas`, `factura_lineas`, `factura_vinculos`); no hay libro, impuestos ni cartera propios.
 
 ### Permisos
 
@@ -89,7 +89,7 @@ Frente a TailorSuite: Gerencia guarda facturas que llegan por el conector de fac
 - **Depurador «por qué no veo esto»** (`F/permissions.py:71-81,85-234`; `F/core/doctype/permission_inspector/permission_inspector.py:1-30`).
 - **Ciclo del empleado:** al ligar usuario y empleado se crean sus reglas de fila y se retiran al desvincular; jerarquía «ver a mis reportes» como regla de fila (`E/setup/doctype/employee/employee.py:172-177,224-263,535-585`). Campos fijos tras el primer guardado y campos exentos de reglas de fila (`F/core/doctype/docfield/docfield.json:315-349`).
 
-Frente a TailorSuite: ya tiene la regla de módulo que solo niega (política restrictiva `modulo_<slug>`), auditoría de cambios en `roles` y `user_roles` (`auditar_cambio` en `02-auditoria.sql`), historial del CRM, registro de accesos a salud y límite de tasa (`api_rate_limits` en `01-seguridad.sql`). Faltan las reglas de fila separadas del rol, el compartir puntual y la protección por campo.
+Frente a Bash Logistics: ya tiene la regla de módulo que solo niega (política restrictiva `modulo_<slug>`), auditoría de cambios en `roles` y `user_roles` (`auditar_cambio` en `02-auditoria.sql`), historial del CRM, registro de accesos a salud y límite de tasa (`api_rate_limits` en `01-seguridad.sql`). Faltan las reglas de fila separadas del rol, el compartir puntual y la protección por campo.
 
 ### Extensibilidad
 
@@ -122,7 +122,7 @@ Frente a TailorSuite: ya tiene la regla de módulo que solo niega (política res
 - **Portal de clientes** con usuarios del portal por tercero y filas reducidas (`E/utilities/doctype/portal_user/portal_user.json:13`; `E/controllers/website_list_for_contact.py:16-30,90-132`), formularios públicos con token de un solo uso guardado como hash y reserva con capacidad bajo bloqueo (`E/crm/doctype/appointment/appointment.py:165-180,409-417,465-479`).
 - **Operaciones masivas** con umbral síncrono o asíncrono y resultado por elemento (`F/api/v2.py:33-41,334-395,469-540`); traducción en capas `es` y `es-CO` con traducciones editables por instalación (`F/translate.py:148-200,234-249`).
 
-## Propuestas para TailorSuite
+## Propuestas para Bash Logistics
 
 Ordenadas por valor y luego por esfuerzo. «Valor» es para una pyme; «esfuerzo» es sobre Postgres con RLS, React y Netlify Functions.
 
@@ -157,12 +157,12 @@ Ordenadas por valor y luego por esfuerzo. «Valor» es para una pyme; «esfuerzo
 Relación con las decisiones del proyecto:
 
 - Ninguna propuesta contradice PP-DEC-01 a 20. Las que las tocan: ERP-05 a ERP-11, ERP-14 y ERP-16 llegan como archivos `NN-*.sql` de su módulo (PP-DEC-02) y se activan con el script del instalador (PP-DEC-04); ERP-18 y ERP-24 corren en `pg_cron` o funciones programadas de Netlify, sin servidores propios (PP-DEC-03), y el PDF de ERP-24 no puede usar Chrome headless dentro de una función, así que necesita una librería de PDF en servidor; ERP-15 y ERP-21 guardan sus catálogos en `instalacion.ajustes.crm` como manda PP-DEC-18; ERP-17, ERP-23 y ERP-25 dejan fuera los datos de salud (PP-DEC-19).
-- La nota crédito que resta del saldo de la factura, como hace ERPNext, choca con la decisión cerrada global del 2026-10-14 y no se propone. Valdría reabrirla para TailorSuite (no para team-portal) cuando se diseñe Cartera, porque en un libro único una nota crédito que no resta deja la cartera inflada; la condición de reapertura es una decisión contable, que debe tomar el contador.
+- La nota crédito que resta del saldo de la factura, como hace ERPNext, choca con la decisión cerrada global del 2026-10-14 y no se propone. Valdría reabrirla para Bash Logistics (no para team-portal) cuando se diseñe Cartera, porque en un libro único una nota crédito que no resta deja la cartera inflada; la condición de reapertura es una decisión contable, que debe tomar el contador.
 
 ## Qué no copiar y por qué
 
-- **El metamodelo DocType con DDL en caliente** (`F/custom/doctype/custom_field/custom_field.py:223-233`): exige permisos de esquema desde la interfaz, rompe los tipos generados y choca con el esquema versionado por archivos (PP-DEC-02). TailorSuite ya usa `campos jsonb` validados contra una definición.
-- **Instalar todo y solo ocultar, con dependencias implícitas** (`E/hooks.py` sin `required_apps`): el registro de TailorSuite ya es mejor.
+- **El metamodelo DocType con DDL en caliente** (`F/custom/doctype/custom_field/custom_field.py:223-233`): exige permisos de esquema desde la interfaz, rompe los tipos generados y choca con el esquema versionado por archivos (PP-DEC-02). Bash Logistics ya usa `campos jsonb` validados contra una definición.
+- **Instalar todo y solo ocultar, con dependencias implícitas** (`E/hooks.py` sin `required_apps`): el registro de Bash Logistics ya es mejor.
 - **Tres entidades para un mismo tercero** (Lead, Prospect, Customer) con tablas espejo sincronizadas a mano (`E/crm/doctype/lead/lead.py:214-227`; `E/crm/doctype/opportunity/opportunity.py:277-305`) y referencias polimórficas sin llave foránea (`opportunity.json:115-137`): la cuenta única con `cuenta_id` es más simple.
 - **Estados de texto con vocabulario mezclado** (`E/crm/doctype/lead/lead.json:157`: ciclo de vida, avance y consentimiento en un campo): separar estado, calificación y una bandera «no contactar» que sirve también para la Ley 1581.
 - **Árboles con `lft` y `rgt`** para cuentas, territorios y vendedores: en Postgres basta `parent_id` con consulta recursiva.
@@ -173,10 +173,10 @@ Relación con las decisiones del proyecto:
 - **La factura electrónica de Italia como diseño de DIAN** (`E/regional/italy/utils.py:348-376`): no firma ni envía; el flujo real exige resolución, CUFE, firma y acuse.
 - **Código o plantillas de usuario** (Server Script, condiciones `eval:`, `safe_eval` y Jinja en webhooks: `F/integrations/doctype/webhook/__init__.py:56`): superficie de ataque en cada instalación; usar árboles de filtros y sustitución simple.
 - **Varios motores de reglas superpuestos** (Notification, Assignment Rule, Auto Repeat, Server Script, Automation Flow y un segundo «Flow» en `F/hooks.py:19-27`): un solo motor desde el principio (ERP-18).
-- **Portal con permisos elevados y filtro a mano** (`E/controllers/website_list_for_contact.py:128`): en TailorSuite la barrera va en RLS y vistas.
+- **Portal con permisos elevados y filtro a mano** (`E/controllers/website_list_for_contact.py:128`): en Bash Logistics la barrera va en RLS y vistas.
 - **Claves de API con secreto recuperable y sin caducidad** (`F/core/doctype/user/user.py:1741-1758`): hash, prefijo visible y expiración.
 - **Restricción por empresa** (`E/stock/doctype/company_restriction/company_restriction.py`): no aplica con una instalación por cliente (PP-DEC-01).
-- **Cifrado por campo con una clave en la configuración del sitio** (`F/utils/password.py:323-335`): TailorSuite ya guarda la clave de salud en Vault.
+- **Cifrado por campo con una clave en la configuración del sitio** (`F/utils/password.py:323-335`): Bash Logistics ya guarda la clave de salud en Vault.
 - **Lectura IMAP periódica y PDF con Chrome dentro del proceso**: no encajan en funciones sin estado de Netlify (PP-DEC-03); para correo entrante, mejor el webhook de entrada de un proveedor.
 
 ## Límites de este análisis

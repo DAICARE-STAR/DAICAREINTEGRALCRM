@@ -113,7 +113,7 @@ describe('campos de texto sin datos heredados', () => {
   it('campoPersona cierra el autorrelleno con un name opaco y estable', () => {
     const a = campoPersona('perfil-telefono')
     expect(a.autoComplete).toBe('off')
-    expect(a.name).toMatch(/^ts-[a-z0-9]+$/)
+    expect(a.name).toMatch(/^bl-[a-z0-9]+$/)
     // Sin palabras que la heurística del navegador reconozca
     expect(a.name).not.toMatch(/perfil|tel|nombre|correo|cargo|direcc|name|phone|mail/i)
     expect(campoPersona('perfil-telefono').name).toBe(a.name)

@@ -6,7 +6,7 @@ Totales: 34 elementos revisados, 30 CONFIRMADO, 4 CORREGIDO, 0 DESCARTADO.
 
 ## monica-crm.md
 
-Elementos «Adoptable para TailorSuite» (A1 a A14) y muestra de 5 hechos de «Cómo lo resuelve» (H1, H4, H7, H12, H19).
+Elementos «Adoptable para Bash Logistics» (A1 a A14) y muestra de 5 hechos de «Cómo lo resuelve» (H1, H4, H7, H12, H19).
 
 | Elemento | Veredicto | Cita comprobada | Nota |
 |---|---|---|---|
@@ -16,7 +16,7 @@ Elementos «Adoptable para TailorSuite» (A1 a A14) y muestra de 5 hechos de «C
 | A4 recordatorios con motor mínimo | CONFIRMADO | `database/migrations/2022_02_18_215852_create_reminders_table.php:20-63`; `app/Models/ContactReminder.php:19-25` | Cuatro tipos (`one_time`, `recurring_day`, `recurring_month`, `recurring_year`), `frequency_number`, contador, último disparo, tabla `scheduled` y tabla `sent`. |
 | A5 tarea con vencimiento y autor como texto | CONFIRMADO | `database/migrations/2022_05_13_201216_create_contact_tasks_table.php:18-29` | `author_id` nullable con `nullOnDelete` y `author_name` obligatorio (línea 22); `completed_at` y `due_at` en 26-27. |
 | A6 archivado que sale del índice | CONFIRMADO | `app/Domains/Contact/ManageContact/Services/ToggleArchiveContact.php:49-50`; `app/Models/Contact.php:104-107` | `listed` se invierte y `shouldBeSearchable()` devuelve `listed`. |
-| A7 relaciones con tipo directo e inverso | CONFIRMADO | `database/migrations/2021_10_16_184625_create_relationship_types_table.php:28-46` | `name_reverse_relationship` en la línea 33. La migración de Monica no trae restricción única del par: es recomendación del informe para TailorSuite, no un hecho de Monica. |
+| A7 relaciones con tipo directo e inverso | CONFIRMADO | `database/migrations/2021_10_16_184625_create_relationship_types_table.php:28-46` | `name_reverse_relationship` en la línea 33. La migración de Monica no trae restricción única del par: es recomendación del informe para Bash Logistics, no un hecho de Monica. |
 | A8 datos de contacto tipados con protocolo | CONFIRMADO | `database/migrations/2021_10_20_004100_create_contact_fields_table.php:17-34` | `protocol` en el tipo, `data` como `string` en la fila. |
 | A9 ficha por plantilla, páginas y módulos | CONFIRMADO | `database/migrations/2013_04_25_155842_create_attributes_table.php:19-73`; `app/Domains/Contact/ManageContact/Services/CreateContact.php:88-93` | Si no llega `template_id` se usa `vault->default_template_id`. |
 | A10 interruptores de pestañas en el contenedor | CONFIRMADO | `database/migrations/2014_10_12_000010_create_vaults_table.php:24-31` | `default_activity_tab` más siete banderas `show_*_tab`. |
@@ -32,7 +32,7 @@ Elementos «Adoptable para TailorSuite» (A1 a A14) y muestra de 5 hechos de «C
 
 ## monica-extensibilidad.md
 
-Elementos «Adoptable para TailorSuite» (A1 a A10) y muestra de 5 hechos (H1, H4, H6, H10, H14).
+Elementos «Adoptable para Bash Logistics» (A1 a A10) y muestra de 5 hechos (H1, H4, H6, H10, H14).
 
 | Elemento | Veredicto | Cita comprobada | Nota |
 |---|---|---|---|

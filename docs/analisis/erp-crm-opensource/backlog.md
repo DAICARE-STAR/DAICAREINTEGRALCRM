@@ -1,6 +1,6 @@
 # Backlog fusionado de las propuestas ERP y CRM
 
-Las 117 propuestas de `odoo.md`, `erpnext.md`, `twenty.md`, `monica.md` y `platform.md` (Huly), fusionadas cuando son la misma idea y priorizadas para TailorSuite. Quedan **73 BL**. Cada BL conserva todos sus ids de origen; un id aparece en dos BL cuando su propuesta tenía dos partes que van a fases distintas (TWE-08, TWE-16, PLA-23, MON-17, ERP-15). Dos ids se descartan (ver «Descartado y por qué»). El contexto de cada dominio y las decisiones pendientes están en `comparativa.md`.
+Las 117 propuestas de `odoo.md`, `erpnext.md`, `twenty.md`, `monica.md` y `platform.md` (Huly), fusionadas cuando son la misma idea y priorizadas para Bash Logistics. Quedan **73 BL**. Cada BL conserva todos sus ids de origen; un id aparece en dos BL cuando su propuesta tenía dos partes que van a fases distintas (TWE-08, TWE-16, PLA-23, MON-17, ERP-15). Dos ids se descartan (ver «Descartado y por qué»). El contexto de cada dominio y las decisiones pendientes están en `comparativa.md`.
 
 ## Cómo leer
 

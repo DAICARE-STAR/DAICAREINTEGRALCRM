@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { NOMBRE_PORTAL_POR_DEFECTO } from '../instalacion'
 
-// El nombre del producto es TailorSuite (PP-DEC-17). Cada instalación pone el
+// El nombre del producto es Bash Logistics (PP-DEC-27). Cada instalación pone el
 // suyo en VITE_PORTAL_NOMBRE; sin él, el nombre visible es el del producto.
 // Ningún archivo del shell, las funciones o public/ vuelve al nombre
 // provisional de la 0.1.
@@ -24,9 +24,9 @@ function fuentes(): string[] {
 }
 
 describe('nombre del producto', () => {
-  it('el nombre visible por defecto es TailorSuite', () => {
-    expect(NOMBRE_PORTAL_POR_DEFECTO).toBe('TailorSuite')
-    expect(readFileSync(RAIZ + 'vite.config.ts', 'utf8')).toMatch(/NOMBRE_POR_DEFECTO = 'TailorSuite'/)
+  it('el nombre visible por defecto es Bash Logistics', () => {
+    expect(NOMBRE_PORTAL_POR_DEFECTO).toBe('Bash Logistics')
+    expect(readFileSync(RAIZ + 'vite.config.ts', 'utf8')).toMatch(/NOMBRE_POR_DEFECTO = 'Bash Logistics'/)
   })
 
   it('ningún archivo fuente usa el nombre provisional', () => {

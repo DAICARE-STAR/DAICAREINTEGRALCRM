@@ -32,7 +32,7 @@ const PROHIBIDOS: [string, RegExp][] = [
   ['tema', new RegExp('mar' + 'fil', 'i')],
 ]
 
-function archivos(): string[] {
+function archivos(exentos: RegExp[] = EXENTOS): string[] {
   const salida = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'], {
     cwd: RAIZ,
     encoding: 'utf8',
@@ -41,7 +41,7 @@ function archivos(): string[] {
   return salida
     .split('\0')
     .filter(Boolean)
-    .filter((r) => !BINARIO.test(r) && !EXENTOS.some((e) => e.test(r)))
+    .filter((r) => !BINARIO.test(r) && !exentos.some((e) => e.test(r)))
 }
 
 describe('neutralidad del producto', () => {
@@ -89,6 +89,33 @@ describe('neutralidad del producto', () => {
       }
       texto.split(/\r?\n/).forEach((l, i) => {
         if (patron.test(l.split(RUTA_ORIGEN).join(''))) hallazgos.push(`${ruta}:${i + 1}`)
+      })
+    }
+    expect(hallazgos).toEqual([])
+  })
+
+  // El producto se llama Bash Logistics (PP-DEC-27). Ningún archivo que git
+  // conoce vuelve al nombre anterior, en ninguna forma (junto, con espacio,
+  // guion o guion bajo, en cualquier caja). El patrón va partido para que este
+  // archivo no se delate a sí mismo.
+  it('ningún archivo contiene el nombre anterior del producto', () => {
+    const anterior = new RegExp('tai' + 'lor[ _-]?su' + 'ite', 'i')
+    // Exentos: los archivos de supabase/esquema ya aplicados que lo nombraran
+    // en un comentario (PP-DEC-02: no se editan y el instalador compara su
+    // sha256). A la 0.2.26 ninguno lo nombra, así que la lista está vacía.
+    // No se usan los EXENTOS de la empresa de origen: aquí no rige ninguno.
+    const exentosNombre: RegExp[] = []
+    const hallazgos: string[] = []
+    for (const ruta of archivos(exentosNombre)) {
+      if (anterior.test(ruta)) hallazgos.push(ruta)
+      let texto: string
+      try {
+        texto = readFileSync(RAIZ + ruta, 'utf8')
+      } catch {
+        continue // borrado en el árbol de trabajo
+      }
+      texto.split(/\r?\n/).forEach((l, i) => {
+        if (anterior.test(l)) hallazgos.push(`${ruta}:${i + 1}`)
       })
     }
     expect(hallazgos).toEqual([])

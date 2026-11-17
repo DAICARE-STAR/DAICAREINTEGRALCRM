@@ -1,6 +1,6 @@
 # odoo — verificación 1
 
-Verificador con contexto fresco. Se abrió cada archivo citado en la línea citada, en `C:\Users\enzov\IA\personal\investigacion-erp\odoo`, y se intentó refutar la afirmación. Alcance: todos los elementos A1..An de «Adoptable para TailorSuite» de los cinco informes y una muestra de 5 hechos de «Cómo lo resuelve» por informe (en operaciones se añadió el hecho 13 porque se solapa con A8). Solo lectura: no se ejecutó nada ni se editaron los informes.
+Verificador con contexto fresco. Se abrió cada archivo citado en la línea citada, en `C:\Users\enzov\IA\personal\investigacion-erp\odoo`, y se intentó refutar la afirmación. Alcance: todos los elementos A1..An de «Adoptable para Bash Logistics» de los cinco informes y una muestra de 5 hechos de «Cómo lo resuelve» por informe (en operaciones se añadió el hecho 13 porque se solapa con A8). Solo lectura: no se ejecutó nada ni se editaron los informes.
 
 Veredictos: CONFIRMADO (la cita dice eso), CORREGIDO (la idea es cierta, la cita o el detalle estaban mal; se da la cita buena), DESCARTADO (no se sostiene). Las desviaciones de línea de 1 a 3 que no cambian el sentido se dejan como CONFIRMADO.
 
@@ -76,7 +76,7 @@ Veredictos: CONFIRMADO (la cita dice eso), CORREGIDO (la idea es cierta, la cita
 |---|---|---|---|
 | A1 empleado y versiones con vigencia | CONFIRMADO | `hr_employee.py:51-84,835-865`; `hr_version.py:60,190-193` | `_inherits` a `hr.version`; `current_version_id` almacenado y cron diario. |
 | A2 alta de cambio por copia | CONFIRMADO | `hr_employee.py:912-1000` | El docstring confirma que, si ya existe una versión en esa fecha, se devuelve sin escribir los valores. |
-| A3 contrato sin solape | CONFIRMADO | `hr_version.py:148-152,185-188,245-292` | `check_contract_finished` exige cerrar el contrato anterior. La restricción de exclusión es una propuesta de TailorSuite. |
+| A3 contrato sin solape | CONFIRMADO | `hr_version.py:148-152,185-188,245-292` | `check_contract_finished` exige cerrar el contrato anterior. La restricción de exclusión es una propuesta de Bash Logistics. |
 | A4 plantilla de contrato y catálogo por país | CONFIRMADO | `hr_version.py:162,295-317,546`; `hr_employee_type.py:6-20`; `hr/data/hr_employee_type_data.xml:4-40` | Los tipos de Odoo no son los colombianos; la siembra local es propuesta. |
 | A5 privacidad en dos capas con vista pública | CONFIRMADO | `hr_employee_public.py:10-16,251-286`; `hr/security/ir.access.csv:4,7`; `hr_employee.py:33-39` | Vista SQL `JOIN hr_version ON v.id = e.current_version_id`. |
 | A6 visibilidad escalonada por jerarquía | CONFIRMADO | `hr_employee_public.py:153-157,175,213-228`; `hr_employee.py:774-810` | `is_manager` por `child_of` en `parent_id`. |

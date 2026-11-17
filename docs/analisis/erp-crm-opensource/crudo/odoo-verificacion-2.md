@@ -1,6 +1,6 @@
 # odoo — verificación 2
 
-Verificación con contexto fresco de la sección «Adoptable para TailorSuite» (A1…An) y de una muestra de 5 hechos de «Cómo lo resuelve» (H) de los informes `odoo-crm.md`, `odoo-finanzas.md`, `odoo-permisos.md` y `odoo-automatizacion.md`. Todas las rutas son relativas a `C:\Users\enzov\IA\personal\investigacion-erp\odoo`. Solo lectura; los informes originales no se tocaron. Veredictos: CONFIRMADO (la cita dice eso), CORREGIDO (la idea es cierta pero la cita o el detalle estaban mal) o DESCARTADO (no se sostiene).
+Verificación con contexto fresco de la sección «Adoptable para Bash Logistics» (A1…An) y de una muestra de 5 hechos de «Cómo lo resuelve» (H) de los informes `odoo-crm.md`, `odoo-finanzas.md`, `odoo-permisos.md` y `odoo-automatizacion.md`. Todas las rutas son relativas a `C:\Users\enzov\IA\personal\investigacion-erp\odoo`. Solo lectura; los informes originales no se tocaron. Veredictos: CONFIRMADO (la cita dice eso), CORREGIDO (la idea es cierta pero la cita o el detalle estaban mal) o DESCARTADO (no se sostiene).
 
 ## Resumen
 
@@ -51,7 +51,7 @@ Verificación con contexto fresco de la sección «Adoptable para TailorSuite» 
 |---|---|---|---|
 | A1 documento y asiento en un modelo | CONFIRMADO | `addons/account/models/account_move.py:138-166` | `move_type` con siete valores y estados draft/posted/cancel. |
 | A2 CHECK en la línea contable | CONFIRMADO | `addons/account/models/account_move_line.py:548-563` | `credit*debit=0`, signo de `balance` y `amount_currency`, cuenta obligatoria y secciones sin importes. |
-| A3 cuadre con consulta redondeada | CONFIRMADO | `addons/account/models/account_move.py:2945-2984` | La consulta no depende de campos calculados. Odoo la corre en `create` y `write` (4000, 4102), no en una función de publicar: es decisión de TailorSuite hacerlo al publicar. |
+| A3 cuadre con consulta redondeada | CONFIRMADO | `addons/account/models/account_move.py:2945-2984` | La consulta no depende de campos calculados. Odoo la corre en `create` y `write` (4000, 4102), no en una función de publicar: es decisión de Bash Logistics hacerlo al publicar. |
 | A4 cartera por cruces parciales | CONFIRMADO | `addons/account/models/account_partial_reconcile.py:12-62`; `addons/account/models/account_move_line.py:1161-1219` | El residual se recalcula restando cruces por línea. |
 | A5 estado de pago derivado | CONFIRMADO | `addons/account/models/account_move.py:50-58, 1283-1376` | `in_payment` solo si hay pago o línea de extracto sin conciliar. |
 | A6 pago delgado con cuenta puente | CONFIRMADO | `addons/account/models/account_payment.py:120-172, 430-445` | `outstanding_account_id` y `destination_account_id` (receivable o payable). |
@@ -107,10 +107,10 @@ Verificación con contexto fresco de la sección «Adoptable para TailorSuite» 
 
 | Elemento | Veredicto | Cita comprobada | Nota |
 |---|---|---|---|
-| A1 motor disparador, condición y acciones | CONFIRMADO | `addons/base_automation/models/base_automation.py:129-190, 395-422` | 18 disparadores; los de «fijar valor» generan un dominio. La condición en JSON es propuesta de TailorSuite. |
-| A2 ejecución en el servidor | CONFIRMADO | `addons/base_automation/models/base_automation.py:844-880` | Parcha create y write; el equivalente con triggers es propuesta de TailorSuite. |
+| A1 motor disparador, condición y acciones | CONFIRMADO | `addons/base_automation/models/base_automation.py:129-190, 395-422` | 18 disparadores; los de «fijar valor» generan un dominio. La condición en JSON es propuesta de Bash Logistics. |
+| A2 ejecución en el servidor | CONFIRMADO | `addons/base_automation/models/base_automation.py:844-880` | Parcha create y write; el equivalente con triggers es propuesta de Bash Logistics. |
 | A3 evitar recursión con registro de ejecuciones | CONFIRMADO | `addons/base_automation/models/base_automation.py:759-823` | Mapa `__action_done` en el contexto y acciones con `sudo`. |
-| A4 reglas por tiempo con `last_run` | CONFIRMADO | `addons/base_automation/models/base_automation.py:204-224, 1077-1202` | Ojo: si `last_run` es nulo usa el epoch 1970 (1092), así que la primera pasada de una regla nueva cubre todo el histórico; TailorSuite debe inicializar `last_run` al crear la regla. |
+| A4 reglas por tiempo con `last_run` | CONFIRMADO | `addons/base_automation/models/base_automation.py:204-224, 1077-1202` | Ojo: si `last_run` es nulo usa el epoch 1970 (1092), así que la primera pasada de una regla nueva cubre todo el histórico; Bash Logistics debe inicializar `last_run` al crear la regla. |
 | A5 tareas con lotes y autodesactivación | CONFIRMADO | `odoo/addons/base/models/ir_cron.py:37-39, 574-643, 872` | Se desactiva cuando se cumplen a la vez 5 fallos y 7 días; avisa al administrador. |
 | A6 `FOR UPDATE SKIP LOCKED` | CONFIRMADO | `odoo/addons/base/models/ir_cron.py:362-369` | `FOR NO KEY UPDATE SKIP LOCKED`; el orden por fallos, prioridad e id está en 306. |
 | A7 aprobación por umbral | CONFIRMADO | `addons/purchase/models/purchase_order.py:698-721, 1332-1341`; `addons/purchase/models/res_company.py:27-40` | El aprobador es el grupo gerente de compras fijo; «rol aprobador configurable» es adaptación. Umbral por defecto 5000. |

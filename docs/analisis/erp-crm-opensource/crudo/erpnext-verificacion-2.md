@@ -1,6 +1,6 @@
 # erpnext: verificación 2 (segunda pasada independiente)
 
-Verificador con contexto fresco. Se abrió cada archivo citado en los elementos de «Adoptable para TailorSuite» de los cuatro informes (crm, finanzas, extensibilidad, integración) y en una muestra de hechos de «Cómo lo resuelve», intentando refutarlos. Solo lectura; los informes originales no se tocaron.
+Verificador con contexto fresco. Se abrió cada archivo citado en los elementos de «Adoptable para Bash Logistics» de los cuatro informes (crm, finanzas, extensibilidad, integración) y en una muestra de hechos de «Cómo lo resuelve», intentando refutarlos. Solo lectura; los informes originales no se tocaron.
 
 Convención de rutas: `erpnext/erpnext/...` es el paquete ERPNext del clon `investigacion-erp\erpnext`; `frappe/frappe/...` es el framework clonado aparte. El informe de finanzas escribía `erpnext/accounts/...` sin el segundo `erpnext/`; aquí se normaliza. Dentro de una tabla, una ruta que empieza por un nombre de archivo suelto o por `accounts/` es relativa a la ruta completa ya citada en la misma fila o en el informe.
 
@@ -19,7 +19,7 @@ Veredictos: CONFIRMADO (la cita dice eso), CORREGIDO (la idea es cierta pero la 
 Correcciones que cambian una decisión de diseño (leer antes de usar los informes):
 
 1. finanzas A12 y hecho 16: el PUC simple de Colombia SÍ trae tipos semánticos (Payable, Tax, Income Account, Cost of Goods Sold, Equity). No hay que «añadir tipos» de pagar, IVA ni retenciones; la afirmación contraria del informe es falsa.
-2. extensibilidad A7: ERPNext sanea las vistas guardadas solo al guardarlas, no al cargarlas; no protege de un campo borrado después. Esa garantía habría que construirla en TailorSuite.
+2. extensibilidad A7: ERPNext sanea las vistas guardadas solo al guardarlas, no al cargarlas; no protege de un campo borrado después. Esa garantía habría que construirla en Bash Logistics.
 3. extensibilidad A10: el campo agrupador de un Kanban debe ser de tipo Select; Link no es válido como campo principal.
 4. integración A12: el cursor IMAP por carpeta no «se queda atrás» del correo fallido si un correo posterior del mismo lote sí se procesa.
 5. crm A10: la cotización vencida la marca un trabajo programado diario, no el mapa de estados; la cita de `status_updater.py:53-61` es de Supplier Quotation.
@@ -34,7 +34,7 @@ Correcciones que cambian una decisión de diseño (leer antes de usar los inform
 | A4 cuenta única evita reapuntar | CONFIRMADO | `erpnext/erpnext/selling/doctype/customer/customer.py:404-429` | El reapuntado de `quotation_to`/`opportunity_from` y `party_name` existe tal cual. |
 | A5 motivos de pérdida | CONFIRMADO | `erpnext/erpnext/crm/doctype/opportunity/opportunity.py:219-224,369-392`; `opportunity_lost_reason.json:4,14-17` | Motivo obligatorio, competidores, detalle y `lost_on`. |
 | A6 ajustes de CRM por instalación | CONFIRMADO | `erpnext/erpnext/crm/doctype/crm_settings/crm_settings.json:43,54,60,72` | Vigencia, duplicados por correo, contacto automático, autocierre. |
-| A7 alerta de duplicados | CONFIRMADO | `erpnext/erpnext/crm/doctype/lead/lead.py:179-196,389-405`; `erpnext/erpnext/crm/doctype/utils.py:74-84` | Matiz: la búsqueda por teléfono (últimos dígitos) solo la usa Call Log; en la alta solo se valida el correo. La idea combinada es de TailorSuite. |
+| A7 alerta de duplicados | CONFIRMADO | `erpnext/erpnext/crm/doctype/lead/lead.py:179-196,389-405`; `erpnext/erpnext/crm/doctype/utils.py:74-84` | Matiz: la búsqueda por teléfono (últimos dígitos) solo la usa Call Log; en la alta solo se valida el correo. La idea combinada es de Bash Logistics. |
 | A8 fusión con reapuntado | CONFIRMADO | `frappe/frappe/model/rename_doc.py:108-130,195-210` | `merge=True`, comentario «merged X into Y» y borrado del origen. |
 | A9 cotización con revisiones | CONFIRMADO | `erpnext/erpnext/selling/doctype/quotation/quotation.py:139-150,210-251,429-434`; `quotation.json:222,234,279` | Nombre `-R<n>`, una sola activa, no revisar una perdida. |
 | A10 vigencia y estado vencida | CORREGIDO | `erpnext/erpnext/selling/doctype/quotation/quotation.py:197-204` (vigencia por defecto, correcto) y `:620-649` (`set_expired_status`), programado en `erpnext/erpnext/hooks.py:558` | La cita de `status_updater.py:53-61` es de Supplier Quotation. En Quotation «Expired» es una opción del campo (`quotation.json:889`) que fija un trabajo programado, no el mapa de estados. |
@@ -45,7 +45,7 @@ Correcciones que cambian una decisión de diseño (leer antes de usar los inform
 | A15 calificación separada del estado | CONFIRMADO | `erpnext/erpnext/crm/doctype/lead/lead.json:392-406` | `qualified_by`, `qualified_on` y `qualification_status` con tres opciones. |
 | A16 origen de campaña | CONFIRMADO | `erpnext/erpnext/crm/doctype/lead/lead.json:237-266,518-544`; carpeta `crm/dashboard_chart/lead_source` | Existen tipo, tipo de solicitud, UTM y el gráfico. |
 | A17 informe de embudo | CONFIRMADO | `erpnext/erpnext/crm/report/sales_pipeline_analytics/sales_pipeline_analytics.py:63-120` | Agrupa por etapa o por `_assign`, mes o trimestre de `expected_closing`; usa permisos. |
-| A18 primera respuesta | CONFIRMADO | `erpnext/erpnext/crm/doctype/opportunity/opportunity.json:391`; `frappe/frappe/core/doctype/communication/communication.py:700-714` | El campo lo calcula Frappe desde la primera Communication, no el CRM; con actividades propias habría que calcularlo en TailorSuite. |
+| A18 primera respuesta | CONFIRMADO | `erpnext/erpnext/crm/doctype/opportunity/opportunity.json:391`; `frappe/frappe/core/doctype/communication/communication.py:700-714` | El campo lo calcula Frappe desde la primera Communication, no el CRM; con actividades propias habría que calcularlo en Bash Logistics. |
 | Hecho 1 cadena y polimorfismo | CONFIRMADO | `erpnext/erpnext/crm/doctype/opportunity/opportunity.json:115-136`; `quotation.json:170,182` | `opportunity_from` Link a DocType más `party_name` Dynamic Link. |
 | Hecho 3 estados Lead y Opportunity | CONFIRMADO | `lead.json:157`; `opportunity.json:180` | Listas idénticas a las del informe. |
 | Hecho 4 sin puntuación de lead | CONFIRMADO | búsqueda `lead_score` en `erpnext/` y `frappe/` | No aparece en ningún archivo; el informe decía «un archivo de pruebas», dato menor. |
@@ -62,7 +62,7 @@ Correcciones que cambian una decisión de diseño (leer antes de usar los inform
 | A1 libro único y función de publicación | CONFIRMADO | `erpnext/erpnext/accounts/general_ledger.py:34-75,429-460` | Valida presupuesto, periodo, cuentas deshabilitadas y cuadre antes de guardar. |
 | A2 anulación por asiento inverso | CONFIRMADO | `general_ledger.py:647-766`; `accounts_settings.json:486-491` | El reverso se fecha hoy solo con libro inmutable activado; por defecto marca el original `is_cancelled`. |
 | A3 tolerancia y línea de redondeo | CONFIRMADO | `general_ledger.py:449-450,486-492,510` | 5/10^precisión para diarios y pagos; 0,5 para el resto. |
-| A4 cartera derivada del libro | CONFIRMADO | `erpnext/erpnext/accounts/utils.py:2139-2210,2470-2531`; `payment_ledger_entry.json:33-161` | Signo por tipo de cuenta, suma por factura de origen con `delinked = 0`. ERPNext igual persiste ese libro paralelo; la vista es propuesta de TailorSuite. |
+| A4 cartera derivada del libro | CONFIRMADO | `erpnext/erpnext/accounts/utils.py:2139-2210,2470-2531`; `payment_ledger_entry.json:33-161` | Signo por tipo de cuenta, suma por factura de origen con `delinked = 0`. ERPNext igual persiste ese libro paralelo; la vista es propuesta de Bash Logistics. |
 | A5 nota crédito como factura marcada | CONFIRMADO | `erpnext/erpnext/controllers/sales_and_purchase_return.py:46-100`; `sales_invoice.json:345,450,2184`; `accounts_controller.py:617-630`; `taxes_and_totals.py:1222-1238` | Saldo de la nota en 0 salvo `update_outstanding_for_self`. |
 | A6 estado derivado de saldo y vencimiento | CONFIRMADO | `erpnext/erpnext/accounts/doctype/sales_invoice/services/status.py:35-110` | Orden: vencida, parcial, impaga, nota crédito emitida, devolución, pagada. |
 | A7 pago con asignaciones y deducciones | CONFIRMADO | `payment_entry.json:126-131,300-427`; `payment_entry_reference.json:33-111`; `payment_entry.py:268-269,404-415,1388-1411` | El rechazo por diferencia no cero está en `:268`; `:1388-1411` calcula la diferencia. |
@@ -121,11 +121,11 @@ Correcciones que cambian una decisión de diseño (leer antes de usar los inform
 | Elemento | Veredicto | Cita comprobada | Nota |
 |---|---|---|---|
 | A1 bitácora de entregas con reintento | CONFIRMADO | `frappe/frappe/integrations/doctype/webhook/webhook.py:23-25,171-220,243-337`; `webhook_request_log.json:93-110` | Estados Delivered, Failed, Exhausted; lote de 100. |
-| A2 envío tras el commit | CONFIRMADO | `frappe/frappe/integrations/doctype/webhook/__init__.py:33-41,73-124` | Cola en memoria vaciada con `after_commit`, deduplicada por (webhook, documento). El outbox transaccional es mejora de TailorSuite. |
+| A2 envío tras el commit | CONFIRMADO | `frappe/frappe/integrations/doctype/webhook/__init__.py:33-41,73-124` | Cola en memoria vaciada con `after_commit`, deduplicada por (webhook, documento). El outbox transaccional es mejora de Bash Logistics. |
 | A3 webhooks configurables con firma | CONFIRMADO | `webhook.json:39-194`; `webhook.py:374-394` | HMAC-SHA256 en base64. La condición en Frappe es `safe_eval` de Python; el filtro declarativo es propuesta. |
 | A4 bloqueo SSRF | CONFIRMADO | `frappe/frappe/utils/safe_exec.py:407-492` | Valida URL, DNS, conexión y cada salto de redirección; sin proxies del entorno. |
 | A5 claves de integración | CONFIRMADO | `frappe/frappe/auth.py:657-663,740-800`; `user.py:1741-1758` | Matiz: Frappe guarda el secreto cifrado y lo descifra para comparar con `hmac.compare_digest` (`:782-783`); el hash es mejora propuesta. |
-| A6 límite de tasa | CONFIRMADO | `frappe/frappe/rate_limiter.py:48-111`; `erpnext/erpnext/www/book_appointment/index.py:54-55,114-115` | Contador por ventana en caché; en TailorSuite iría en Postgres. |
+| A6 límite de tasa | CONFIRMADO | `frappe/frappe/rate_limiter.py:48-111`; `erpnext/erpnext/www/book_appointment/index.py:54-55,114-115` | Contador por ventana en caché; en Bash Logistics iría en Postgres. |
 | A7 asistente de importación | CONFIRMADO | `frappe/frappe/core/doctype/data_import/data_import.json:51-59,154-163`; `data_import.py:212-233`; `importer.py:162-262,538-573` | Lote de 1000, advertencias bloqueantes, reanudación. |
 | A8 mapeo de valores | CONFIRMADO | `data_import/value_mapping.py:1-60`; `importer.py:173-198` | Mapa valor-archivo a valor-sistema y creación del vinculado. |
 | A9 cuenta con contactos | CORREGIDO | `frappe/frappe/core/doctype/data_import/import_provider.py:1-55`; `erpnext/erpnext/utilities/party_import_provider.py:19-82`; `erpnext/erpnext/hooks.py:790-796` | No es «una sola fila»: el comentario de hooks dice «in one file»; contactos y direcciones van como tablas hijas del mismo registro de importación. La exportación con el principal primero sí se confirma (`:53-82`). |

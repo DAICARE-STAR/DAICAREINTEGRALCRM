@@ -1,16 +1,16 @@
-# Handoff — TailorSuite
+# Handoff — Bash Logistics
 
-Estado vigente al 2026-11-17 (hora de Bogotá). Lo mantiene la sesión directora «TailorSuite»: se actualiza al cerrar cada fase u ola, antes de lanzar la siguiente. Sin secretos ni datos de personas.
+Estado vigente al 2026-11-17 (hora de Bogotá). Lo mantiene la sesión directora «Bash Logistics»: se actualiza al cerrar cada fase u ola, antes de lanzar la siguiente. Sin secretos ni datos de personas.
 
 ## Qué es esta sesión
 
-Directora: orquesta agentes de investigación, desarrollo y pruebas de TailorSuite. No toca el código del portal de origen; eso lo lleva la sesión «Portal hardening, productos y perfiles». Los informes de los agentes van a archivos, no al chat.
+Directora: orquesta agentes de investigación, desarrollo y pruebas de Bash Logistics. No toca el código del portal de origen; eso lo lleva la sesión «Portal hardening, productos y perfiles». Los informes de los agentes van a archivos, no al chat.
 
 ## Estado de los repos
 
 | Repo | Carpeta | Estado |
 |---|---|---|
-| TailorSuite (producto) | `personal/portal-producto` | `main` en 0.2.16 (c06243b). En GitHub hasta 0.2.10. Sin subir: 0.2.11 a 0.2.16. `docs/analisis/` sin versionar. |
+| Bash Logistics (producto) | `personal/portal-producto` | `main` en 0.2.16 (c06243b). En GitHub hasta 0.2.10. Sin subir: 0.2.11 a 0.2.16. `docs/analisis/` sin versionar. |
 | CRM de DAI CARE | `clientes/daicare-crm` | En 0.2.16, ocho pasos sin subir. Su push publica en Netlify: solo con orden explícita. |
 | Portal de origen | lo lleva su sesión | 1.12.49 (autocompletado cerrado, 6324fcd) y 1.12.50 publicados. Los ejemplos en gris del perfil siguen. |
 
@@ -18,14 +18,14 @@ Directora: orquesta agentes de investigación, desarrollo y pruebas de TailorSui
 
 - Base de DAI CARE (los corre el usuario): `npm.cmd run instalar` (aplica 06b), `node --env-file=.env tools/instalar/modulos.mjs --activar crm` (aplica 21b), `--verificar` y la simulación de permisos, que debe dar 96 OK. No consta el resultado.
 - Push de `clientes\daicare-crm`: pendiente de orden.
-- Push de TailorSuite 0.2.11 a 0.2.16: pendiente de orden.
+- Push de Bash Logistics 0.2.11 a 0.2.16: pendiente de orden.
 - Antes de entregar a DAI CARE: Site URL y SMTP de Auth, borrar las cuentas de prueba, texto del consentimiento informado, sitio público y DNS.
 - Despliegue de 0.2.22 en una instalación hecha: primero `npm.cmd run instalar` (aplica 01b) y `node --env-file=.env tools/instalar/modulos.mjs --activar crm` (aplica 21c), después `--verificar` (comprobaciones 13 y 14) y solo entonces publicar el frontend; sin 21c nadie puede exportar del CRM. Mientras exista la cuenta admin de prueba, cuenta como administrador real para la guarda de 01b.
 - Pendiente de seguridad (BL-12, otra unidad): exportar_crm solo gobierna crm_exportar. Quien tiene app_crm puede recorrer crm_buscar (páginas de 200) o leer crm_cuentas por la API sin el permiso y sin fila crm.exportar; falta acotar p_desde y p_limite de crm_buscar sin has_perm('exportar_crm'). 01b tampoco cubre el bloqueo ni el borrado suave en Auth del último administrador.
 
 ## Plan en curso (aprobado el 2026-11-17)
 
-Plan completo: `C:\Users\enzov\.claude\plans\en-la-repo-tailorsuite-peppy-lemon.md`.
+Plan completo: el archivo `en-la-repo-…-peppy-lemon.md` de `C:\Users\enzov\.claude\plans\` (su nombre conserva el nombre anterior del producto; está fuera del repo).
 
 | Frente | Qué | Estado |
 |---|---|---|
@@ -43,6 +43,6 @@ Lectura masiva y verificación: Sonnet. Mecánico: Haiku. Síntesis, implementac
 - No leer `.env`, ni las carpetas de respaldo y claves vetadas en las reglas personales. Las credenciales las teclea el usuario; el DDL lo corre él.
 - Push a `main`, deploy y cualquier acción difícil de revertir: solo con orden explícita y confirmada aparte.
 - Sin tareas programadas ni polling.
-- Las áreas no se mezclan: nada del portal de origen en TailorSuite ni en los clientes. Datos de salud y de personas del cliente, nunca en el chat.
+- Las áreas no se mezclan: nada del portal de origen en Bash Logistics ni en los clientes. Datos de salud y de personas del cliente, nunca en el chat.
 - Un archivo de esquema ya aplicado no se edita: las correcciones van en archivos con letra (06b, 21b).
 - En PowerShell, `npm.cmd`. Los scripts con barras invertidas se escriben como archivo, no en heredoc.

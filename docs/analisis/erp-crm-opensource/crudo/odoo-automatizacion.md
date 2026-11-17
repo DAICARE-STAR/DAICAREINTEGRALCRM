@@ -95,7 +95,7 @@ Alcance: flujos de aprobación y estados, reglas automáticas, tareas programada
 - **Informes como vistas SQL con modelo declarativo**, para reutilizar filtros, agrupaciones, permisos y exportación del mismo framework. `addons/sale/report/sale_report.py:14`.
 - **Todo lo diferido va por cola o tarea con lotes y commits parciales** (correo, facturas, pedidos), para que un fallo no pierda lo ya enviado. `addons/mail/models/mail_mail.py:229-262`; `addons/account/models/account_move.py:7260-7275`.
 
-## Adoptable para TailorSuite (lista numerada A1, A2…)
+## Adoptable para Bash Logistics (lista numerada A1, A2…)
 
 **A1. Motor de reglas "disparador + condición + acciones" con catálogo cerrado.** Tabla `reglas_automaticas` (módulo, evento, condición, acciones) con eventos como crear, cambiar campo, fijar etapa, fijar responsable y por tiempo. Condición como JSON de filtros propio, no texto evaluable. Cita: `addons/base_automation/models/base_automation.py:129-185`, `395-422`. Le sirve a una pyme para "cuando la oportunidad pasa a Propuesta, crear una tarea a las 48 h" sin pedir desarrollo. Esfuerzo: alto el motor completo; medio si se limita a 3 eventos y 3 acciones.
 
@@ -139,13 +139,13 @@ Alcance: flujos de aprobación y estados, reglas automáticas, tareas programada
 
 ## No conviene copiar (y por qué)
 
-- **Acción "ejecutar código" y dominios en texto evaluados con `safe_eval`.** Es el mayor riesgo del motor y obliga a todo un aparato de grupos y sandbox. `odoo/addons/base/models/ir_actions.py:591-597`; `addons/base_automation/models/base_automation.py:721-748`. En TailorSuite las condiciones deben ser JSON declarativo y las acciones un catálogo cerrado.
+- **Acción "ejecutar código" y dominios en texto evaluados con `safe_eval`.** Es el mayor riesgo del motor y obliga a todo un aparato de grupos y sandbox. `odoo/addons/base/models/ir_actions.py:591-597`; `addons/base_automation/models/base_automation.py:721-748`. En Bash Logistics las condiciones deben ser JSON declarativo y las acciones un catálogo cerrado.
 - **Parchar create y write en tiempo de ejecución** (`_register_hook`). Es una técnica del ORM de Python sin equivalente sano en Postgres; usar triggers y cola de eventos. `addons/base_automation/models/base_automation.py:844-880`.
 - **Disparador "cambio en la interfaz" (`on_change`).** Mezcla lógica de formulario con automatización; en React se resuelve en el propio formulario. `addons/base_automation/models/base_automation.py:161-185`.
 - **Días hábiles con calendario por registro** en reglas por tiempo: costoso y poco necesario al inicio. `addons/base_automation/models/base_automation.py:1094-1130`.
 - **Motor QWeb completo en plantillas y wkhtmltopdf como dependencia.** El motor completo no aporta a una pyme y wkhtmltopdf no corre bien en Netlify Functions; hay que evaluar un generador alternativo antes de decidir. `odoo/addons/base/models/ir_actions_report.py:788-840`.
 - **`sequence.mixin` que deduce el formato del último nombre con expresiones regulares.** Frágil y pensado para migraciones de contabilidades ajenas; mejor una tabla de secuencias explícita (A19). `addons/account/models/sequence_mixin.py:28-46`, `194-225`.
-- **Chatter genérico (`mail.thread`) como base de todo** (rastreo, suscriptores, subtipos). Es el modelo de herencia múltiple de Odoo; TailorSuite ya tiene auditoría y avisos. Copiar solo la idea de rastrear campos marcados. `addons/mail/models/mail_thread.py:143`.
+- **Chatter genérico (`mail.thread`) como base de todo** (rastreo, suscriptores, subtipos). Es el modelo de herencia múltiple de Odoo; Bash Logistics ya tiene auditoría y avisos. Copiar solo la idea de rastrear campos marcados. `addons/mail/models/mail_thread.py:143`.
 - **Cadena de hashes de asientos** hasta que exista contabilidad; es un requisito fiscal de ciertos países y no se asumió para Colombia. `addons/account/models/account_move.py:361-363`.
 
 ## No leído o dudoso

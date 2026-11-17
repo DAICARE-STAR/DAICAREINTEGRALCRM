@@ -1,7 +1,7 @@
 // Datos de la instalación que llegan por el entorno del build y logos de la
 // tabla instalacion (N-4). El tema llega con N-5.
 
-export const NOMBRE_PORTAL_POR_DEFECTO = 'TailorSuite'
+export const NOMBRE_PORTAL_POR_DEFECTO = 'Bash Logistics'
 
 export const NOMBRE_PORTAL: string = import.meta.env.VITE_PORTAL_NOMBRE?.trim() || NOMBRE_PORTAL_POR_DEFECTO
 

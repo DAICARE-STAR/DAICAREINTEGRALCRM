@@ -70,7 +70,7 @@ Alcance: ERPNext (`erpnext/erpnext/`) sobre el framework Frappe. Las rutas `frap
 - **Comportamientos específicos aún en JS por tipo** (calendarios, reglas de kanban): los registros de configuración cubren el caso simple.
 - **Los asistentes de negocio generan metadata** (Accounting Dimension, Workflow crean Custom Fields); no hay un segundo canal de extensión.
 
-## Adoptable para TailorSuite (lista numerada A1, A2…: la idea, la cita que la respalda, por qué le sirve a una pyme, y el esfuerzo estimado bajo, medio o alto sobre Postgres con RLS y React)
+## Adoptable para Bash Logistics (lista numerada A1, A2…: la idea, la cita que la respalda, por qué le sirve a una pyme, y el esfuerzo estimado bajo, medio o alto sobre Postgres con RLS y React)
 
 **A1. Marcar la personalización "de fábrica" frente a la "del usuario" y restablecer solo la segunda.** Cita: `frappe/frappe/custom/doctype/customize_form/customize_form.py:703-731`, `custom_field.json:490`. Una pyme que se equivoca configurando necesita "volver a como venía" sin perder datos ni lo que trae el módulo. Esfuerzo: bajo.
 
@@ -94,30 +94,30 @@ Alcance: ERPNext (`erpnext/erpnext/`) sobre el framework Frappe. Las rutas `frap
 
 **A11. Kanban privado o compartido con la misma lógica de fila que A6.** Cita: `frappe/frappe/desk/doctype/kanban_board/kanban_board.py:271-289`. Esfuerzo: bajo con RLS.
 
-**A12. Columnas "solo sistema": bloquear el arrastre a estados que el sistema calcula.** Cita: `erpnext/erpnext/crm/doctype/lead/lead_kanban.js:1-17`. Evita llevar una oportunidad a "Ganada" sin cotización. En TailorSuite, una bandera en la configuración de la columna en lugar de JS por tipo. Esfuerzo: bajo.
+**A12. Columnas "solo sistema": bloquear el arrastre a estados que el sistema calcula.** Cita: `erpnext/erpnext/crm/doctype/lead/lead_kanban.js:1-17`. Evita llevar una oportunidad a "Ganada" sin cotización. En Bash Logistics, una bandera en la configuración de la columna en lugar de JS por tipo. Esfuerzo: bajo.
 
 **A13. Vista de calendario mínima: asunto, inicio, fin y todo-el-día sobre cualquier tipo con campos Date o Datetime, validados al guardar.** Cita: `frappe/frappe/desk/doctype/calendar_view/calendar_view.json:19-51`, `calendar_view.py:25-40`. Sirve para actividades, vencimientos de cartera y entregas. Esfuerzo: bajo a medio.
 
 **A14. Vistas estándar del módulo entregadas como datos versionados con clave estable, no editables por el usuario y copiables a "mi vista".** Cita: `erpnext/erpnext/crm/doctype/lead/list_filter/lead_converted.json`, `erpnext/erpnext/crm/doctype/lead/kanban_board/lead_pipeline.json`, `frappe/frappe/desk/doctype/list_filter/list_filter.py:51-98`. Cada módulo activado instala su pipeline y filtros base en una migración y no se pierden al actualizar. Esfuerzo: medio.
 
-**A15. Condiciones de visibilidad, obligatoriedad y solo lectura por campo, y filtro de opciones para campos de enlace.** Cita: `frappe/frappe/core/doctype/docfield/docfield.json:280, 494, 501, 629`, `doctype.py:1847-1860`. "Si el tipo de cuenta es empresa, el NIT es obligatorio" sin programar. Frappe usa `eval` de JS; en TailorSuite debe ser un árbol JSON (campo, operador, valor) evaluado por una función pura. Esfuerzo: medio.
+**A15. Condiciones de visibilidad, obligatoriedad y solo lectura por campo, y filtro de opciones para campos de enlace.** Cita: `frappe/frappe/core/doctype/docfield/docfield.json:280, 494, 501, 629`, `doctype.py:1847-1860`. "Si el tipo de cuenta es empresa, el NIT es obligatorio" sin programar. Frappe usa `eval` de JS; en Bash Logistics debe ser un árbol JSON (campo, operador, valor) evaluado por una función pura. Esfuerzo: medio.
 
 **A16. Informes guardados sobre el motor de listas, con permisos por rol y ejecución diferida opcional.** Cita: `frappe/frappe/core/doctype/report/report.json:47-273`, `report.py:363-392`. "Ventas por vendedor este mes" sin pedirlo al instalador; siempre bajo la RLS del usuario que ejecuta. Esfuerzo: alto.
 
 **A17. Flujos de aprobación como datos (estados, transiciones con rol y condición) que crean su propio campo de estado.** Cita: `frappe/frappe/workflow/doctype/workflow/workflow.py:76-99`, `workflow_transition.json:24-105`. Descuentos, órdenes de compra, gastos. Llevar solo el caso lineal y dejar fuera prioridades y condiciones. Esfuerzo: alto.
 
-**A18. Objetos personalizados con barreras: mínimo (nombre, campos, permisos por rol) y prohibición de dar roles privilegiados al crearlos.** Cita: `frappe/frappe/core/doctype/doctype/doctype.py:366-367, 2086-2107`. TailorSuite aún no los tiene; si los añade ("equipos del cliente", "contratos de mantenimiento"), la barrera va desde el inicio. Esfuerzo: alto con tabla por objeto; medio con una tabla genérica `jsonb` bajo RLS.
+**A18. Objetos personalizados con barreras: mínimo (nombre, campos, permisos por rol) y prohibición de dar roles privilegiados al crearlos.** Cita: `frappe/frappe/core/doctype/doctype/doctype.py:366-367, 2086-2107`. Bash Logistics aún no los tiene; si los añade ("equipos del cliente", "contratos de mantenimiento"), la barrera va desde el inicio. Esfuerzo: alto con tabla por objeto; medio con una tabla genérica `jsonb` bajo RLS.
 
 ## No conviene copiar (y por qué)
 
 - **Un campo personalizado como columna con DDL en caliente** (`custom_field.py:223-233`). Con Postgres, RLS, Supabase y una instalación por cliente, lanzar `ALTER TABLE` desde la interfaz exige un rol con permisos de esquema, rompe los tipos generados de TypeScript y complica la actualización de módulos. Mejor una columna `campos jsonb` por tabla validada contra la definición, y columnas reales solo para lo que los módulos usan en cálculos.
-- **La pila Custom Field + Property Setter fusionada en el servidor tal cual.** Funciona porque Frappe controla toda lectura vía Meta; TailorSuite lee desde React con Supabase, así que la fusión debe estar en un solo punto (A2). Se toma la idea, no la estructura.
+- **La pila Custom Field + Property Setter fusionada en el servidor tal cual.** Funciona porque Frappe controla toda lectura vía Meta; Bash Logistics lee desde React con Supabase, así que la fusión debe estar en un solo punto (A2). Se toma la idea, no la estructura.
 - **Property Setter con `value` siempre texto** (`property_setter.py:77-102`). Pierde tipado; en Postgres conviene `jsonb`.
 - **Condiciones `eval:` en cadenas** (`docfield.json:280`). En un shell React es riesgo de XSS e inyección; ver A15.
 - **Kanban clásico que guarda el orden de tarjetas en el tablero** (`kanban_board.py:75-77` lo descarta para estándar). Mejor una columna `posicion` por registro.
-- **Caché Redis con sincronización diferida** (`user_settings.py:46-62`). TailorSuite no tiene Redis; basta un upsert con debounce.
+- **Caché Redis con sincronización diferida** (`user_settings.py:46-62`). Bash Logistics no tiene Redis; basta un upsert con debounce.
 - **Client Script y Server Script de usuario final** (`client_script.json:23-62`). Una instalación por cliente con módulos a la carta no debe ejecutar código escrito por usuarios; si hace falta extender, que sea el instalador con una carpeta versionada.
-- **Modo desarrollador para editar lo estándar y exportar a archivo** (`kanban_board.py:58-71`, `list_filter.py:51-61`). Resuelve la distribución de apps por git; TailorSuite usa migraciones SQL.
+- **Modo desarrollador para editar lo estándar y exportar a archivo** (`kanban_board.py:58-71`, `list_filter.py:51-61`). Resuelve la distribución de apps por git; Bash Logistics usa migraciones SQL.
 - **Los 40 tipos de campo y las tablas hijas "Table / Table MultiSelect"** (`docfield.json:119`). Para una pyme bastan 10 a 12 tipos; los hijos se modelan como relaciones normales.
 
 ## No leído o dudoso
