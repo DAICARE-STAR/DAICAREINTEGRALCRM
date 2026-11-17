@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { campoPersona } from '../campos'
 
 // Lo heredado del portal de origen no debe llegar al usuario por los campos de
 // texto (0.2.10). Dos causas, las dos vigiladas aquí:
@@ -70,30 +71,46 @@ describe('campos de texto sin datos heredados', () => {
 
   it('todo input y textarea de texto declara autoComplete', () => {
     const sin = todos
-      .filter((c) => !SIN_TEXTO.test(c.atributos) && !/autoComplete/.test(c.atributos))
+      .filter((c) => !SIN_TEXTO.test(c.atributos) && !/autoComplete|\{\.\.\.campoPersona\(/.test(c.atributos))
       .map((c) => `${c.ruta}:${c.linea}`)
     expect(sin).toEqual([])
   })
 
-  it('los campos de datos de personas y de salud llevan además un name propio del producto', () => {
+  it('los campos de datos de personas y de salud usan el ayudante campoPersona', () => {
     const delicados = [
       'src/components/EditProfileModal.tsx',
       'src/modulos/crm/paginas/FormContacto.tsx',
+      'src/modulos/crm/paginas/FormCuenta.tsx',
       'src/modulos/crm/paginas/FormActividad.tsx',
       'src/modulos/crm/paginas/Salud.tsx',
+      'src/modulos/crm/paginas/Consentimientos.tsx',
+      'src/pages/admin/MembersTab.tsx',
     ]
-    // Fechas y números no guardan historial de texto: no necesitan name
+    // Fechas y números no guardan historial de texto: no necesitan el ayudante
     const SIN_HISTORIAL = /type="(checkbox|radio|file|range|color|hidden|submit|button|date|datetime-local|number)"/
     const sin = todos
-      .filter((c) => delicados.includes(c.ruta) && !SIN_HISTORIAL.test(c.atributos) && !/\bname=/.test(c.atributos))
+      .filter((c) => delicados.includes(c.ruta) && !SIN_HISTORIAL.test(c.atributos) && !/\{\.\.\.campoPersona\(/.test(c.atributos))
       .map((c) => `${c.ruta}:${c.linea}`)
     expect(sin).toEqual([])
-    const nombres = todos
-      .filter((c) => delicados.includes(c.ruta))
-      .map((c) => /\bname=(?:"([^"]+)"|\{`([^`]+)`\})/.exec(c.atributos))
-      .filter((m): m is RegExpExecArray => m !== null)
-      .map((m) => m[1] ?? m[2])
-    for (const n of nombres) expect(n, n).toMatch(/^ts-/)
+    for (const ruta of delicados) expect(todos.some((c) => c.ruta === ruta), ruta).toBe(true)
+  })
+
+  it('campoPersona cierra el autorrelleno con un name opaco y estable', () => {
+    const a = campoPersona('perfil-telefono')
+    expect(a.autoComplete).toBe('off')
+    expect(a.name).toMatch(/^ts-[a-z0-9]+$/)
+    // Sin palabras que la heurística del navegador reconozca
+    expect(a.name).not.toMatch(/perfil|tel|nombre|correo|cargo|direcc|name|phone|mail/i)
+    expect(campoPersona('perfil-telefono').name).toBe(a.name)
+    expect(campoPersona('perfil-nombre').name).not.toBe(a.name)
+    expect(a).toMatchObject({ 'data-lpignore': 'true', 'data-1p-ignore': 'true', 'data-bwignore': 'true', 'data-form-type': 'other' })
+  })
+
+  it('Editar perfil no muestra ejemplos en gris, solo pistas de formato', () => {
+    const t = readFileSync(RAIZ + 'src/components/EditProfileModal.tsx', 'utf8')
+    const FORMATO = /^placeholder="https?:\/\/[^"]*"$/
+    const malos = [...t.matchAll(/placeholder=(?:"[^"]*"|\{[^}]*\})/g)].map((m) => m[0]).filter((p) => !FORMATO.test(p))
+    expect(malos).toEqual([])
   })
 
   it('ningún placeholder usa el correo de la sesión ni un ejemplo real', () => {

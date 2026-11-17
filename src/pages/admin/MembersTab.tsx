@@ -16,6 +16,7 @@ import {
 } from '../../lib/data'
 import { MODULOS } from '../../lib/modulos'
 import { PERMISOS_SOLO_ADMIN, PERMISSIONS, type Profile, type RoleDef } from '../../types'
+import { campoPersona } from '../../lib/campos'
 
 function permLabel(key: string): string {
   return PERMISSIONS.find((p) => p.key === key)?.label ?? key
@@ -203,7 +204,7 @@ export default function MembersTab() {
               <div className="member-card-head">
                 {editingName?.id === p.id ? (
                   <span className="member-name-edit">
-                    <input name="ts-miembro-nombre" autoComplete="off"
+                    <input {...campoPersona('miembro-nombre')}
                       value={editingName.value}
                       maxLength={120}
                       autoFocus

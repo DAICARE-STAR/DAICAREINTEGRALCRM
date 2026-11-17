@@ -3,6 +3,7 @@ import EstadoVacio from '../../../components/EstadoVacio'
 import { SkeletonLineas } from '../../../components/Skeleton'
 import { useAvisos } from '../../../context/AvisosContext'
 import { CAMPOS_SALUD, saludGuardar, saludLeer, traducirError, type CampoSalud, type DatosSalud } from '../lib/datos'
+import { campoPersona } from '../../../lib/campos'
 
 // Pestaña Salud (PP-DEC-19). Los datos se leen al abrir la pestaña, viven
 // solo en el estado de este panel (nada global ni en localStorage) y se
@@ -69,7 +70,7 @@ export function SaludVista(p: VistaProps) {
           {CAMPOS_SALUD.map((k) => (
             <label key={k}>
               <span>{ETIQUETA[k]}</span>
-              <textarea name={`ts-crm-salud-${k}`} autoComplete="off" rows={3} value={borrador[k]} onChange={(e) => setBorrador({ ...borrador, [k]: e.target.value })} />
+              <textarea {...campoPersona(`crm-salud-${k}`)} rows={3} value={borrador[k]} onChange={(e) => setBorrador({ ...borrador, [k]: e.target.value })} />
             </label>
           ))}
           <div className="form-actions">

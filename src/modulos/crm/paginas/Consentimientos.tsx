@@ -13,6 +13,7 @@ import {
   type TipoConsentimiento,
 } from '../lib/datos'
 import { fmtFecha, fmtFechaHora } from '../lib/vistas'
+import { campoPersona } from '../../../lib/campos'
 
 const TIPO: Record<TipoConsentimiento, string> = { tratamiento_datos: 'Tratamiento de datos', datos_salud: 'Datos de salud' }
 const MEDIO: Record<MedioConsentimiento, string> = { escrito: 'Escrito', digital: 'Digital', verbal_grabado: 'Verbal grabado' }
@@ -168,7 +169,7 @@ export function FormConsentimiento({
         </label>
         <label>
           <span>Versión del texto *</span>
-          <input name="ts-crm-consentimiento-version" autoComplete="off" ref={versionRef} required maxLength={40} value={f.version_texto} onChange={(e) => setF({ ...f, version_texto: e.target.value })} />
+          <input {...campoPersona('crm-consentimiento-version')} ref={versionRef} required maxLength={40} value={f.version_texto} onChange={(e) => setF({ ...f, version_texto: e.target.value })} />
         </label>
         <label>
           <span>Archivo (PDF, JPG o PNG)</span>

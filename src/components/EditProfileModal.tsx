@@ -7,6 +7,7 @@ import { aplicarTema, leerTema, TEMAS, type Tema } from '../lib/theme'
 import Avatar from './Avatar'
 import Dialogo from './Dialogo'
 import InfoI from './InfoI'
+import { campoPersona } from '../lib/campos'
 
 // Se abre desde el menú de usuario, que se cierra al elegir: si quien abrió
 // ya no está, el foco vuelve al botón de usuario
@@ -154,9 +155,7 @@ export default function EditProfileModal({ onClose }: { onClose: () => void }) {
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          name="ts-perfil-nombre"
-          autoComplete="off"
-          placeholder="Nombre y apellido"
+          {...campoPersona('perfil-nombre')}
           maxLength={60}
           autoFocus
         />
@@ -196,9 +195,7 @@ export default function EditProfileModal({ onClose }: { onClose: () => void }) {
             <input
               value={firma.cargo}
               onChange={(e) => setFirma({ ...firma, cargo: e.target.value })}
-              name="ts-perfil-cargo"
-              autoComplete="off"
-              placeholder="Ej. Coordinador de servicio"
+              {...campoPersona('perfil-cargo')}
               maxLength={120}
             />
           </label>
@@ -207,9 +204,7 @@ export default function EditProfileModal({ onClose }: { onClose: () => void }) {
             <input
               value={firma.telefono}
               onChange={(e) => setFirma({ ...firma, telefono: e.target.value })}
-              name="ts-perfil-telefono"
-              autoComplete="off"
-              placeholder="Ej. +57 300 000 0000"
+              {...campoPersona('perfil-telefono')}
               maxLength={60}
             />
           </label>
@@ -218,9 +213,7 @@ export default function EditProfileModal({ onClose }: { onClose: () => void }) {
             <input
               value={firma.oficina}
               onChange={(e) => setFirma({ ...firma, oficina: e.target.value })}
-              name="ts-perfil-oficina"
-              autoComplete="off"
-              placeholder="Ej. Sede principal"
+              {...campoPersona('perfil-oficina')}
               maxLength={160}
             />
           </label>

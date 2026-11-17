@@ -3,6 +3,7 @@ import Dialogo from '../../../components/Dialogo'
 import { guardarActividad, traducirError } from '../lib/datos'
 import type { Actividad, Contacto, TipoActividad } from '../lib/tipos'
 import { TIPOS_ACTIVIDAD, textoNulo } from '../lib/vistas'
+import { campoPersona } from '../../../lib/campos'
 
 // datetime-local en hora de Bogotá (UTC−5, sin horario de verano)
 function aLocal(iso: string): string {
@@ -82,7 +83,7 @@ export default function FormActividad({
         </label>
         <label>
           <span>Asunto *</span>
-          <input name="ts-crm-actividad-asunto" autoComplete="off" ref={asuntoRef} required maxLength={200} value={f.asunto} onChange={(e) => set('asunto', e.target.value)} />
+          <input {...campoPersona('crm-actividad-asunto')} ref={asuntoRef} required maxLength={200} value={f.asunto} onChange={(e) => set('asunto', e.target.value)} />
         </label>
         <label>
           <span>Fecha</span>
@@ -103,7 +104,7 @@ export default function FormActividad({
         )}
         <label>
           <span>Detalle</span>
-          <textarea name="ts-crm-actividad-detalle" autoComplete="off" rows={4} maxLength={4000} value={f.detalle} onChange={(e) => set('detalle', e.target.value)} />
+          <textarea {...campoPersona('crm-actividad-detalle')} rows={4} maxLength={4000} value={f.detalle} onChange={(e) => set('detalle', e.target.value)} />
         </label>
         {error && (
           <p className="error" role="alert">

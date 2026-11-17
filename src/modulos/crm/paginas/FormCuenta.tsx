@@ -6,6 +6,7 @@ import { crearCuenta, editarCuenta, traducirError, type CambiosCuenta, type Resp
 import type { AjustesCrm, CampoDef, Cuenta, TipoCuenta } from '../lib/tipos'
 import { partirEtiquetas, textoNulo } from '../lib/vistas'
 import CamposPersonalizados from './CamposPersonalizados'
+import { campoPersona } from '../../../lib/campos'
 
 type Estado = {
   tipo: TipoCuenta
@@ -111,7 +112,7 @@ export default function FormCuenta({
   const texto = (k: keyof Estado, etiqueta: string, extra: Record<string, unknown> = {}) => (
     <label>
       <span>{etiqueta}</span>
-      <input name={`ts-crm-cuenta-${k}`} autoComplete="off" value={f[k] as string} onChange={(e) => set(k, e.target.value as never)} {...extra} />
+      <input {...campoPersona(`crm-cuenta-${k}`)} value={f[k] as string} onChange={(e) => set(k, e.target.value as never)} {...extra} />
     </label>
   )
 
@@ -134,7 +135,7 @@ export default function FormCuenta({
         </label>
         <label>
           <span>Nombre *</span>
-          <input name="ts-crm-cuenta-nombre" autoComplete="off" ref={nombreRef} required maxLength={200} value={f.nombre} onChange={(e) => set('nombre', e.target.value)} />
+          <input {...campoPersona('crm-cuenta-nombre')} ref={nombreRef} required maxLength={200} value={f.nombre} onChange={(e) => set('nombre', e.target.value)} />
         </label>
         {texto('documento', f.tipo === 'persona' ? 'Cédula' : 'NIT', { maxLength: 30 })}
         <label>
@@ -190,7 +191,7 @@ export default function FormCuenta({
         {texto('etiquetas', 'Etiquetas (separadas por coma)')}
         <label>
           <span>Notas</span>
-          <textarea name="ts-crm-cuenta-notas" autoComplete="off" maxLength={4000} rows={3} value={f.notas} onChange={(e) => set('notas', e.target.value)} />
+          <textarea {...campoPersona('crm-cuenta-notas')} maxLength={4000} rows={3} value={f.notas} onChange={(e) => set('notas', e.target.value)} />
         </label>
         <CamposPersonalizados
           defs={defs}
