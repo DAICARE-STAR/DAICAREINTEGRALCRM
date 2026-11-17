@@ -1,3 +1,4 @@
+import { campoPersona } from '../../../lib/campos'
 import type { CampoDef, EntidadCampo } from '../lib/tipos'
 
 // Controles de los campos propios de una entidad (crm_campos_def), con el
@@ -53,10 +54,10 @@ export default function CamposPersonalizados({
             control = <input autoComplete="off" {...comunes} type="date" value={texto} onChange={(e) => alCambiar(d.clave, e.target.value)} />
             break
           case 'numero':
-            control = <input autoComplete="off" {...comunes} inputMode="decimal" value={texto} onChange={(e) => alCambiar(d.clave, e.target.value)} />
+            control = <input {...campoPersona(`crm-campo-${d.clave}`)} {...comunes} inputMode="decimal" value={texto} onChange={(e) => alCambiar(d.clave, e.target.value)} />
             break
           default:
-            control = <input autoComplete="off" {...comunes} maxLength={500} value={texto} onChange={(e) => alCambiar(d.clave, e.target.value)} />
+            control = <input {...campoPersona(`crm-campo-${d.clave}`)} {...comunes} maxLength={500} value={texto} onChange={(e) => alCambiar(d.clave, e.target.value)} />
         }
         return (
           <label key={d.clave} htmlFor={id}>

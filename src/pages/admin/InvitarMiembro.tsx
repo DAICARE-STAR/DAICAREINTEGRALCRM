@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import Dialogo from '../../components/Dialogo'
 import { supabase } from '../../lib/supabase'
 import { avisoParcial } from '../../lib/invitacion'
+import { campoPersona } from '../../lib/campos'
 import type { RoleDef } from '../../types'
 
 // Diálogo «Invitar» de Miembros (N-7): correo, nombre y roles. La función
@@ -85,11 +86,11 @@ export default function InvitarMiembro({
         <>
           <label className="form-field">
             <span className="form-label">Correo</span>
-            <input type="email" value={correo} onChange={(e) => setCorreo(e.target.value)} required maxLength={254} autoFocus autoComplete="off" />
+            <input {...campoPersona('invitar-correo')} type="email" value={correo} onChange={(e) => setCorreo(e.target.value)} required maxLength={254} autoFocus />
           </label>
           <label className="form-field">
             <span className="form-label">Nombre</span>
-            <input value={nombre} onChange={(e) => setNombre(e.target.value)} required maxLength={120} autoComplete="off" />
+            <input {...campoPersona('invitar-nombre')} value={nombre} onChange={(e) => setNombre(e.target.value)} required maxLength={120} />
           </label>
           <fieldset className="form-field">
             <legend className="form-label">Roles</legend>

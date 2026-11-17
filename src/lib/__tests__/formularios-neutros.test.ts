@@ -5,13 +5,16 @@ import { describe, expect, it } from 'vitest'
 import { campoPersona } from '../campos'
 
 // Lo heredado del portal de origen no debe llegar al usuario por los campos de
-// texto (0.2.10). Dos causas, las dos vigiladas aquí:
+// texto (0.2.10, 0.2.15 y 0.2.16). Tres causas, las tres vigiladas aquí:
 //  1) Un placeholder con un ejemplo real (cargo, teléfono, dirección de una
 //     oficina, marca de un tercero) o con el correo de la sesión.
 //  2) Un campo sin autoComplete: el navegador sugiere lo escrito antes en
 //     cualquier otro sitio o puerto (el historial va por tipo de campo, no por
 //     origen), así que los datos de personas y de salud se cuelan de un
 //     producto a otro.
+//  3) Un campo de datos de personas o de salud sin el ayudante campoPersona, o
+//     con un name= o autoComplete= escrito después del spread que lo anula
+//     (Chrome y Edge ignoran «off» y adivinan el tipo por el name).
 
 const RAIZ = fileURLToPath(new URL('../../../', import.meta.url))
 
@@ -85,6 +88,8 @@ describe('campos de texto sin datos heredados', () => {
       'src/modulos/crm/paginas/Salud.tsx',
       'src/modulos/crm/paginas/Consentimientos.tsx',
       'src/pages/admin/MembersTab.tsx',
+      'src/pages/admin/InvitarMiembro.tsx',
+      'src/modulos/crm/paginas/CamposPersonalizados.tsx',
     ]
     // Fechas y números no guardan historial de texto: no necesitan el ayudante
     const SIN_HISTORIAL = /type="(checkbox|radio|file|range|color|hidden|submit|button|date|datetime-local|number)"/
@@ -93,6 +98,16 @@ describe('campos de texto sin datos heredados', () => {
       .map((c) => `${c.ruta}:${c.linea}`)
     expect(sin).toEqual([])
     for (const ruta of delicados) expect(todos.some((c) => c.ruta === ruta), ruta).toBe(true)
+  })
+
+  it('nada después del spread de campoPersona anula su name ni su autoComplete', () => {
+    const anulados = todos
+      .filter((c) => {
+        const i = c.atributos.indexOf('{...campoPersona(')
+        return i >= 0 && /(^|\s)(name|autoComplete)=/.test(c.atributos.slice(i))
+      })
+      .map((c) => `${c.ruta}:${c.linea}`)
+    expect(anulados).toEqual([])
   })
 
   it('campoPersona cierra el autorrelleno con un name opaco y estable', () => {
