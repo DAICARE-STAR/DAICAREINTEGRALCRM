@@ -24,10 +24,12 @@
 -- toca. Sin sesión (service role, SQL Editor) has_perm es falso y no
 -- aplica nada: falla cerrado.
 --
--- El trigger estados_guardia, que pone estados_registrar en la tabla,
--- obliga a nacer en el estado inicial y rechaza cualquier cambio de
--- estado que no venga de aplicar_transicion: un administrador tampoco se
--- salta el catálogo con un update directo (PP-DEC-26, D-9). SQL dinámico
+-- El trigger zy_estados_guardia (función estados_guardia), que pone
+-- estados_registrar en la tabla, obliga a nacer en el estado inicial,
+-- rechaza cualquier cambio de estado que no venga de aplicar_transicion y
+-- todo borrado fuera de la categoría borrador: un administrador tampoco se
+-- salta el catálogo con un update directo ni lo esquiva borrando
+-- (PP-DEC-26, D-9). SQL dinámico
 -- solo con format y %I sobre tablas de la lista cerrada estados_entidades.
 --
 -- Requisitos: 00 a 09 aplicados; ejecutarlo como postgres. El bloque 0
@@ -39,7 +41,8 @@
 --   | estados_entidades               | lista cerrada de entidades y su tabla               |
 --   | estados                         | estados por entidad con categoría fija e inicial    |
 --   | estados_transiciones            | desde, hacia y el permiso que exige                 |
---   | estados_guardia()               | trigger: estado inicial y cambio solo por la función|
+--   | estados_guardia()               | trigger: estado inicial, cambio solo por la función |
+--   |                                 | y borrado solo en borrador                          |
 --   | estados_registrar(entidad, t)   | registra la tabla y pone el trigger; solo el dueño  |
 --   | aplicar_transicion(e, id, d, h) | cambio de estado con control optimista y registro   |
 -- ============================================================
@@ -119,8 +122,13 @@ create policy estados_transiciones_select on public.estados_transiciones
 -- Alta: el estado es el inicial de la entidad. Cambio de estado: solo si
 -- aplicar_transicion dejó la marca de esta fila y este estado
 -- (estados.transicion, local a la transacción; la API no fija variables
--- de sesión). Una tabla que perdió su registro no admite altas ni cambios
--- de estado. Sin security definer: lee el catálogo, que es de lectura.
+-- de sesión). Borrado: solo si el estado es de la categoría borrador; un
+-- documento aprobado, hecho o anulado no sale de la máquina borrándose (en
+-- una serie sin huecos dejaría un hueco), tampoco por un administrador.
+-- Una tabla que perdió su registro no admite altas, cambios de estado ni
+-- borrados. Sin security definer: lee el catálogo, que es de lectura para
+-- authenticated; anon no lo lee, así que una tabla registrada no admite
+-- altas sin sesión (un formulario público).
 create or replace function public.estados_guardia()
 returns trigger language plpgsql set search_path = public, pg_temp as $$
 declare
@@ -132,6 +140,12 @@ begin
       raise exception 'estados: un registro de % nace en su estado inicial', coalesce(v_entidad, tg_table_name)
         using errcode = '23514', hint = 'estados_inicial';
     end if;
+  elsif tg_op = 'DELETE' then
+    if not exists (select 1 from public.estados s where s.entidad = v_entidad and s.clave = old.estado and s.categoria = 'borrador') then
+      raise exception 'estados: un registro de % solo se borra en borrador', coalesce(v_entidad, tg_table_name)
+        using errcode = '42501', hint = 'estados_borrado';
+    end if;
+    return old;
   elsif new.estado is distinct from old.estado
         and (v_entidad is null
              or current_setting('estados.transicion', true) is distinct from v_entidad || ':' || new.id || ':' || new.estado) then
@@ -145,9 +159,13 @@ $$;
 revoke execute on function public.estados_guardia() from public, anon, authenticated;
 
 -- ============ 3) Registrar una entidad ============
--- La tabla necesita id uuid y estado text. El trigger se nombra con %I en
--- format: drop y create del mismo nombre. Va antes que zz_contrato_sellar
--- por nombre (PP-DEC-23).
+-- La tabla necesita id uuid y estado text y no puede ser particionada ni
+-- una partición: en una partición tg_relid no es la tabla registrada. El
+-- trigger se nombra con %I en format: drop y create del mismo nombre. Se
+-- dispara en todo update (no solo «of estado») y se llama
+-- zy_estados_guardia para ir después de los BEFORE de los módulos, que se
+-- ordenan por nombre, y ver el estado final de la fila; justo antes de
+-- zz_contrato_sellar (PP-DEC-23).
 create or replace function public.estados_registrar(p_entidad text, p_tabla regclass)
 returns void language plpgsql set search_path = public, pg_temp as $$
 declare
@@ -156,9 +174,9 @@ declare
 begin
   select n.nspname, k.relname into v_esquema, v_nombre
     from pg_catalog.pg_class k join pg_catalog.pg_namespace n on n.oid = k.relnamespace
-   where k.oid = p_tabla and k.relkind in ('r', 'p');
+   where k.oid = p_tabla and k.relkind = 'r' and not k.relispartition;
   if v_nombre is null then
-    raise exception 'estados_registrar: % no es una tabla', p_tabla;
+    raise exception 'estados_registrar: % no es una tabla simple (ni particionada ni partición)', p_tabla;
   end if;
   if (select count(*) from pg_catalog.pg_attribute a
        where a.attrelid = p_tabla and not a.attisdropped
@@ -173,9 +191,9 @@ begin
     raise exception 'estados_registrar: la entidad % ya está registrada con otra tabla', p_entidad;
   end if;
 
-  execute format('drop trigger if exists %I on %I.%I', 'estados_guardia', v_esquema, v_nombre);
-  execute format('create trigger %I before insert or update of estado on %I.%I for each row execute function public.estados_guardia()',
-                 'estados_guardia', v_esquema, v_nombre);
+  execute format('drop trigger if exists %I on %I.%I', 'zy_estados_guardia', v_esquema, v_nombre);
+  execute format('create trigger %I before insert or update or delete on %I.%I for each row execute function public.estados_guardia()',
+                 'zy_estados_guardia', v_esquema, v_nombre);
 end;
 $$;
 
@@ -236,8 +254,8 @@ notify pgrst, 'reload schema';
 
 -- ============ Verificación: aborta el archivo si algo no quedó ============
 -- Prueba la guarda sobre una tabla temporal que se borra al final: un alta
--- fuera del estado inicial, un update directo o una transición sin sesión
--- que pasen abortan.
+-- fuera del estado inicial, un update directo, una transición sin sesión o
+-- un borrado fuera de borrador que pasen abortan.
 do $$
 declare
   v text;
@@ -310,6 +328,31 @@ begin
   end;
   if v <> 'permiso' or (select estado from estados_prueba where id = v_id) <> 'borrador' then
     raise exception '09c-estados: una transición sin sesión cambió el estado';
+  end if;
+
+  -- La guarda cubre alta, todo update y borrado (tgtype: fila, before,
+  -- insert, delete, update), sin lista de columnas
+  if not exists (select 1 from pg_catalog.pg_trigger g
+                  where g.tgrelid = 'estados_prueba'::regclass and g.tgname = 'zy_estados_guardia'
+                    and (g.tgtype::int & 31) = 31 and g.tgattr::text = '') then
+    raise exception '09c-estados: zy_estados_guardia no cubre alta, todo update y borrado';
+  end if;
+  -- Borrar: un borrador sí; un aprobado no (se crea con la guarda apagada)
+  delete from estados_prueba where id = v_id;
+  if found is not true then
+    raise exception '09c-estados: no se pudo borrar un borrador';
+  end if;
+  alter table estados_prueba disable trigger zy_estados_guardia;
+  insert into estados_prueba (estado) values ('aprobado') returning id into v_id;
+  alter table estados_prueba enable trigger zy_estados_guardia;
+  begin
+    delete from estados_prueba where id = v_id;
+    v := 'borró';
+  exception when sqlstate '42501' then
+    v := 'borrado';
+  end;
+  if v <> 'borrado' then
+    raise exception '09c-estados: se borró un registro fuera de borrador';
   end if;
 
   delete from public.estados_entidades where entidad = 'prueba_09c';

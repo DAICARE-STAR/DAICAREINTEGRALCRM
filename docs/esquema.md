@@ -57,9 +57,10 @@ Un consecutivo sale de una serie de `public.series` (`09b-numeracion.sql`) con `
 | `reinicio` | `nunca`, `anual` o `mensual`; con reinicio el número lleva el periodo: `COT-2026-0001` |
 | `modo` | `con_huecos` o `sin_huecos`; se fija al crear la serie |
 
-- `con_huecos` (cotizaciones, pedidos): cada serie tiene su secuencia `serie_<clave>`; no bloquea a nadie y un número entregado no vuelve aunque la transacción se deshaga.
+- `con_huecos` (cotizaciones, pedidos): cada serie tiene su secuencia `serie_<clave>` y, con reinicio, una por periodo (`serie_<clave>-2026`, `serie_<clave>-2026-01`) que se crea al pedir el primer número del periodo. Nada se reinicia con `setval`, que no se deshace con la transacción. No bloquea a nadie, salvo el primer número de un periodo pedido a la vez por dos documentos: el segundo espera hasta 2 s. Un número entregado no vuelve aunque la transacción se deshaga.
 - `sin_huecos` (lo fiscal): bloquea la fila de la serie dentro de la transacción del documento; si esa transacción se deshace, el número también. Espera hasta 2 s (`lock_timeout`) a que termine otro documento y luego falla con la pista `series_ocupada`.
 - Fuera de vigencia (`series_fuera_de_vigencia`), con el tope agotado (`series_agotada`) o con una fecha de un periodo ya pasado (`series_periodo`) no entrega número: el documento no se publica.
+- La fecha del documento decide la vigencia y el periodo. Sin fecha, `series_siguiente` usa hoy en la zona de la instalación (`instalacion.zona_horaria`, por defecto America/Bogota), no la de la sesión, que en Supabase es UTC.
 - El número fiscal se asigna al publicar, no al crear el borrador. La función `security definer` que publica el documento pide el número en la misma transacción en la que cambia su estado:
 
 ```sql
@@ -68,8 +69,9 @@ update public.<documentos>
  where id = p_id;
 ```
 
-- Una serie sin huecos no se pide suelta por la API (`/rpc/series_siguiente`): quedaría un número sin documento. `series_siguiente` solo la ejecutan la service role y las funciones `security definer`.
+- Una serie sin huecos no se pide suelta por la API (una ruta que termina en `/rpc/series_siguiente`): quedaría un número sin documento. `series_siguiente` solo la ejecutan la service role y las funciones `security definer`.
 - Quien tiene `gestionar_series` (un administrador por serlo) ve las series, crea una y cambia prefijo, relleno, tope y vigencia. Nadie escribe `actual` ni `periodo` por la API, tampoco un administrador. En una serie con huecos `actual` queda en 0: el último número está en su secuencia.
+- Quien tiene `gestionar_series` puede crear una serie con cualquier clave antes de que se active el módulo que la usa, y el modo no cambia después. Por eso el archivo de esquema de un módulo, después de sembrar su serie con `on conflict do nothing`, comprueba que el modo y el reinicio son los que espera y aborta si no coinciden.
 
 ## Máquina de estados (PP-DEC-26)
 
@@ -79,5 +81,7 @@ Los estados de un documento se declaran como datos (`09c-estados.sql`) y cambian
 - `estados`: clave, nombre, categoría fija (`borrador`, `en_curso`, `aprobado`, `hecho` o `anulado`), orden y un solo `inicial` por entidad.
 - `estados_transiciones`: desde, hacia y el permiso que exige (`has_perm`). Lo que no está en la tabla no se puede hacer.
 - `aplicar_transicion(entidad, id, desde, hacia)` comprueba la transición y el permiso, hace `update … where id = … and estado = desde` y exige exactamente una fila: si no, error `40001` con la pista `estados_conflicto` (otro lo cambió antes, no existe o la RLS no lo deja cambiar) y la pantalla recarga. Cada cambio deja una fila `estados.transicion` en `audit_log`. Es `security invoker`: la RLS de la tabla del documento decide quién lo toca, y quien llama necesita `update` sobre su columna `estado`.
-- El trigger `estados_guardia` obliga a crear el registro en el estado inicial y rechaza cualquier `update` del estado que no venga de `aplicar_transicion`. Un administrador tampoco se salta una transición que no está en el catálogo (D-9); sin sesión (service role, SQL Editor) no hay permiso y nada cambia.
+- El trigger `zy_estados_guardia` (función `estados_guardia`) obliga a crear el registro en el estado inicial, rechaza cualquier `update` del estado que no venga de `aplicar_transicion` y solo deja borrar un registro cuyo estado es de la categoría `borrador` (pista `estados_borrado`): un documento aprobado, hecho o anulado no sale de la máquina borrándose. Un administrador tampoco se salta una transición que no está en el catálogo ni borra fuera de borrador (D-9); sin sesión (service role, SQL Editor) no hay permiso y nada cambia.
+- La guarda se dispara en todo `update`, no solo en los que nombran `estado`, y su nombre la pone después de los BEFORE de los módulos y justo antes de `zz_contrato_sellar`: ve el estado final de la fila aunque otro trigger lo haya cambiado.
+- La tabla registrada es una tabla simple: ni particionada ni partición. No admite altas sin sesión (anon): la guarda lee el catálogo con los permisos de quien escribe.
 - Las pantallas leen los tres catálogos para pintar el estado y los botones; la API no los escribe.

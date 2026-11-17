@@ -12,9 +12,13 @@
 -- valor actual, tope opcional, vigencia opcional y reinicio (nunca, anual
 -- o mensual). Con reinicio, el número lleva el periodo para no repetirse:
 -- prefijo 'COT-', anual, relleno 4 → 'COT-2026-0001'. Dos modos:
---   · con_huecos: secuencia de Postgres propia de la serie (serie_<clave>).
---     No bloquea a nadie; un número entregado no vuelve aunque la
---     transacción se deshaga. Para cotizaciones y pedidos.
+--   · con_huecos: secuencia de Postgres propia de la serie (serie_<clave>)
+--     y, con reinicio, una por periodo (serie_<clave>-<periodo>), creada
+--     al pedir el primer número del periodo; nada se reinicia con setval.
+--     No bloquea a nadie, salvo el primer número de un periodo pedido a la
+--     vez por dos documentos (el segundo espera hasta 2 s); un número
+--     entregado no vuelve aunque la transacción se deshaga. Para
+--     cotizaciones y pedidos.
 --   · sin_huecos: la fila de la serie con bloqueo (select … for update)
 --     dentro de la transacción del documento; si esa transacción se
 --     deshace, el número se deshace con ella. Espera hasta 2 s
@@ -27,9 +31,11 @@
 -- borrador. La función security definer que publica el documento llama a
 -- series_siguiente en la misma transacción en la que cambia su estado:
 --   update public.<documentos> set numero = public.series_siguiente('<serie>', fecha) …
+-- Sin fecha, la del documento es hoy en la zona de la instalación
+-- (zona_instalacion de 07), no en la de la sesión, que en Supabase es UTC.
 -- Una serie sin huecos no se avanza suelta desde la API (quedaría un
 -- número sin documento): series_siguiente lo rechaza si la llamada llega
--- directa por /rpc/series_siguiente.
+-- directa por …/rpc/series_siguiente.
 --
 -- Quién: solo la service role y las funciones security definer avanzan
 -- una serie; ningún miembro ejecuta series_siguiente ni escribe actual o
@@ -46,8 +52,8 @@
 --   | Objeto                     | Qué                                                     |
 --   |----------------------------|---------------------------------------------------------|
 --   | series                     | una fila por serie; la ve y la edita gestionar_series   |
---   | series_crear_secuencia()   | trigger: crea serie_<clave> a las series con huecos     |
---   | serie_<clave> (secuencia)  | contador de una serie con huecos; sin grants a la API   |
+--   | series_crear_secuencia()   | trigger: crea serie_<clave> a las con huecos sin reinicio|
+--   | serie_<clave>[-<periodo>]  | contador de una serie con huecos; sin grants a la API   |
 --   | series_siguiente(clave, f) | siguiente número formateado; service role y definer     |
 -- ============================================================
 
@@ -62,6 +68,9 @@ begin
   end if;
   if to_regprocedure('public.aplicar_exigir_mfa()') is null then
     raise exception '09b-numeracion detenido: falta 03-mfa.sql';
+  end if;
+  if to_regprocedure('public.zona_instalacion()') is null then
+    raise exception '09b-numeracion detenido: falta 07-widgets-uso.sql';
   end if;
 end $$;
 
@@ -110,11 +119,12 @@ create policy series_update on public.series
 -- ============ 2) Secuencia de las series con huecos ============
 -- security definer: quien crea la serie (gestionar_series) no puede crear
 -- objetos. La secuencia queda sin grants: los privilegios por defecto de
--- Supabase la abrirían a la API.
+-- Supabase la abrirían a la API. Con reinicio, las secuencias son por
+-- periodo y las crea series_siguiente.
 create or replace function public.series_crear_secuencia()
 returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
 begin
-  if new.modo = 'con_huecos' then
+  if new.modo = 'con_huecos' and new.reinicio = 'nunca' then
     execute format('create sequence if not exists public.%I as bigint minvalue 1', 'serie_' || new.clave);
     execute format('revoke all on sequence public.%I from public, anon, authenticated, service_role', 'serie_' || new.clave);
   end if;
@@ -130,16 +140,19 @@ create trigger series_crear_secuencia
   for each row execute function public.series_crear_secuencia();
 
 -- ============ 3) Siguiente número ============
--- p_fecha es la fecha del documento (vigencia y periodo); por defecto, hoy.
+-- p_fecha es la fecha del documento (vigencia y periodo); por defecto, hoy
+-- en la zona de la instalación: current_date usa la de la sesión (UTC en
+-- Supabase) y cambiaría de día y de año a las 19:00 en Colombia.
 -- lock_timeout va en la función: rige solo mientras corre y no cambia el
--- resto de la transacción del documento.
-create or replace function public.series_siguiente(p_clave text, p_fecha date default current_date)
+-- resto de la transacción del documento. La ruta de la API se compara por
+-- su final: delante puede ir un prefijo del proxy.
+create or replace function public.series_siguiente(p_clave text, p_fecha date default null)
 returns text language plpgsql security definer set search_path = public, pg_temp set lock_timeout = '2s' as $$
 declare
   s public.series;
-  v_fecha date := coalesce(p_fecha, current_date);
+  v_fecha date := coalesce(p_fecha, (now() at time zone public.zona_instalacion())::date);
   v_periodo text;
-  v_secuencia regclass;
+  v_secuencia text;
   v_n bigint;
 begin
   select * into s from public.series where clave = p_clave;
@@ -148,7 +161,7 @@ begin
   end if;
 
   if s.modo = 'sin_huecos' then
-    if current_setting('request.path', true) = '/rpc/series_siguiente' then
+    if current_setting('request.path', true) like '%/rpc/series\_siguiente' then
       raise exception 'numeración: la serie % es sin huecos y se numera al publicar el documento', p_clave
         using errcode = '42501', hint = 'series_suelta';
     end if;
@@ -180,17 +193,36 @@ begin
     end if;
     update public.series set actual = v_n, periodo = v_periodo where clave = p_clave;
   else
-    v_secuencia := format('public.%I', 'serie_' || p_clave)::regclass;
-    -- Periodo nuevo: el primero que llega lo anota y reinicia la secuencia;
-    -- los demás encuentran el periodo ya anotado y no reinician
-    if v_periodo is distinct from s.periodo then
-      update public.series set periodo = v_periodo
-       where clave = p_clave and (periodo is null or periodo < v_periodo);
+    -- Una secuencia por periodo: el número de un periodo no depende del de
+    -- otro. setval no se deshace con la transacción y un reinicio deshecho
+    -- repetía números del periodo anterior. La del periodo se crea aquí la
+    -- primera vez; si otro documento la crea a la vez, este espera a que
+    -- termine (hasta 2 s) y, si la confirmó, usa la suya. Una creación
+    -- deshecha no deja nada: su número no llegó a usarse.
+    v_secuencia := 'serie_' || p_clave || coalesce('-' || v_periodo, '');
+    if to_regclass(format('public.%I', v_secuencia)) is null then
+      begin
+        execute format('create sequence if not exists public.%I as bigint minvalue 1', v_secuencia);
+        execute format('revoke all on sequence public.%I from public, anon, authenticated, service_role', v_secuencia);
+      exception
+        when unique_violation or duplicate_table then
+          null;
+        when lock_not_available then
+          raise exception 'numeración: otro documento está tomando un número de la serie %; inténtalo de nuevo', p_clave
+            using errcode = '55P03', hint = 'series_ocupada';
+      end;
+    end if;
+    -- Anota el periodo (para rechazar fechas de uno ya pasado) sin esperar:
+    -- si la fila está tomada, otro documento lo está anotando
+    if v_periodo > coalesce(s.periodo, '') then
+      perform 1 from public.series
+       where clave = p_clave and (periodo is null or periodo < v_periodo)
+         for update skip locked;
       if found then
-        perform setval(v_secuencia, 1, false);
+        update public.series set periodo = v_periodo where clave = p_clave;
       end if;
     end if;
-    v_n := nextval(v_secuencia);
+    v_n := nextval(format('public.%I', v_secuencia)::regclass);
     if s.tope is not null and v_n > s.tope then
       raise exception 'numeración: la serie % llegó a su tope', p_clave using errcode = '54000', hint = 'series_agotada';
     end if;
@@ -209,12 +241,14 @@ notify pgrst, 'reload schema';
 
 -- ============ Verificación: aborta el archivo si algo no quedó ============
 -- Prueba los dos modos con series de prueba que se borran al final: un
--- número mal formado, una serie sin huecos que deja hueco al deshacerse o
--- un tope que no frena abortan.
+-- número mal formado, una serie sin huecos que deja hueco al deshacerse, un
+-- periodo nuevo deshecho que reinicia el anterior o un tope que no frena
+-- abortan.
 do $$
 declare
   v text;
   v_n bigint;
+  v_hoy date := (now() at time zone public.zona_instalacion())::date;
 begin
   if to_regclass('public.series') is null
      or not (select c.relrowsecurity from pg_catalog.pg_class c where c.oid = 'public.series'::regclass)
@@ -250,12 +284,7 @@ begin
 
   insert into public.series (clave, prefijo, relleno, tope, modo) values ('prueba_09b_sin', 'F-', 4, 2, 'sin_huecos');
   insert into public.series (clave, prefijo, relleno, reinicio, modo) values ('prueba_09b_con', 'C-', 3, 'anual', 'con_huecos');
-
-  if has_sequence_privilege('authenticated', 'public.serie_prueba_09b_con', 'usage')
-     or has_sequence_privilege('anon', 'public.serie_prueba_09b_con', 'usage')
-     or has_sequence_privilege('service_role', 'public.serie_prueba_09b_con', 'update') then
-    raise exception '09b-numeracion: la secuencia de una serie con huecos quedó abierta a la API';
-  end if;
+  insert into public.series (clave, modo) values ('prueba_09b_nunca', 'con_huecos');
 
   if public.series_siguiente('prueba_09b_sin') <> 'F-0001' then
     raise exception '09b-numeracion: la serie sin huecos no entregó F-0001';
@@ -278,7 +307,7 @@ begin
   if v <> 'agotada' then
     raise exception '09b-numeracion: la serie sin huecos pasó su tope';
   end if;
-  update public.series set vigente_hasta = current_date - 1, tope = null where clave = 'prueba_09b_sin';
+  update public.series set vigente_hasta = v_hoy - 1, tope = null where clave = 'prueba_09b_sin';
   begin
     v := public.series_siguiente('prueba_09b_sin');
   exception when sqlstate '22023' then
@@ -288,11 +317,34 @@ begin
     raise exception '09b-numeracion: la serie entregó número fuera de vigencia';
   end if;
 
-  if public.series_siguiente('prueba_09b_con') <> 'C-' || to_char(current_date, 'YYYY') || '-001' then
+  -- Sin fecha numera con el día de la instalación, no con el de la sesión
+  if public.series_siguiente('prueba_09b_con') <> 'C-' || to_char(v_hoy, 'YYYY') || '-001' then
     raise exception '09b-numeracion: la serie con huecos no entregó C-<año>-001';
   end if;
+  perform public.series_siguiente('prueba_09b_con');
+  -- El primer número de un periodo nuevo, deshecho, no reinicia el actual
   begin
-    perform public.series_siguiente('prueba_09b_con', (current_date - interval '1 year')::date);
+    perform public.series_siguiente('prueba_09b_con', (v_hoy + interval '1 year')::date);
+    raise exception using errcode = 'P0004';
+  exception when sqlstate 'P0004' then
+    null;
+  end;
+  if public.series_siguiente('prueba_09b_con') <> 'C-' || to_char(v_hoy, 'YYYY') || '-003' then
+    raise exception '09b-numeracion: un periodo nuevo deshecho reinició la serie con huecos';
+  end if;
+  if public.series_siguiente('prueba_09b_nunca') <> '0001' then
+    raise exception '09b-numeracion: la serie con huecos sin reinicio no entregó 0001';
+  end if;
+  foreach v in array array['serie_prueba_09b_con-' || to_char(v_hoy, 'YYYY'), 'serie_prueba_09b_nunca'] loop
+    if to_regclass(format('public.%I', v)) is null
+       or has_sequence_privilege('authenticated', format('public.%I', v), 'usage')
+       or has_sequence_privilege('anon', format('public.%I', v), 'usage')
+       or has_sequence_privilege('service_role', format('public.%I', v), 'update') then
+      raise exception '09b-numeracion: la secuencia % falta o quedó abierta a la API', v;
+    end if;
+  end loop;
+  begin
+    perform public.series_siguiente('prueba_09b_con', (v_hoy - interval '1 year')::date);
     v := 'entregó';
   exception when sqlstate '22023' then
     v := 'periodo';
@@ -305,6 +357,6 @@ begin
     raise exception '09b-numeracion: la serie con huecos escribió actual';
   end if;
 
-  delete from public.series where clave in ('prueba_09b_sin', 'prueba_09b_con');
-  drop sequence public.serie_prueba_09b_con;
+  delete from public.series where clave in ('prueba_09b_sin', 'prueba_09b_con', 'prueba_09b_nunca');
+  execute format('drop sequence public.%I, public.%I', 'serie_prueba_09b_con-' || to_char(v_hoy, 'YYYY'), 'serie_prueba_09b_nunca');
 end $$;

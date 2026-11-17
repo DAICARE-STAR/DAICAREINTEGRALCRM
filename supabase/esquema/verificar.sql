@@ -163,14 +163,15 @@ importes_sin_moneda as (
         and m.atttypid = to_regtype('public.codigo_moneda')
     )
 ),
--- Numeración (09b-numeracion.sql, PP-DEC-25): la API no escribe actual ni
--- periodo ni ejecuta series_siguiente, que es security definer con
--- search_path y lock_timeout, y ninguna secuencia serie_* tiene grants
+-- Numeración (09b-numeracion.sql, PP-DEC-25): la API (tampoco la service
+-- role) no escribe actual ni periodo ni ejecuta series_siguiente, que es
+-- security definer con search_path y lock_timeout, y ninguna secuencia
+-- serie_* tiene grants
 numeracion as (
   select distinct 'series.' || g.column_name || ' escribible por ' || g.grantee as motivo
   from information_schema.column_privileges g
   where g.table_schema = 'public' and g.table_name = 'series' and g.column_name in ('actual', 'periodo')
-    and g.grantee in ('anon', 'authenticated') and g.privilege_type not in ('SELECT', 'REFERENCES')
+    and g.grantee in ('anon', 'authenticated', 'service_role') and g.privilege_type not in ('SELECT', 'REFERENCES')
   union all
   select 'series_siguiente ejecutable por ' || r.rol
   from unnest(array['anon', 'authenticated']) as r(rol)
@@ -188,12 +189,15 @@ numeracion as (
   join pg_namespace n on n.oid = c.relnamespace
   cross join lateral aclexplode(c.relacl) x
   where n.nspname = 'public' and c.relkind = 'S' and c.relname like 'serie\_%'
-    and (x.grantee = 0 or x.grantee in (select oid from pg_roles where rolname in ('anon', 'authenticated')))
+    and (x.grantee = 0 or x.grantee in (select oid from pg_roles where rolname in ('anon', 'authenticated', 'service_role')))
 ),
 -- Máquina de estados (09c-estados.sql, PP-DEC-26): catálogo de solo
 -- lectura para la API, aplicar_transicion security invoker con
--- search_path, estados_registrar solo del dueño y ningún trigger
--- estados_guardia desactivado
+-- search_path, estados_registrar solo del dueño y cada tabla de
+-- estados_entidades con su trigger zy_estados_guardia activo. La lista se
+-- lee con query_to_xml y una consulta fija, solo si la tabla existe: una
+-- consulta suelta no puede nombrar una tabla que quizá no existe
+-- (PP-DEC-16); la consulta no lleva texto de fuera.
 maquina_estados as (
   select distinct g.table_name || ' escribible por ' || g.grantee as motivo
   from information_schema.role_table_grants g
@@ -209,10 +213,14 @@ maquina_estados as (
   from unnest(array['anon', 'authenticated', 'service_role']) as r(rol)
   where has_function_privilege(r.rol, to_regprocedure('public.estados_registrar(text,regclass)'), 'execute')
   union all
-  select 'estados_guardia desactivado en ' || c.relname
-  from pg_trigger g
-  join pg_class c on c.oid = g.tgrelid
-  where g.tgname = 'estados_guardia' and not g.tgisinternal and g.tgenabled = 'D'
+  select 'zy_estados_guardia ausente o desactivada en ' || x.tabla::text
+  from unnest(case when to_regclass('public.estados_entidades') is null then '{}'::xml[]
+                   else xpath('/table/row/t/text()', query_to_xml(
+                     'select e.tabla::text as t from public.estados_entidades e
+                       where not exists (select 1 from pg_catalog.pg_trigger g
+                                          where g.tgrelid = e.tabla and g.tgname = ''zy_estados_guardia''
+                                            and not g.tgisinternal and g.tgenabled in (''O'', ''A''))',
+                     false, false, '')) end) as x(tabla)
 )
 select orden, comprobacion, estado, detalle from (
   select 1 as orden,

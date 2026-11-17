@@ -1729,11 +1729,17 @@ end $$;
 -- vuelve; una serie sin huecos no se numera suelta por la API. Un miembro
 -- sin gestionar_series no ve ni crea series ni ejecuta series_siguiente;
 -- un administrador crea una serie pero no escribe su contador (PP-DEC-25).
+-- Con reinicio, un primer número del periodo nuevo deshecho no repite
+-- números del anterior; sin fecha, cuenta el día de la instalación y no el
+-- de la sesión.
 do $$
 declare
   r text := '';
   v text;
   v_n int;
+  v_hoy date;
+  v_zona text;
+  v_tz text;
   v_miembro uuid := nullif(current_setting('rls.miembro'), '')::uuid;
   v_admin uuid := nullif(current_setting('rls.admin'), '')::uuid;
 begin
@@ -1786,15 +1792,22 @@ begin
   v := v || ' / ' || public.series_siguiente('prueba_rls_con');
   r := r || E'\n' || case when v = 'C-001 / C-003' then 'OK      ' else 'FALLA   ' end || '17.3  con huecos: uno, otro deshecho, otro → C-001 / C-003 · ' || v;
 
-  -- 17.4 Una serie sin huecos pedida directa por la API se niega
+  -- 17.4 Una serie sin huecos pedida directa por la API se niega, también
+  -- con un prefijo del proxy delante de la ruta
   perform set_config('request.path', '/rpc/series_siguiente', true);
   begin
     perform public.series_siguiente('prueba_rls_sin');
     v := 'entregó';
   exception when others then v := sqlstate;
   end;
+  perform set_config('request.path', '/rest/v1/rpc/series_siguiente', true);
+  begin
+    perform public.series_siguiente('prueba_rls_sin');
+    v := v || ' / entregó';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
   perform set_config('request.path', '', true);
-  r := r || E'\n' || case when v = '42501' then 'OK      ' else 'FALLA   ' end || '17.4  sin huecos por /rpc/series_siguiente → 42501 · ' || v;
+  r := r || E'\n' || case when v = '42501 / 42501' then 'OK      ' else 'FALLA   ' end || '17.4  sin huecos por /rpc/ y /rest/v1/rpc/series_siguiente → 42501 / 42501 · ' || v;
 
   if v_miembro is null then
     r := r || E'\nOMITIDO 17.5  numeración del miembro · falta la cuenta miembro';
@@ -1842,6 +1855,37 @@ begin
     r := r || E'\n' || case when v = 'entró / 42501 / 42501' then 'OK      ' else 'FALLA   ' end || '17.6  admin crea serie, escribe actual y numera → entró / 42501 / 42501 · ' || v;
   end if;
 
+  -- 17.7 Con reinicio anual: el primer número de 2027 deshecho no reinicia
+  -- 2026; una fecha de 2026 sigue su cuenta y 2027 empieza en 001
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.series (clave, prefijo, relleno, reinicio, modo) values ('prueba_rls_anual', 'C-', 3, 'anual', 'con_huecos');
+  v := public.series_siguiente('prueba_rls_anual', date '2026-12-30');
+  v := v || ' / ' || public.series_siguiente('prueba_rls_anual', date '2026-12-31');
+  begin
+    perform public.series_siguiente('prueba_rls_anual', date '2027-01-02');
+    raise exception using errcode = 'P0004';
+  exception when sqlstate 'P0004' then
+    null;
+  end;
+  v := v || ' / ' || public.series_siguiente('prueba_rls_anual', date '2026-12-31');
+  v := v || ' / ' || public.series_siguiente('prueba_rls_anual', date '2027-01-02');
+  r := r || E'\n' || case when v = 'C-2026-001 / C-2026-002 / C-2026-003 / C-2027-001' then 'OK      ' else 'FALLA   ' end || '17.7  anual: 2026, 2026, 2027 deshecho, 2026, 2027 → C-2026-001 / 002 / 003 / C-2027-001 · ' || v;
+
+  -- 17.8 Sin fecha cuenta el día de la instalación: con la sesión en una
+  -- zona en la que ya (o aún) es otro día, una serie vigente solo hoy
+  -- entrega número
+  v_hoy := (now() at time zone public.zona_instalacion())::date;
+  v_zona := case when (now() at time zone 'Pacific/Kiritimati')::date <> v_hoy then 'Pacific/Kiritimati' else 'Etc/GMT+12' end;
+  insert into public.series (clave, prefijo, relleno, vigente_desde, vigente_hasta, modo) values ('prueba_rls_hoy', 'H-', 3, v_hoy, v_hoy, 'sin_huecos');
+  v_tz := current_setting('timezone');
+  perform set_config('timezone', v_zona, true);
+  begin
+    v := public.series_siguiente('prueba_rls_hoy');
+  exception when others then v := sqlstate;
+  end;
+  perform set_config('timezone', v_tz, true);
+  r := r || E'\n' || case when v = 'H-001' then 'OK      ' else 'FALLA   ' end || '17.8  sin fecha, sesión en ' || v_zona || ', serie vigente solo hoy → H-001 · ' || v;
+
   perform set_config('request.jwt.claims', '', true);
   perform set_config('rls.res', current_setting('rls.res') || r, true);
 end $$;
@@ -1851,8 +1895,8 @@ end $$;
 -- deshace con todo): nace en su estado inicial; una transición del
 -- catálogo con su permiso cambia el estado y queda en la auditoría; una
 -- fuera del catálogo, sin permiso o con el estado esperado ya cambiado
--- (otro llegó antes) se niega; un update directo del estado también, y
--- el administrador no tiene excepción (PP-DEC-26).
+-- (otro llegó antes) se niega; un update directo del estado también; solo
+-- se borra en borrador, y el administrador no tiene excepción (PP-DEC-26).
 do $$
 declare
   r text := '';
@@ -1879,7 +1923,7 @@ begin
   -- Entidad de ejemplo, como postgres
   perform set_config('request.jwt.claims', '', true);
   create temp table prueba_rls_estados (id uuid primary key default gen_random_uuid(), estado text not null default 'borrador');
-  grant select, insert, update on prueba_rls_estados to authenticated;
+  grant select, insert, update, delete on prueba_rls_estados to authenticated;
   perform public.estados_registrar('prueba_rls', 'prueba_rls_estados'::regclass);
   insert into public.estados (entidad, clave, nombre, categoria, inicial, orden) values
     ('prueba_rls', 'borrador', 'Borrador', 'borrador', true, 1),
@@ -1972,6 +2016,36 @@ begin
     end;
     reset role;
     r := r || E'\n' || case when v = '22023 / 42501' then 'OK      ' else 'FALLA   ' end || '18.7  admin: aprobado → anulado y update directo → 22023 / 42501 · ' || v;
+  end if;
+
+  if v_admin is null then
+    r := r || E'\nOMITIDO 18.8  borrado fuera de borrador · falta la cuenta admin';
+  else
+    -- 18.8 Borrar: un aprobado no, ni el miembro ni el administrador; un
+    -- borrador sí
+    perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+    set local role authenticated;
+    begin
+      delete from prueba_rls_estados where id = v_id;
+      v := 'borró';
+    exception when others then v := sqlstate;
+    end;
+    begin
+      delete from prueba_rls_estados where id = v_otro;
+      get diagnostics v_n = row_count;
+      v := v || ' / borró ' || v_n;
+    exception when others then v := v || ' / ' || sqlstate;
+    end;
+    reset role;
+    perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
+    set local role authenticated;
+    begin
+      delete from prueba_rls_estados where id = v_id;
+      v := v || ' / borró';
+    exception when others then v := v || ' / ' || sqlstate;
+    end;
+    reset role;
+    r := r || E'\n' || case when v = '42501 / borró 1 / 42501' then 'OK      ' else 'FALLA   ' end || '18.8  miembro borra aprobado y borrador, admin borra aprobado → 42501 / borró 1 / 42501 · ' || v;
   end if;
 
   perform set_config('request.jwt.claims', '', true);

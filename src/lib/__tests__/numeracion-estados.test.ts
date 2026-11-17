@@ -33,6 +33,7 @@ describe('09b-numeracion.sql (PP-DEC-25)', () => {
     expect(nombres.indexOf('09b-numeracion.sql')).toBe(nombres.indexOf('09-storage-base.sql') + 1)
     expect(nombres.indexOf('09c-estados.sql')).toBe(nombres.indexOf('09b-numeracion.sql') + 1)
     expect(numeracion).toMatch(/to_regprocedure\('public\.has_perm\(text\)'\) is null then\s+raise exception '09b-numeracion detenido: falta 00-base\.sql'/)
+    expect(numeracion).toMatch(/to_regprocedure\('public\.zona_instalacion\(\)'\) is null then\s+raise exception '09b-numeracion detenido: falta 07-widgets-uso\.sql'/)
   })
 
   it('series: dos modos, reinicio cerrado y vigencia ordenada', () => {
@@ -73,7 +74,8 @@ describe('09b-numeracion.sql (PP-DEC-25)', () => {
 
   it('sin huecos: rechaza la llamada suelta por la API, bloquea la fila y avisa si está ocupada', () => {
     const c = funcion(numeracion, 'series_siguiente').cuerpo
-    const suelta = c.indexOf("current_setting('request.path', true) = '/rpc/series_siguiente'")
+    // Por el final de la ruta: delante puede ir un prefijo del proxy
+    const suelta = c.indexOf("current_setting('request.path', true) like '%/rpc/series\\_siguiente'")
     const bloqueo = c.indexOf('select * into s from public.series where clave = p_clave for update;')
     expect(suelta).toBeGreaterThan(c.indexOf("if s.modo = 'sin_huecos' then"))
     expect(bloqueo).toBeGreaterThan(suelta)
@@ -82,12 +84,29 @@ describe('09b-numeracion.sql (PP-DEC-25)', () => {
     expect(c).toMatch(/update public\.series set actual = v_n, periodo = v_periodo where clave = p_clave;/)
   })
 
-  it('con huecos: secuencia propia sin bloqueo largo; el reinicio de periodo solo avanza', () => {
+  // setval no se deshace con la transacción: un reinicio de periodo
+  // deshecho dejaba la secuencia en 1 y repetía números del periodo anterior
+  it('con huecos: una secuencia por periodo, creada sin grants, sin setval y sin esperar al anotar el periodo', () => {
     const c = funcion(numeracion, 'series_siguiente').cuerpo
-    const conHuecos = c.slice(c.lastIndexOf('else'))
-    expect(conHuecos).toMatch(/v_n := nextval\(v_secuencia\);/)
-    expect(conHuecos).not.toMatch(/for update/)
-    expect(conHuecos).toMatch(/where clave = p_clave and \(periodo is null or periodo < v_periodo\);\s+if found then\s+perform setval\(v_secuencia, 1, false\);/)
+    const conHuecos = c.slice(c.indexOf("v_secuencia := 'serie_'"))
+    expect(c).not.toMatch(/setval/)
+    expect(conHuecos).toMatch(/^v_secuencia := 'serie_' \|\| p_clave \|\| coalesce\('-' \|\| v_periodo, ''\);/)
+    // El guion no cabe en una clave: serie_<clave>-<periodo> no choca con otra serie
+    expect(numeracion).toMatch(/clave text primary key constraint series_clave_check check \(clave ~ '\^\[a-z\]\[a-z0-9_\]\{0,39\}\$'\)/)
+    expect(conHuecos).toMatch(/if to_regclass\(format\('public\.%I', v_secuencia\)\) is null then\s+begin\s+execute format\('create sequence if not exists public\.%I as bigint minvalue 1', v_secuencia\);\s+execute format\('revoke all on sequence public\.%I from public, anon, authenticated, service_role', v_secuencia\);/)
+    expect(conHuecos).toMatch(/when unique_violation or duplicate_table then\s+null;\s+when lock_not_available then\s+raise exception [\s\S]*?errcode = '55P03', hint = 'series_ocupada'/)
+    expect(conHuecos).toMatch(/for update skip locked;\s+if found then\s+update public\.series set periodo = v_periodo where clave = p_clave;/)
+    expect(conHuecos).not.toMatch(/for update;/)
+    expect(conHuecos).toMatch(/v_n := nextval\(format\('public\.%I', v_secuencia\)::regclass\);/)
+  })
+
+  // current_date es el día de la sesión (UTC en Supabase): a las 19:00 en
+  // Colombia ya es el día siguiente y cambia la vigencia y el año
+  it('sin fecha, el día es el de la zona de la instalación, no current_date', () => {
+    const f = funcion(numeracion, 'series_siguiente')
+    expect(f.argumentos).toBe('p_clave text, p_fecha date default null')
+    expect(f.cuerpo).toMatch(/v_fecha date := coalesce\(p_fecha, \(now\(\) at time zone public\.zona_instalacion\(\)\)::date\);/)
+    expect(numeracion).not.toMatch(/current_date/)
   })
 
   it('falla cerrado: vigencia, periodo anterior y tope en los dos modos, antes de devolver', () => {
@@ -106,15 +125,19 @@ describe('09b-numeracion.sql (PP-DEC-25)', () => {
 
   it('la secuencia de una serie con huecos queda sin grants y se nombra con %I', () => {
     const c = funcion(numeracion, 'series_crear_secuencia').cuerpo
+    expect(c).toMatch(/if new\.modo = 'con_huecos' and new\.reinicio = 'nunca' then/)
     expect(c).toMatch(/format\('create sequence if not exists public\.%I as bigint minvalue 1', 'serie_' \|\| new\.clave\)/)
     expect(c).toMatch(/format\('revoke all on sequence public\.%I from public, anon, authenticated, service_role', 'serie_' \|\| new\.clave\)/)
     expect(numeracion).toMatch(/create trigger series_crear_secuencia\s+after insert on public\.series/)
   })
 
-  it('la verificación prueba el hueco deshecho, el tope, la vigencia y el periodo, y borra lo de prueba', () => {
+  it('la verificación prueba el hueco deshecho, el periodo nuevo deshecho, el tope, la vigencia y el periodo, y borra lo de prueba', () => {
     const v = numeracion.slice(numeracion.lastIndexOf('do $$'))
     for (const t of ["<> 'F-0001'", "<> 'F-0002'", "sqlstate '54000'", "sqlstate '22023'", "'lock_timeout=2s' = any (p.proconfig)"]) expect(v, t).toContain(t)
-    expect(v).toMatch(/delete from public\.series where clave in \('prueba_09b_sin', 'prueba_09b_con'\);\s+drop sequence public\.serie_prueba_09b_con;/)
+    expect(v).toContain("v_hoy date := (now() at time zone public.zona_instalacion())::date;")
+    expect(v).toMatch(/perform public\.series_siguiente\('prueba_09b_con', \(v_hoy \+ interval '1 year'\)::date\);\s+raise exception using errcode = 'P0004';/)
+    expect(v).toContain("<> 'C-' || to_char(v_hoy, 'YYYY') || '-003'")
+    expect(v).toMatch(/delete from public\.series where clave in \('prueba_09b_sin', 'prueba_09b_con', 'prueba_09b_nunca'\);\s+execute format\('drop sequence public\.%I, public\.%I', 'serie_prueba_09b_con-' \|\| to_char\(v_hoy, 'YYYY'\), 'serie_prueba_09b_nunca'\);/)
   })
 })
 
@@ -177,24 +200,40 @@ describe('09c-estados.sql (PP-DEC-26)', () => {
     const c = funcion(estados, 'estados_guardia').cuerpo
     expect(c).toMatch(/if tg_op = 'INSERT' then\s+if not exists \(select 1 from public\.estados s where s\.entidad = v_entidad and s\.clave = new\.estado and s\.inicial\) then\s+raise exception[^;]*errcode = '23514', hint = 'estados_inicial'/)
     expect(c).toMatch(/new\.estado is distinct from old\.estado\s+and \(v_entidad is null\s+or current_setting\('estados\.transicion', true\) is distinct from v_entidad \|\| ':' \|\| new\.id \|\| ':' \|\| new\.estado\) then\s+raise exception[^;]*errcode = '42501', hint = 'estados_directo'/)
+    // Un borrado saca el registro de la máquina (y deja hueco en una serie
+    // sin huecos): solo en borrador, y devuelve old para que el borrado siga
+    expect(c).toMatch(/elsif tg_op = 'DELETE' then\s+if not exists \(select 1 from public\.estados s where s\.entidad = v_entidad and s\.clave = old\.estado and s\.categoria = 'borrador'\) then\s+raise exception[^;]*errcode = '42501', hint = 'estados_borrado';\s+end if;\s+return old;/)
     // D-9: ni administrador ni sesión vacía pasan por fuera
     expect(c).not.toMatch(/is_admin|has_perm|auth\.uid\(\)/)
     expect(funcion(estados, 'aplicar_transicion').cuerpo).not.toMatch(/is_admin/)
   })
 
-  it('estados_registrar: solo el dueño; exige id uuid y estado text y pone estados_guardia antes del sello', () => {
+  it('estados_registrar: solo el dueño; exige tabla simple con id uuid y estado text y pone zy_estados_guardia en alta, todo update y borrado', () => {
     const c = funcion(estados, 'estados_registrar').cuerpo
     expect(estados).toMatch(/revoke execute on function public\.estados_registrar\(text, regclass\) from public, anon, authenticated, service_role;/)
+    // En una partición tg_relid no es la tabla registrada
+    expect(c).toMatch(/k\.relkind = 'r' and not k\.relispartition/)
     expect(c).toMatch(/a\.attname = 'id' and a\.atttypid = 'uuid'::regtype/)
     expect(c).toMatch(/a\.attname = 'estado' and a\.atttypid = 'text'::regtype/)
-    expect(c).toMatch(/format\('create trigger %I before insert or update of estado on %I\.%I for each row execute function public\.estados_guardia\(\)',\s+'estados_guardia', v_esquema, v_nombre\)/)
-    expect('estados_guardia' < 'zz_contrato_sellar').toBe(true)
+    // Sin «of estado»: un trigger de módulo que cambie new.estado no se la salta
+    expect(c).toMatch(/format\('create trigger %I before insert or update or delete on %I\.%I for each row execute function public\.estados_guardia\(\)',\s+'zy_estados_guardia', v_esquema, v_nombre\)/)
+    expect(c).toMatch(/format\('drop trigger if exists %I on %I\.%I', 'zy_estados_guardia', v_esquema, v_nombre\)/)
+    expect(c).not.toMatch(/'estados_guardia'/)
+  })
+
+  // Los BEFORE se disparan por orden de nombre: la guarda va después de los
+  // de los módulos (ve el estado final) y justo antes del sello del contrato
+  it('zy_estados_guardia va después de cualquier nombre de trigger de módulo y antes de zz_contrato_sellar', () => {
+    const guarda = 'zy_estados_guardia'
+    expect(guarda < 'zz_contrato_sellar').toBe(true)
+    for (const t of ['facturas_recalcular', 'pedidos_totales', 'ventas_calcular', 'y_algo']) expect(t < guarda, t).toBe(true)
   })
 
   it('la verificación prueba la guarda en una tabla temporal y la borra', () => {
     const v = estados.slice(estados.lastIndexOf('do $$'))
     expect(v).toContain('create temp table estados_prueba')
-    for (const t of ["sqlstate '23514'", "sqlstate '42501'", "v := 'directo'", "v := 'permiso'"]) expect(v, t).toContain(t)
+    for (const t of ["sqlstate '23514'", "sqlstate '42501'", "v := 'directo'", "v := 'permiso'", "v := 'borrado'"]) expect(v, t).toContain(t)
+    expect(v).toMatch(/g\.tgname = 'zy_estados_guardia'\s+and \(g\.tgtype::int & 31\) = 31 and g\.tgattr::text = ''/)
     expect(v).toMatch(/delete from public\.estados_entidades where entidad = 'prueba_09c';\s+drop table estados_prueba;/)
   })
 })
@@ -215,9 +254,13 @@ describe('comprobaciones fuera de las pruebas estáticas (17 y 18)', () => {
     expect(verificar).toMatch(/'ai_usage', 'series', 'estados_entidades', 'estados',\s+'estados_transiciones'\]\) as relname/)
     expect(verificar).toContain("'numeración: contador sin escritura para la API y series_siguiente solo del servidor'")
     expect(verificar).toContain("'máquina de estados: catálogo de solo lectura, aplicar_transicion sin security definer y guardas activas'")
-    expect(verificar).toMatch(/g\.table_name = 'series' and g\.column_name in \('actual', 'periodo'\)/)
+    expect(verificar).toMatch(/g\.table_name = 'series' and g\.column_name in \('actual', 'periodo'\)\s+and g\.grantee in \('anon', 'authenticated', 'service_role'\)/)
     expect(verificar).toMatch(/c\.relkind = 'S' and c\.relname like 'serie\\_%'/)
-    expect(verificar).toMatch(/g\.tgname = 'estados_guardia' and not g\.tgisinternal and g\.tgenabled = 'D'/)
+    // Una tabla registrada sin su guarda (borrada o desactivada) es DIFIERE;
+    // la lista se lee solo si la tabla existe (PP-DEC-16)
+    expect(verificar).toMatch(/case when to_regclass\('public\.estados_entidades'\) is null then '\{\}'::xml\[\]\s+else xpath\('\/table\/row\/t\/text\(\)', query_to_xml\(/)
+    expect(verificar).toMatch(/select e\.tabla::text as t from public\.estados_entidades e\s+where not exists \(select 1 from pg_catalog\.pg_trigger g\s+where g\.tgrelid = e\.tabla and g\.tgname = ''zy_estados_guardia''\s+and not g\.tgisinternal and g\.tgenabled in \(''O'', ''A''\)\)/)
+    expect(verificar).not.toMatch(/tgname = 'estados_guardia'/)
     expect(verificar).toContain("'falta 09b-numeracion.sql (npm run instalar)'")
     expect(verificar).toContain("'falta 09c-estados.sql (npm run instalar)'")
   })
@@ -225,19 +268,30 @@ describe('comprobaciones fuera de las pruebas estáticas (17 y 18)', () => {
   it('la sección 17 prueba los dos modos, la llamada suelta, el miembro y el administrador', () => {
     const s = seccion(17)
     expect(s).toContain('OMITIDO 17    numeración · falta 09b-numeracion.sql')
-    for (const caso of ['17.1', '17.2', '17.3', '17.4', '17.5', '17.6']) expect(s, caso).toContain(`'${caso}  `)
+    for (const caso of ['17.1', '17.2', '17.3', '17.4', '17.5', '17.6', '17.7', '17.8']) expect(s, caso).toContain(`'${caso}  `)
     expect(s).toContain("v = 'F-0001 / F-0002'")
     expect(s).toContain("v = 'C-001 / C-003'")
     expect(s).toContain("set_config('request.path', '/rpc/series_siguiente', true)")
+    expect(s).toContain("set_config('request.path', '/rest/v1/rpc/series_siguiente', true)")
+    expect(s).toContain("v = '42501 / 42501' then 'OK      ' else 'FALLA   ' end || '17.4")
+    // 17.7: un 2027 deshecho entre números de 2026 no los repite
+    expect(s).toMatch(/perform public\.series_siguiente\('prueba_rls_anual', date '2027-01-02'\);\s+raise exception using errcode = 'P0004';/)
+    expect(s).toContain("v = 'C-2026-001 / C-2026-002 / C-2026-003 / C-2027-001'")
+    // 17.8: sesión en una zona en la que es otro día que en la instalación
+    expect(s).toContain("v_hoy := (now() at time zone public.zona_instalacion())::date;")
+    expect(s).toMatch(/perform set_config\('timezone', v_zona, true\);\s+begin\s+v := public\.series_siguiente\('prueba_rls_hoy'\);/)
+    expect(s).toContain("v = 'H-001'")
     expect(s).toContain("update public.series set actual = 99 where clave = 'prueba_rls_admin'")
   })
 
-  it('la sección 18 crea una tabla temporal y prueba válida, no permitida, sin permiso, conflicto, directa y administrador', () => {
+  it('la sección 18 crea una tabla temporal y prueba válida, no permitida, sin permiso, conflicto, directa, administrador y borrado', () => {
     const s = seccion(18)
     expect(s).toContain('OMITIDO 18    máquina de estados · falta 09c-estados.sql')
     expect(s).toContain('create temp table prueba_rls_estados')
     expect(s).toContain("perform public.estados_registrar('prueba_rls', 'prueba_rls_estados'::regclass);")
-    for (const caso of ['18.1', '18.2', '18.3', '18.4', '18.5', '18.6', '18.7']) expect(s, caso).toContain(`'${caso}  `)
+    for (const caso of ['18.1', '18.2', '18.3', '18.4', '18.5', '18.6', '18.7', '18.8']) expect(s, caso).toContain(`'${caso}  `)
+    expect(s).toContain('grant select, insert, update, delete on prueba_rls_estados to authenticated;')
+    expect(s).toContain("v = '42501 / borró 1 / 42501'")
     for (const esperado of ["v = '23514 / entró'", "v = '22023'", "v = '42501'", "v = '40001'", "v = '22023 / 42501'"]) expect(s, esperado).toContain(esperado)
     expect(s).toMatch(/action = 'estados\.transicion' and entity = 'prueba_rls'/)
   })
