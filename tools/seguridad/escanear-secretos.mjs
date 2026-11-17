@@ -115,7 +115,7 @@ export const PATRONES = [
   { tipo: 'clave-sb-secret', re: /sb_secret_[A-Za-z0-9]+/g, valida: conFormato },
   {
     tipo: 'clave-de-proveedor',
-    re: /(?:sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AIza[A-Za-z0-9_-]{30,}|GOCSPX-[A-Za-z0-9_-]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|ntn_[A-Za-z0-9]{20,}|pat-(?:na|eu)1-[0-9a-f-]{30,}|AKIA[0-9A-Z]{16})/g,
+    re: /(?:\bsk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AIza[A-Za-z0-9_-]{30,}|GOCSPX-[A-Za-z0-9_-]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|ntn_[A-Za-z0-9]{20,}|pat-(?:na|eu)1-[0-9a-f-]{30,}|AKIA[0-9A-Z]{16})/g,
     valida: conFormato,
   },
   { tipo: 'token-telegram', re: /\b[0-9]{8,10}:AA[A-Za-z0-9_-]{30,}/g, valida: conFormato },

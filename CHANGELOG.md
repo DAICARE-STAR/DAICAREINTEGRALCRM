@@ -21,7 +21,8 @@ Formato: cada commit a `main` es un Paso `Mayor.Fase.Paso — descripción`. La 
 - 0.2.15 — Formularios: Editar perfil deja la etiqueta sola, sin ejemplos en gris. Los campos con datos de personas y de salud (perfil, miembros, cuentas, contactos, actividades, salud y consentimientos) ya no ofrecen lo escrito en otros sitios: el navegador y los gestores de contraseñas dejan de sugerir o rellenar datos en ellos. (c1e34bf)
 - 0.2.16 — Formularios: el correo y el nombre al invitar a un miembro y los campos personalizados de texto y número del CRM tampoco ofrecen lo escrito en otros sitios. Las novedades describen solo lo que cambia en la aplicación. (c06243b)
 - 0.2.17 — Documentación interna del proyecto. (cfb266a)
-- 0.2.18 — Documentación interna del proyecto.
+- 0.2.18 — Documentación interna del proyecto. (02f804f)
+- 0.2.19 — Seguridad: el escáner de secretos ya no confunde con una clave los nombres de archivo que contienen «sk-» en medio de una palabra.
 
 ## 0.1 — Arranque (2026-11-07)
 
