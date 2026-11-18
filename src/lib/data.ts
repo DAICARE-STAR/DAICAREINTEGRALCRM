@@ -144,6 +144,19 @@ export async function removeUserRole(userId: string, role: Role): Promise<void> 
   assertAffected(data)
 }
 
+// Rechazos de la guarda del último administrador (01b-ultimo-administrador.sql),
+// por su hint
+const ERRORES_ROL: Record<string, string> = {
+  admin_propio: 'No puedes quitarte tu propio rol admin: pídeselo a otro administrador.',
+  ultimo_admin: 'Es el último administrador: asigna el rol admin a otra persona antes de quitárselo.',
+}
+
+export function mensajeErrorRol(err: unknown, quitando: boolean): string {
+  const hint = typeof err === 'object' && err !== null ? (err as { hint?: unknown }).hint : undefined
+  if (typeof hint === 'string' && ERRORES_ROL[hint]) return ERRORES_ROL[hint]
+  return quitando ? 'No se pudo quitar el rol.' : 'No se pudo asignar el rol (¿permisos?).'
+}
+
 export async function fetchAllApps(): Promise<PortalApp[]> {
   const { data, error } = await supabase
     .from('portal_apps')

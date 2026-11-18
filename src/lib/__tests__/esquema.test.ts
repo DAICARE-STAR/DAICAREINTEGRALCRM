@@ -483,14 +483,22 @@ describe('supabase/pruebas/rls-simulacion.sql', () => {
     expect(sinComentarios(sim)).not.toMatch(/\bcommit\b/i)
   })
 
-  it('tiene las secciones 0 a 13 y la 0 lee instalador.cuentas_prueba', () => {
-    for (let n = 0; n <= 13; n++) expect(sim).toContain(`-- ============ ${n}) `)
+  // Un $ suelto no es una comilla de dólar: Postgres rechaza el archivo
+  // entero y no corre ninguna sección
+  it('cada bloque abre con do $$ y cierra con end $$;', () => {
+    expect(sim).not.toMatch(/^do \$(?!\$)/m)
+    expect(sim).not.toMatch(/^end \$(?!\$)/m)
+    expect(sim.match(/^do \$\$$/gm)?.length).toBe(sim.match(/^end \$\$;$/gm)?.length)
+  })
+
+  it('tiene las secciones 0 a 18 y la 0 lee instalador.cuentas_prueba', () => {
+    for (let n = 0; n <= 18; n++) expect(sim).toContain(`-- ============ ${n}) `)
     expect(bloques.find((b) => b.startsWith('-- ============ 0) '))).toMatch(/from instalador\.cuentas_prueba where rol = 'qa'/)
   })
 
   it('cada sección después de la 0 se niega a correr suelta', () => {
     const secciones = bloques.filter((b) => /^-- ============ [1-9]\d*\) /.test(b))
-    expect(secciones.length).toBe(13)
+    expect(secciones.length).toBe(18)
     for (const s of secciones) expect(s).toMatch(/current_setting\('rls\.txid', true\) is distinct from txid_current\(\)::text then\s+raise exception/)
   })
 
@@ -516,6 +524,30 @@ describe('supabase/pruebas/rls-simulacion.sql', () => {
       expect(s, String(n)).toContain(`OMITIDO ${n}`)
       expect(s, String(n)).toContain(archivo)
     }
+  })
+
+  it('la 14 sale OMITIDO sin 01b y prueba el último admin sin sesión, también la baja en Auth', () => {
+    const s14 = bloques.find((b) => b.startsWith('-- ============ 14) '))!
+    expect(s14).toContain('OMITIDO 14    último administrador · falta 01b-ultimo-administrador.sql')
+    for (const caso of ['14.1', '14.3', '14.4', '14.5', '14.6', '14.7', '14.8']) expect(s14, caso).toContain(`'${caso}  `)
+    expect(s14).toContain('delete from auth.users where id = v_admin;')
+    expect(s14).toContain('truncate public.user_roles;')
+    // 14.1 con sesión y aal2; los casos del último, sin claims
+    expect(s14).toMatch(/json_build_object\('sub', v_admin, 'role', 'authenticated', 'aal', 'aal2'\)/)
+    const ultimo = s14.slice(s14.indexOf('-- 14.3'), s14.indexOf('-- 14.7'))
+    expect(ultimo).not.toContain('request.jwt.claims')
+  })
+
+  it('la 15 sale OMITIDO sin 21c, omite el negativo si la cuenta ya exporta y cuenta la fila de auditoría', () => {
+    const s15 = bloques.find((b) => b.startsWith('-- ============ 15) '))!
+    expect(s15).toContain('OMITIDO 15    exportar crm · falta 21c-crm-exportar.sql')
+    expect(s15).toMatch(/if public\.has_perm\('exportar_crm'\) then\s+r := r \|\| E'\\nOMITIDO 15\.1/)
+    expect(s15).toMatch(/action = 'crm\.exportar'/)
+    expect(s15).toMatch(/pg_get_function_result\(p\.oid\) ~\* 'salud'/)
+    expect(s15).toMatch(/or p\.proretset or p\.prorettype <> 'jsonb'::regtype/)
+    for (const caso of ['15.1', '15.2', '15.3', '15.4', '15.5']) expect(s15, caso).toContain(`'${caso}  `)
+    expect(s15).toContain('generate_series(1, 10001)')
+    expect(s15).toMatch(/when v = 'crm_exportar_tope' and v_m = 0 then 'OK/)
   })
 
   it('la sección 11 prueba el tope con almacenamiento_mb = 0 y vuelve a null', () => {
@@ -730,6 +762,153 @@ describe('esquema: correcciones con letra (06b, 21b)', () => {
       const m = /^(\d{2})[a-z]-/.exec(a.nombre)
       if (m && Number(m[1]) > 9) expect(numeros.has(m[1]), a.nombre).toBe(true)
     }
+  })
+})
+
+describe('esquema: 01b-ultimo-administrador (BL-10)', () => {
+  const a = archivos.find((x) => x.nombre === '01b-ultimo-administrador.sql')!
+  const sql = a.sql
+  const cuerpo = (nombre: string) => new RegExp(`function\\s+public\\.${nombre}\\([^)]*\\)[\\s\\S]*?\\$\\$([\\s\\S]*?)\\$\\$`, 'i').exec(sql)![1]
+  const verificar = readFileSync(CARPETA + 'verificar.sql', 'utf8')
+
+  it('es del núcleo y va justo después de 01-seguridad.sql', () => {
+    const nombres = archivos.map((x) => x.nombre)
+    expect(nombres.indexOf('01b-ultimo-administrador.sql')).toBe(nombres.indexOf('01-seguridad.sql') + 1)
+    expect(sql).toMatch(/to_regclass\('public\.user_roles'\) is null[\s\S]*?raise exception '01b-ultimo-administrador detenido: falta 00-base\.sql'/)
+  })
+
+  it('los triggers cubren update, delete y truncate de user_roles y delete y es_servicio de profiles', () => {
+    expect(sql).toMatch(/create trigger user_roles_ultimo_admin\s+before update or delete on public\.user_roles\s+for each row execute function public\.guarda_ultimo_admin\(\);/)
+    expect(sql).toMatch(/create trigger user_roles_ultimo_admin_vaciar\s+before truncate on public\.user_roles\s+for each statement execute function public\.guarda_ultimo_admin\(\);/)
+    expect(sql).toMatch(/create trigger profiles_ultimo_admin\s+before update of es_servicio or delete on public\.profiles\s+for each row execute function public\.guarda_perfil_admin\(\);/)
+    // Después del freno de es_servicio de 00-base (orden alfabético de los BEFORE)
+    expect('profiles_guard_role' < 'profiles_ultimo_admin').toBe(true)
+  })
+
+  it('el último administrador no tiene atajo: ni la service role ni el SQL Editor lo retiran', () => {
+    const g = cuerpo('guarda_ultimo_admin')
+    expect(g).not.toMatch(/auth\.uid\(\)\s+is\s+null/i)
+    expect(g).not.toMatch(/service_role|current_user|session_user/i)
+    expect(g).toMatch(/if not public\.quedan_otros_admins\(old\.user_id\) then\s+raise exception[^;]*hint = 'ultimo_admin'/)
+    expect(g).toMatch(/auth\.uid\(\) is not null and old\.user_id = auth\.uid\(\) then\s+raise exception[^;]*hint = 'admin_propio'/)
+    expect(g).toMatch(/if tg_op = 'TRUNCATE' then\s+if public\.quedan_otros_admins\(null\) then/)
+    const p = cuerpo('guarda_perfil_admin')
+    expect(p).toMatch(/auth\.uid\(\) is not null and old\.id = auth\.uid\(\) then\s+raise exception[^;]*hint = 'borrar_propio'/)
+    expect(p).toMatch(/new\.es_servicio and not old\.es_servicio\s+and public\.is_admin\(old\.id\) and not public\.quedan_otros_admins\(old\.id\)/)
+  })
+
+  it('solo cuentan los administradores sin es_servicio y las bajas simultáneas van en fila', () => {
+    const q = cuerpo('quedan_otros_admins')
+    expect(q).toMatch(/pg_advisory_xact_lock/)
+    expect(q.indexOf('pg_advisory_xact_lock')).toBeLessThan(q.indexOf('return exists'))
+    expect(q).toMatch(/ur\.role = 'admin'\s+and not p\.es_servicio\s+and ur\.user_id is distinct from p_excluir/)
+    const fs = funciones(sql)
+    expect(fs.map((f) => [f.nombre, f.definer, f.esTrigger])).toEqual([
+      ['quedan_otros_admins', false, false],
+      ['guarda_ultimo_admin', true, true],
+      ['guarda_perfil_admin', true, true],
+    ])
+    expect(revocaA(sql, 'quedan_otros_admins', 'public,\\s*anon,\\s*authenticated')).toBe(true)
+    expect(sql).not.toMatch(/grant\s+execute/i)
+  })
+
+  it('Miembros muestra legible cada rechazo que puede ver: admin_propio y ultimo_admin', async () => {
+    const { mensajeErrorRol } = await import('../data')
+    const hints = [...sql.matchAll(/hint = '(\w+)'/g)].map((m) => m[1])
+    expect(new Set(hints)).toEqual(new Set(['ultimo_admin', 'admin_propio', 'borrar_propio']))
+    expect(mensajeErrorRol({ code: '42501', hint: 'admin_propio' }, true)).toMatch(/tu propio rol admin/)
+    expect(mensajeErrorRol({ code: '42501', hint: 'ultimo_admin' }, true)).toMatch(/último administrador/)
+    expect(mensajeErrorRol({ code: '42501' }, true)).toBe('No se pudo quitar el rol.')
+    expect(mensajeErrorRol(new Error('x'), false)).toMatch(/asignar/)
+  })
+
+  it('verificar.sql comprueba que los tres triggers existen y están activos', () => {
+    expect(verificar).toContain("'guarda del último administrador en user_roles y profiles'")
+    expect(verificar).toContain("array['user_roles_ultimo_admin', 'user_roles_ultimo_admin_vaciar', 'profiles_ultimo_admin']")
+    expect(verificar).toMatch(/t\.tgenabled <> 'D'/)
+  })
+})
+
+describe('esquema: 21c-crm-exportar (BL-12)', () => {
+  const sql = archivos.find((x) => x.nombre === '21c-crm-exportar.sql')!.sql
+  const crm = archivos.find((x) => x.nombre === '21-crm.sql')!.sql
+  const cuerpo = (s: string, nombre: string) => new RegExp(`function\\s+public\\.${nombre}\\([^)]*\\)[\\s\\S]*?\\$\\$([\\s\\S]*?)\\$\\$`, 'i').exec(s)![1]
+  const columnas = (s: string, nombre: string) =>
+    new RegExp(`function\\s+public\\.${nombre}\\([^)]*\\)\\s*returns\\s+table\\s*\\(([^)]*)\\)`, 'i').exec(s)![1].split(',').map((c) => c.trim())
+
+  it('crm_exportar es security invoker, exige exportar_crm antes de leer y lee solo por crm_buscar', () => {
+    const f = funciones(sql).find((x) => x.nombre === 'crm_exportar')!
+    expect(f.definer).toBe(false)
+    expect(f.cabecera).toMatch(/security\s+invoker/i)
+    const c = cuerpo(sql, 'crm_exportar')
+    const permiso = c.search(/if not public\.has_perm\('exportar_crm'\) then\s+raise exception[^;]*errcode = '42501', hint = 'crm_exportar'/)
+    expect(permiso).toBeGreaterThan(-1)
+    expect(permiso).toBeLessThan(c.indexOf('public.crm_buscar'))
+    expect([...c.matchAll(/from\s+(public\.\w+)/gi)].map((m) => m[1])).toEqual(['public.crm_buscar', 'public.crm_buscar'])
+    expect(c).toMatch(/for i in 0 \.\. 49 loop/)
+    expect(c).toMatch(/insert into public\.audit_log \(user_id, action, detail, entity, origen\)\s+values \(auth\.uid\(\), 'crm\.exportar', 'Exportó ' \|\| v_total \|\| ' cuentas'/)
+    expect(sql).toMatch(/revoke execute on function public\.crm_exportar\(text, text, text, text, uuid, text, boolean\) from public, anon;/)
+    expect(sql).toMatch(/grant execute on function public\.crm_exportar\(text, text, text, text, uuid, text, boolean\) to authenticated;/)
+  })
+
+  // PostgREST corta en su «Max rows» (1000 por defecto) toda respuesta de
+  // varias filas, también la de una función, sin avisar: la exportación
+  // devuelve un solo jsonb y se niega antes que entregar la lista cortada
+  it('crm_exportar devuelve un solo jsonb, se niega con más de 10 000 y comprueba el total antes de auditar', () => {
+    const f = funciones(sql).find((x) => x.nombre === 'crm_exportar')!
+    expect(f.cabecera).toMatch(/^\s*returns\s+jsonb\s/i)
+    expect(f.cabecera).not.toMatch(/returns\s+(setof|table)\b/i)
+    const c = cuerpo(sql, 'crm_exportar')
+    const tope = c.search(/if v_total > 10000 then\s+raise exception[^;]*errcode = '54000', hint = 'crm_exportar_tope'/)
+    const bucle = c.indexOf('for i in 0 .. 49 loop')
+    const cambio = c.search(/if jsonb_array_length\(v_filas\) <> v_total then\s+raise exception[^;]*hint = 'crm_exportar_cambio'/)
+    const auditoria = c.indexOf('insert into public.audit_log')
+    expect(tope).toBeGreaterThan(-1)
+    expect(tope).toBeLessThan(bucle)
+    expect(cambio).toBeGreaterThan(bucle)
+    expect(cambio).toBeLessThan(auditoria)
+    expect(c).toMatch(/return jsonb_build_object\('total', v_total, 'filas', v_filas\);/)
+    // 50 páginas de 200 cubren el tope: ninguna fila se queda fuera
+    expect(c).toMatch(/p_archivadas, 200, i \* 200\) with ordinality b/)
+    expect(c).toMatch(/jsonb_agg\(to_jsonb\(b\) - 'total' - 'ordinality' order by b\.ordinality\)/)
+  })
+
+  // PP-DEC-19: nada de salud en ninguna exportación
+  it('la exportación no lleva salud: las filas son las de crm_buscar, que no tiene salud, y nada de salud en el código', () => {
+    expect(columnas(crm, 'crm_buscar').join(' ')).not.toMatch(/salud|cifrad/i)
+    expect(cuerpo(sql, 'crm_exportar')).not.toMatch(/salud/i)
+  })
+
+  it('la semilla da exportar_crm a los roles con app_crm, salvo admin, sin repetirlo', () => {
+    expect(sql).toMatch(/update public\.roles\s+set permissions = array_append\(permissions, 'exportar_crm'\)\s+where name <> 'admin'\s+and 'app_crm' = any \(permissions\)\s+and not \('exportar_crm' = any \(permissions\)\);/)
+  })
+
+  it('exportar_crm está en el registro, en el catálogo del shell y fuera de los solo-admin', async () => {
+    const { moduloPorSlug } = await import('../modulos')
+    const { PERMISSIONS, PERMISOS_SOLO_ADMIN } = await import('../../types')
+    expect(moduloPorSlug('crm')!.permisos.map((p) => p.clave)).toContain('exportar_crm')
+    expect(PERMISSIONS.map((p) => p.key)).toContain('exportar_crm')
+    expect(PERMISOS_SOLO_ADMIN).not.toContain('exportar_crm')
+  })
+
+  it('la pantalla exporta solo por crm_exportar y el botón pide exportar_crm', () => {
+    const raiz = fileURLToPath(new URL('../../../src/modulos/crm/', import.meta.url))
+    const datos = readFileSync(raiz + 'lib/datos.ts', 'utf8')
+    const exportar = readFileSync(raiz + 'paginas/Exportar.tsx', 'utf8')
+    const cuentas = readFileSync(raiz + 'paginas/Cuentas.tsx', 'utf8')
+    expect(datos).toMatch(/supabase\.rpc\('crm_exportar', filtros\)\s+if \(error\) throw error\s+return filasExportadas\(data\)/)
+    expect(datos).not.toMatch(/logAction\('crm\.exportar'/)
+    expect(exportar).toMatch(/cuentasParaExportar\(filtros\)/)
+    expect(exportar).not.toMatch(/buscarCuentas|todasLasCuentas|rpc\(/)
+    expect(cuentas).toMatch(/const puedeExportar = hasPerm\('exportar_crm'\)/)
+    expect(cuentas).toMatch(/\{p\.puedeExportar && \(\s+<button[^>]*onClick=\{p\.alExportar\}/)
+  })
+
+  it('verificar.sql comprueba crm_exportar si el CRM está instalado', () => {
+    const verificar = readFileSync(CARPETA + 'verificar.sql', 'utf8')
+    expect(verificar).toContain("'crm_exportar exige exportar_crm, sin security definer ni salud, devuelve un jsonb'")
+    expect(verificar).toMatch(/or proretset or prorettype <> 'jsonb'::regtype/)
+    expect(verificar).toMatch(/position\('has_perm\(''exportar_crm''\)' in prosrc\) = 0\) then 'DIFIERE'/)
   })
 })
 

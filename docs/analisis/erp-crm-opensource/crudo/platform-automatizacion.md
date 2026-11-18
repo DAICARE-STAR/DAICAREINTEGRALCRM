@@ -95,7 +95,7 @@ Contexto de lectura: Huly guarda todo como transacciones sobre un modelo de obje
 9. **El PDF se hace con el mismo HTML que ve el usuario, no con una plantilla aparte.** Porqué: un solo diseño que mantener; la cabecera y el pie salen de elementos con id fijo en esa página. Cita: `services/print/pod-print/src/print.ts:75-103`.
 10. **Un objeto "bloqueado" por el flujo.** `LockCard`, `LockSection` y `LockField` marcan la tarjeta como solo lectura y se revierten con rollback. Porqué: un documento en revisión no debe editarse. Cita: `server-plugins/process-resources/src/functions.ts:617-634`.
 
-## Adoptable para TailorSuite (lista numerada A1, A2…: la idea, la cita que la respalda, por qué le sirve a una pyme, y el esfuerzo estimado bajo, medio o alto sobre Postgres con RLS y React)
+## Adoptable para Bash Logistics (lista numerada A1, A2…: la idea, la cita que la respalda, por qué le sirve a una pyme, y el esfuerzo estimado bajo, medio o alto sobre Postgres con RLS y React)
 
 **A1. Aprobación genérica con "acción al aprobar" y "acción al rechazar" serializadas.**
 - Idea: una tabla `solicitudes_aprobacion` (documento_tipo, documento_id, aprobadores[], aprobaron[], requeridos, estado, accion_aprobada jsonb, accion_rechazada jsonb). Un trigger de Postgres o una función aplica la acción cuando se alcanza la cantidad requerida.
@@ -154,7 +154,7 @@ Contexto de lectura: Huly guarda todo como transacciones sobre un modelo de obje
 **A10. Plantillas de correo con asunto, texto y HTML, y marcadores `{campo}` por tipo de aviso.**
 - Idea: tabla `plantillas_aviso(tipo, asunto, texto, html)` con marcadores sustituidos en el servidor; no se envía si el asunto queda vacío; el usuario activa o desactiva por tipo y canal.
 - Cita: `plugins/notification/src/index.ts:112-116`, `:132-157`, `:179-188`; `server-plugins/notification-resources/src/index.ts:180-244`.
-- Por qué: TailorSuite ya tiene avisos; las plantillas editables por instalación permiten adaptar el tono sin tocar código.
+- Por qué: Bash Logistics ya tiene avisos; las plantillas editables por instalación permiten adaptar el tono sin tocar código.
 - Esfuerzo: bajo. Escapar HTML en los valores sustituidos (Huly inserta el enlace como HTML directo, `server-plugins/notification-resources/src/index.ts:230`).
 
 **A11. Plantillas de mensaje con campos tipo `${cliente.nombre}` resueltos por funciones registradas.**
@@ -196,7 +196,7 @@ Contexto de lectura: Huly guarda todo como transacciones sobre un modelo de obje
 ## No conviene copiar (y por qué)
 
 1. **El DSL de contexto completo y el editor de procesos con funciones encadenadas.** Es un lenguaje propio con su analizador y sus pruebas (`plugins/process/src/dslContext.ts`, `plugins/process/docs/dsl.md:10-57`); para una pyme es costo de mantenimiento alto y casi nadie lo usará. Mejor un conjunto cerrado de acciones con parámetros tipados.
-2. **La arquitectura de colas más servicios aparte (Redpanda, servicio de procesos, polling del worker).** Presupone operar varios servicios; TailorSuite corre en Netlify Functions y Supabase. Se debe adaptar a triggers de Postgres, funciones programadas y una tabla de eventos (A5).
+2. **La arquitectura de colas más servicios aparte (Redpanda, servicio de procesos, polling del worker).** Presupone operar varios servicios; Bash Logistics corre en Netlify Functions y Supabase. Se debe adaptar a triggers de Postgres, funciones programadas y una tabla de eventos (A5).
 3. **Modelo de eventos como transacciones sobre un modelo reflexivo (Tx, Card, mixins).** Sirve a su producto flexible, pero no a un ERP con tablas relacionales y RLS; la deduplicación por mapa en memoria (`services/process/src/main.ts:74-88`) tampoco sobrevive a reinicios ni a varias instancias.
 4. **Pila de rollback de 30 niveles basada en transacciones inversas.** Funciona en su modelo de eventos; en contabilidad y facturación lo correcto es un asiento o documento de reverso, no deshacer. Cita: `services/process/src/main.ts:487-503`.
 5. **`FirstWorkingDayAfter` solo salta sábado y domingo.** No consulta festivos aunque el repo modela `PublicHoliday`; para Colombia produciría fechas de cobro en festivo. Cita: `server-plugins/process-resources/src/transform.ts:243-253`; `models/hr/src/index.ts:179-186`.

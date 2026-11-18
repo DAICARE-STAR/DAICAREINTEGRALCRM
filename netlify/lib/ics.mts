@@ -307,7 +307,7 @@ export function buildInvite(
   const lines: string[] = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//TailorSuite//ES',
+    'PRODID:-//Bash Logistics//ES',
     'CALSCALE:GREGORIAN',
     `METHOD:${cancel ? 'CANCEL' : 'REQUEST'}`,
     ...(zona ? VTIMEZONE_BOGOTA : []),

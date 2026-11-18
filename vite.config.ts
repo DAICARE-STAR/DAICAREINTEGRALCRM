@@ -10,7 +10,7 @@ import { defineConfig, loadEnv, type Plugin } from 'vite'
 // Sin VITE_SUPABASE_URL (la CI no tiene .env) se usa el mismo marcador con
 // el que el cliente de Supabase arranca, así que nunca queda abierto.
 const MARCADOR_SUPABASE = 'https://placeholder.supabase.co'
-const NOMBRE_POR_DEFECTO = 'TailorSuite'
+const NOMBRE_POR_DEFECTO = 'Bash Logistics'
 
 // Piso de navegadores: el valor por defecto de Vite 8 (Safari 16.4 / Chrome 111)
 // reescribe las media queries en sintaxis de rango y un iPhone con iOS < 16.4

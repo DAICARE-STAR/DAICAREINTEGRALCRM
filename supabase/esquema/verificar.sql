@@ -5,8 +5,8 @@
 -- instalación. Las comprobaciones que leen las filas de modulos_instalacion
 -- contra el registro src/lib/modulos.ts (slugs, límites, dependencias) las
 -- hace aplicar.mjs después de esta consulta (comprobarModulos, números 9 a
--- 11; la de storage de aquí es la 12), porque una consulta suelta no puede
--- nombrar una tabla que quizá no existe todavía.
+-- 11; las de aquí siguen con la 12 a la 18), porque una consulta suelta no
+-- puede nombrar una tabla que quizá no existe todavía.
 with
 tablas as (
   select c.oid, c.relname, c.relrowsecurity
@@ -59,7 +59,8 @@ nucleo as (
   select unnest(array['roles', 'profiles', 'user_roles', 'connectors', 'security_settings',
                       'api_rate_limits', 'audit_log', 'instalacion', 'modulos_instalacion',
                       'push_subscriptions', 'user_notifications', 'portal_widgets', 'portal_uso',
-                      'ai_usage']) as relname
+                      'ai_usage', 'series', 'estados_entidades', 'estados',
+                      'estados_transiciones']) as relname
 ),
 sin_modulo as (
   select t.relname from tablas t
@@ -98,6 +99,129 @@ listado_storage as (
     and p.cmd in ('SELECT', 'ALL') and p.permissive = 'PERMISSIVE'
     and ('anon' = any (p.roles) or 'public' = any (p.roles)
          or p.qual ~ '^\(?bucket_id = ''[^'']+''::text\)?$')
+),
+hay_user_roles as (
+  select to_regclass('public.user_roles') is not null as existe
+),
+-- Guarda del último administrador (01b-ultimo-administrador.sql): sus
+-- triggers existen y no están desactivados
+guarda_admin as (
+  select n.nombre
+  from unnest(array['user_roles_ultimo_admin', 'user_roles_ultimo_admin_vaciar', 'profiles_ultimo_admin']) as n(nombre)
+  where not exists (
+    select 1 from pg_trigger t
+    join pg_class c on c.oid = t.tgrelid
+    join pg_namespace s on s.oid = c.relnamespace
+    where s.nspname = 'public' and t.tgname = n.nombre and t.tgenabled <> 'D'
+  )
+),
+-- Exportar del CRM (21c-crm-exportar.sql), si el CRM está instalado:
+-- exige exportar_crm, no es security definer, no toca salud y devuelve un
+-- solo jsonb (un conjunto de filas lo corta el «Max rows» de PostgREST)
+hay_crm as (
+  select to_regprocedure('public.crm_buscar(text,text,text,text,uuid,text,boolean,integer,integer)') is not null as existe
+),
+exportar_crm as (
+  select p.prosecdef, p.prosrc, p.proretset, p.prorettype
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.proname = 'crm_exportar'
+),
+-- Contrato base de tabla (00b-contrato-tabla.sql, PP-DEC-23): toda tabla
+-- con creado_via lleva el trigger zz_contrato_sellar activo y ningún
+-- trigger BEFORE de nombre posterior (Postgres los dispara por orden de
+-- nombre: uno posterior podría reescribir lo sellado), y con el CRM
+-- instalado lo tienen cuentas, contactos y actividades (21d-crm-contrato.sql)
+hay_contrato as (
+  select to_regprocedure('public.contrato_sellar()') is not null
+     and to_regprocedure('public.contrato_aplicar(regclass,text[])') is not null as existe
+),
+sin_contrato as (
+  select t.relname
+  from tablas t
+  where (exists (select 1 from pg_attribute a where a.attrelid = t.oid and a.attname = 'creado_via' and not a.attisdropped)
+         or ((select existe from hay_crm) and t.relname in ('crm_cuentas', 'crm_contactos', 'crm_actividades')))
+    and (not exists (
+      select 1 from pg_trigger g
+      where g.tgrelid = t.oid and g.tgname = 'zz_contrato_sellar' and not g.tgisinternal and g.tgenabled <> 'D'
+        and g.tgfoid = to_regprocedure('public.contrato_sellar()')
+    ) or exists (
+      select 1 from pg_trigger o
+      where o.tgrelid = t.oid and not o.tgisinternal and (o.tgtype::int & 2) <> 0
+        and o.tgname > 'zz_contrato_sellar'::name
+    ))
+),
+-- Moneda como par (PP-DEC-24): cada columna public.importe tiene al lado
+-- <columna>_moneda de tipo public.codigo_moneda
+importes_sin_moneda as (
+  select t.relname || '.' || a.attname as columna
+  from tablas t
+  join pg_attribute a on a.attrelid = t.oid and not a.attisdropped
+  where a.atttypid = to_regtype('public.importe')
+    and not exists (
+      select 1 from pg_attribute m
+      where m.attrelid = t.oid and m.attname = a.attname || '_moneda' and not m.attisdropped
+        and m.atttypid = to_regtype('public.codigo_moneda')
+    )
+),
+-- Numeración (09b-numeracion.sql, PP-DEC-25): la API (tampoco la service
+-- role) no escribe actual ni periodo ni ejecuta series_siguiente, que es
+-- security definer con search_path y lock_timeout, y ninguna secuencia
+-- serie_* tiene grants
+numeracion as (
+  select distinct 'series.' || g.column_name || ' escribible por ' || g.grantee as motivo
+  from information_schema.column_privileges g
+  where g.table_schema = 'public' and g.table_name = 'series' and g.column_name in ('actual', 'periodo')
+    and g.grantee in ('anon', 'authenticated', 'service_role') and g.privilege_type not in ('SELECT', 'REFERENCES')
+  union all
+  select 'series_siguiente ejecutable por ' || r.rol
+  from unnest(array['anon', 'authenticated']) as r(rol)
+  where has_function_privilege(r.rol, to_regprocedure('public.series_siguiente(text,date)'), 'execute')
+  union all
+  select 'series_siguiente sin security definer, search_path o lock_timeout'
+  from pg_proc p
+  where p.oid = to_regprocedure('public.series_siguiente(text,date)')
+    and (not p.prosecdef
+         or not exists (select 1 from unnest(p.proconfig) c where c like 'search_path=%')
+         or not ('lock_timeout=2s' = any (coalesce(p.proconfig, '{}'))))
+  union all
+  select distinct 'secuencia ' || c.relname || ' con grants a la API'
+  from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+  cross join lateral aclexplode(c.relacl) x
+  where n.nspname = 'public' and c.relkind = 'S' and c.relname like 'serie\_%'
+    and (x.grantee = 0 or x.grantee in (select oid from pg_roles where rolname in ('anon', 'authenticated', 'service_role')))
+),
+-- Máquina de estados (09c-estados.sql, PP-DEC-26): catálogo de solo
+-- lectura para la API, aplicar_transicion security invoker con
+-- search_path, estados_registrar solo del dueño y cada tabla de
+-- estados_entidades con su trigger zy_estados_guardia activo. La lista se
+-- lee con query_to_xml y una consulta fija, solo si la tabla existe: una
+-- consulta suelta no puede nombrar una tabla que quizá no existe
+-- (PP-DEC-16); la consulta no lleva texto de fuera.
+maquina_estados as (
+  select distinct g.table_name || ' escribible por ' || g.grantee as motivo
+  from information_schema.role_table_grants g
+  where g.table_schema = 'public' and g.table_name in ('estados_entidades', 'estados', 'estados_transiciones')
+    and g.grantee in ('anon', 'authenticated') and g.privilege_type <> 'SELECT'
+  union all
+  select 'aplicar_transicion es security definer o no tiene search_path'
+  from pg_proc p
+  where p.oid = to_regprocedure('public.aplicar_transicion(text,uuid,text,text)')
+    and (p.prosecdef or not exists (select 1 from unnest(p.proconfig) c where c like 'search_path=%'))
+  union all
+  select 'estados_registrar ejecutable por ' || r.rol
+  from unnest(array['anon', 'authenticated', 'service_role']) as r(rol)
+  where has_function_privilege(r.rol, to_regprocedure('public.estados_registrar(text,regclass)'), 'execute')
+  union all
+  select 'zy_estados_guardia ausente o desactivada en ' || x.tabla::text
+  from unnest(case when to_regclass('public.estados_entidades') is null then '{}'::xml[]
+                   else xpath('/table/row/t/text()', query_to_xml(
+                     'select e.tabla::text as t from public.estados_entidades e
+                       where not exists (select 1 from pg_catalog.pg_trigger g
+                                          where g.tgrelid = e.tabla and g.tgname = ''zy_estados_guardia''
+                                            and not g.tgisinternal and g.tgenabled in (''O'', ''A''))',
+                     false, false, '')) end) as x(tabla)
 )
 select orden, comprobacion, estado, detalle from (
   select 1 as orden,
@@ -168,5 +292,62 @@ select orden, comprobacion, estado, detalle from (
          else 'DIFIERE' end,
     case when not (select existe from hay_storage) then 'no existe storage.objects'
          else coalesce((select string_agg(policyname, ', ' order by policyname) from listado_storage), '') end
+  union all
+  select 13,
+    'guarda del último administrador en user_roles y profiles',
+    case when not (select existe from hay_user_roles) then 'OMITIDO'
+         when (select count(*) from guarda_admin) = 0 then 'OK'
+         else 'DIFIERE' end,
+    case when not (select existe from hay_user_roles) then 'falta 00-base.sql'
+         else coalesce('faltan o están desactivados: ' || (select string_agg(nombre, ', ' order by nombre) from guarda_admin), '') end
+  union all
+  select 14,
+    'crm_exportar exige exportar_crm, sin security definer ni salud, devuelve un jsonb',
+    case when not (select existe from hay_crm) then 'OMITIDO'
+         when (select count(*) from exportar_crm) = 0 then 'DIFIERE'
+         when exists (select 1 from exportar_crm
+                       where prosecdef or prosrc ~* 'salud'
+                          or proretset or prorettype <> 'jsonb'::regtype
+                          or position('has_perm(''exportar_crm'')' in prosrc) = 0) then 'DIFIERE'
+         else 'OK' end,
+    case when not (select existe from hay_crm) then 'el CRM no está instalado (21-crm.sql)'
+         when (select count(*) from exportar_crm) = 0 then 'falta 21c-crm-exportar.sql (modulos.mjs --activar crm)'
+         else '' end
+  union all
+  select 15,
+    'tablas de negocio con el contrato base y el trigger zz_contrato_sellar el último',
+    case when not (select existe from hay_contrato) then 'DIFIERE'
+         when (select count(*) from sin_contrato) = 0 then 'OK'
+         else 'DIFIERE' end,
+    case when not (select existe from hay_contrato) then 'falta 00b-contrato-tabla.sql (npm run instalar)'
+         when (select count(*) from sin_contrato) = 0 then ''
+         else 'sin zz_contrato_sellar o con un trigger BEFORE posterior (con el CRM, falta 21d-crm-contrato.sql: modulos.mjs --activar crm): '
+              || (select string_agg(relname, ', ' order by relname) from sin_contrato) end
+  union all
+  select 16,
+    'importes con su columna de moneda',
+    case when to_regtype('public.importe') is null then 'OMITIDO'
+         when (select count(*) from importes_sin_moneda) = 0 then 'OK'
+         else 'DIFIERE' end,
+    case when to_regtype('public.importe') is null then 'falta 00b-contrato-tabla.sql'
+         else coalesce((select string_agg(columna, ', ' order by columna) from importes_sin_moneda), '') end
+  union all
+  select 17,
+    'numeración: contador sin escritura para la API y series_siguiente solo del servidor',
+    case when to_regclass('public.series') is null or to_regprocedure('public.series_siguiente(text,date)') is null then 'DIFIERE'
+         when (select count(*) from numeracion) = 0 then 'OK'
+         else 'DIFIERE' end,
+    case when to_regclass('public.series') is null or to_regprocedure('public.series_siguiente(text,date)') is null
+           then 'falta 09b-numeracion.sql (npm run instalar)'
+         else coalesce((select string_agg(motivo, ', ' order by motivo) from numeracion), '') end
+  union all
+  select 18,
+    'máquina de estados: catálogo de solo lectura, aplicar_transicion sin security definer y guardas activas',
+    case when to_regclass('public.estados_entidades') is null or to_regprocedure('public.aplicar_transicion(text,uuid,text,text)') is null then 'DIFIERE'
+         when (select count(*) from maquina_estados) = 0 then 'OK'
+         else 'DIFIERE' end,
+    case when to_regclass('public.estados_entidades') is null or to_regprocedure('public.aplicar_transicion(text,uuid,text,text)') is null
+           then 'falta 09c-estados.sql (npm run instalar)'
+         else coalesce((select string_agg(motivo, ', ' order by motivo) from maquina_estados), '') end
 ) v
 order by orden;

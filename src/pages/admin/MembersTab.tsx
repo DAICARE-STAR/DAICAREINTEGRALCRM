@@ -10,6 +10,7 @@ import {
   fetchConnectors,
   fetchProfiles,
   fetchRoles,
+  mensajeErrorRol,
   removeUserRole,
   toolPermKey,
   updateMemberName,
@@ -151,9 +152,9 @@ export default function MembersTab() {
         void logAction('miembro.rol', `Asignó el rol "${role}" a ${p.full_name ?? p.id}`, 'profiles', p.id)
       }
       load()
-    } catch {
+    } catch (e) {
       setProfiles(previous)
-      setError(has ? 'No se pudo quitar el rol.' : 'No se pudo asignar el rol (¿permisos?).')
+      setError(mensajeErrorRol(e, has))
     } finally {
       setSavingId(null)
     }

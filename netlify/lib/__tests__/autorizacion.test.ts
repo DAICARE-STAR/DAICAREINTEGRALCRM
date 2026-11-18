@@ -58,7 +58,7 @@ type OpcionesFalso = {
 const PERFIL_BASE: Perfil = {
   full_name: 'Ana Prueba',
   user_roles: [
-    { role: 'comercial', roles: { permissions: ['edit_crm', 'app_licitaciones'] } },
+    { role: 'comercial', roles: { permissions: ['edit_crm', 'app_crm'] } },
     { role: 'proyectos', roles: { permissions: ['edit_projects', 'edit_crm'] } },
   ],
 }
@@ -133,7 +133,7 @@ function ctxDe(cliente: SupabaseClient, parcial: Partial<ContextoAuth> = {}): Co
     email: 'ana@empresa.test',
     nombre: 'Ana Prueba',
     roles: ['comercial'],
-    permisos: ['edit_crm', 'app_licitaciones'],
+    permisos: ['edit_crm', 'app_crm'],
     esAdmin: false,
     aal: 'aal1',
     tieneFactor: false,
@@ -214,13 +214,13 @@ describe('evaluarMfa (matriz 2×2)', () => {
 })
 
 describe('puedeVerApp (regla v2: módulo activo y app_<slug>)', () => {
-  const activos = ['nucleo', 'licitaciones', 'ia']
+  const activos = ['nucleo', 'crm', 'ia']
 
   it('módulo activo: lo ve quien tiene app_<slug> y el admin', () => {
-    expect(puedeVerApp(activos, 'licitaciones', ['x'], ['app_licitaciones'])).toBe(true)
-    expect(puedeVerApp(activos, 'licitaciones', ['x'], ['edit_crm'])).toBe(false)
-    expect(puedeVerApp(activos, 'licitaciones', ['admin'], [])).toBe(true)
-    expect(puedeVerApp(activos, 'licitaciones', null, null)).toBe(false)
+    expect(puedeVerApp(activos, 'crm', ['x'], ['app_crm'])).toBe(true)
+    expect(puedeVerApp(activos, 'crm', ['x'], ['edit_crm'])).toBe(false)
+    expect(puedeVerApp(activos, 'crm', ['admin'], [])).toBe(true)
+    expect(puedeVerApp(activos, 'crm', null, null)).toBe(false)
   })
 
   it('un módulo sin app_<slug> (ia) lo ve cualquier miembro', () => {
@@ -235,8 +235,8 @@ describe('puedeVerApp (regla v2: módulo activo y app_<slug>)', () => {
 })
 
 describe('cumpleRequisitos', () => {
-  const miembro = { roles: ['comercial'], permisos: ['edit_crm', 'app_licitaciones'], esAdmin: false }
-  const activos = ['nucleo', 'directorio', 'licitaciones']
+  const miembro = { roles: ['comercial'], permisos: ['edit_crm', 'app_crm'], esAdmin: false }
+  const activos = ['nucleo', 'directorio', 'crm']
 
   it('sin requisitos basta estar autenticado', () => {
     expect(cumpleRequisitos(miembro, {})).toBe(true)
@@ -254,14 +254,14 @@ describe('cumpleRequisitos', () => {
   })
 
   it('apps: basta ver una', () => {
-    expect(cumpleRequisitos(miembro, { apps: ['directorio', 'licitaciones'] }, activos)).toBe(true)
+    expect(cumpleRequisitos(miembro, { apps: ['directorio', 'crm'] }, activos)).toBe(true)
     expect(cumpleRequisitos(miembro, { apps: ['directorio'] }, activos)).toBe(false)
   })
 
   it('permiso y apps juntos se exigen ambos', () => {
     expect(cumpleRequisitos(miembro, { permiso: 'edit_crm', apps: ['directorio'] }, activos)).toBe(false)
-    expect(cumpleRequisitos(miembro, { permiso: 'edit_crm', apps: ['licitaciones'] }, activos)).toBe(true)
-    expect(cumpleRequisitos(miembro, { permiso: 'view_billing', apps: ['licitaciones'] }, activos)).toBe(false)
+    expect(cumpleRequisitos(miembro, { permiso: 'edit_crm', apps: ['crm'] }, activos)).toBe(true)
+    expect(cumpleRequisitos(miembro, { permiso: 'view_billing', apps: ['crm'] }, activos)).toBe(false)
   })
 
   it('soloAdmin rechaza a quien no es admin', () => {
@@ -396,7 +396,7 @@ describe('autenticar', () => {
     expect(r.ctx.email).toBe('ana@empresa.test')
     expect(r.ctx.nombre).toBe('Ana Prueba')
     expect(r.ctx.roles).toEqual(['comercial', 'proyectos'])
-    expect([...r.ctx.permisos].sort()).toEqual(['app_licitaciones', 'edit_crm', 'edit_projects'])
+    expect([...r.ctx.permisos].sort()).toEqual(['app_crm', 'edit_crm', 'edit_projects'])
     expect(r.ctx.esAdmin).toBe(false)
     expect(r.ctx.admin).toBe(f.cliente)
     // Lee el perfil del usuario que validó Auth, con roles y permisos
@@ -506,7 +506,7 @@ describe('exigir', () => {
   const modulos = [
     { slug: 'nucleo', activo: true },
     { slug: 'directorio', activo: true },
-    { slug: 'licitaciones', activo: true },
+    { slug: 'crm', activo: true },
     { slug: 'calendario', activo: false },
   ]
 
@@ -524,14 +524,14 @@ describe('exigir', () => {
 
   it('soloAdmin → 403 sin leer los módulos', async () => {
     const f = clienteFalso({ modulos })
-    const r = await exigir(ctxDe(f.cliente), { soloAdmin: true, apps: ['licitaciones'] })
+    const r = await exigir(ctxDe(f.cliente), { soloAdmin: true, apps: ['crm'] })
     expect(r).toMatchObject({ status: 403, codigo: 'sin_permiso' })
     expect(f.from).not.toHaveBeenCalled()
   })
 
   it('apps: lee modulos_instalacion y aplica puedeVerApp', async () => {
     const f = clienteFalso({ modulos })
-    expect(await exigir(ctxDe(f.cliente), { apps: ['directorio', 'licitaciones'] })).toBeNull()
+    expect(await exigir(ctxDe(f.cliente), { apps: ['directorio', 'crm'] })).toBeNull()
     expect(f.selects).toEqual([['modulos_instalacion', 'slug, activo, limites']])
     const r = await exigir(ctxDe(f.cliente), { apps: ['directorio'] })
     expect(r).toMatchObject({ status: 403, codigo: 'sin_permiso' })
@@ -540,11 +540,11 @@ describe('exigir', () => {
   it('los módulos se cachean 60 s', async () => {
     vi.useFakeTimers({ now: Date.UTC(2020, 0, 1) })
     const f = clienteFalso({ modulos })
-    await exigir(ctxDe(f.cliente), { apps: ['licitaciones'] })
-    await exigir(ctxDe(f.cliente), { apps: ['licitaciones'] })
+    await exigir(ctxDe(f.cliente), { apps: ['crm'] })
+    await exigir(ctxDe(f.cliente), { apps: ['crm'] })
     expect(f.from).toHaveBeenCalledTimes(1)
     vi.advanceTimersByTime(61_000)
-    await exigir(ctxDe(f.cliente), { apps: ['licitaciones'] })
+    await exigir(ctxDe(f.cliente), { apps: ['crm'] })
     expect(f.from).toHaveBeenCalledTimes(2)
     vi.useRealTimers()
   })
@@ -558,7 +558,7 @@ describe('exigir', () => {
 
   it('si no se pueden leer los módulos se deniega (500), nunca se abre', async () => {
     const f = clienteFalso({ errorModulos: true })
-    const r = await exigir(ctxDe(f.cliente), { apps: ['licitaciones'] })
+    const r = await exigir(ctxDe(f.cliente), { apps: ['crm'] })
     expect(r).toMatchObject({ status: 500, codigo: 'error_base' })
   })
 })
@@ -567,15 +567,15 @@ describe('exigir con modulo', () => {
   beforeEach(() => reiniciarCacheModulos())
   const modulos = [
     { slug: 'nucleo', activo: true },
-    { slug: 'licitaciones', activo: true },
+    { slug: 'crm', activo: true },
     { slug: 'calendario', activo: false },
   ]
 
   it('módulo activo pasa al resto de requisitos', async () => {
     const f = clienteFalso({ modulos })
-    expect(await exigir(ctxDe(f.cliente), { modulo: 'licitaciones' })).toBeNull()
+    expect(await exigir(ctxDe(f.cliente), { modulo: 'crm' })).toBeNull()
     expect(await exigir(ctxDe(f.cliente), { modulo: 'nucleo' })).toBeNull()
-    const r = await exigir(ctxDe(f.cliente), { modulo: 'licitaciones', permiso: 'view_billing' })
+    const r = await exigir(ctxDe(f.cliente), { modulo: 'crm', permiso: 'view_billing' })
     expect(r).toMatchObject({ status: 403, codigo: 'sin_permiso' })
   })
 
@@ -587,7 +587,7 @@ describe('exigir con modulo', () => {
 
   it('lectura fallida → 500 error_base', async () => {
     const f = clienteFalso({ errorModulos: true })
-    expect(await exigir(ctxDe(f.cliente), { modulo: 'licitaciones' })).toMatchObject({ status: 500, codigo: 'error_base' })
+    expect(await exigir(ctxDe(f.cliente), { modulo: 'crm' })).toMatchObject({ status: 500, codigo: 'error_base' })
   })
 
   it('el admin con el módulo inactivo también queda denegado', async () => {

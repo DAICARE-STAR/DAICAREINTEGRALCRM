@@ -1,13 +1,13 @@
 # platform
 
-Ficha para el equipo de TailorSuite. Fuente: los siete informes de `crudo/platform-*.md` y sus dos verificaciones (160 elementos revisados: 140 confirmados, 19 corregidos, 1 descartado). Aquí entra solo lo confirmado o lo corregido, con la corrección aplicada; el elemento descartado (que Huly no aplica permisos por campo) no entra. Todas las citas son relativas a `C:\Users\enzov\IA\personal\investigacion-erp\platform`. Licencia EPL-2.0 (`LICENSE`): se describen ideas y modelos con palabras propias; no se copia código.
+Ficha para el equipo de Bash Logistics. Fuente: los siete informes de `crudo/platform-*.md` y sus dos verificaciones (160 elementos revisados: 140 confirmados, 19 corregidos, 1 descartado). Aquí entra solo lo confirmado o lo corregido, con la corrección aplicada; el elemento descartado (que Huly no aplica permisos por campo) no entra. Todas las citas son relativas a `C:\Users\enzov\IA\personal\investigacion-erp\platform`. Licencia EPL-2.0 (`LICENSE`): se describen ideas y modelos con palabras propias; no se copia código.
 
 ## En resumen
 
 - Qué es: Huly Platform, una plataforma de proyectos, chat, documentos, CRM ligero, reclutamiento y RR. HH. básico, construida sobre un motor propio de documentos con transacciones, clases y mixins. No es un ERP: no tiene ventas, compras, facturación, cartera, contabilidad, existencias ni nómina.
 - En qué es fuerte: la mecánica transversal. Módulos que se encienden con una fila de datos, permisos como datos (con prohibiciones y coincidencia sobre la operación), un motor de procesos con aprobaciones, temporizadores y registro de ejecución, y vistas y filtros guardados que recogen solos los campos personalizados.
 - También: el patrón de «persona única con roles superpuestos» (cliente, candidato, empleado sobre el mismo contacto) y la detección de duplicados por canal antes de guardar.
-- Qué le sirve a TailorSuite: piezas transversales que ningún módulo planeado puede postergar (aprobación genérica, bloqueo en aprobación, máquina de estados, temporizadores, enlace público, exportación, vistas guardadas) y varios cierres del CRM 0.2 (duplicados, fusión, canales, colaboradores).
+- Qué le sirve a Bash Logistics: piezas transversales que ningún módulo planeado puede postergar (aprobación genérica, bloqueo en aprobación, máquina de estados, temporizadores, enlace público, exportación, vistas guardadas) y varios cierres del CRM 0.2 (duplicados, fusión, canales, colaboradores).
 - Qué no sirve: el motor de clases y transacciones, la pila de más de 30 servicios, la seguridad solo en middleware, la multiempresa por columna y el DSL de procesos.
 
 ## Arquitectura y modelo de módulos
@@ -26,7 +26,7 @@ Ficha para el equipo de TailorSuite. Fuente: los siete informes de `crudo/platfo
 
 **Pila.** CockroachDB como base, Elasticsearch, Redpanda, MinIO y unos 30 servicios (`ARCHITECTURE_OVERVIEW.md:20-37,76-78`; comprobado en esta ficha).
 
-**Frente a TailorSuite.** `src/lib/modulos.ts` ya va por delante en lo que Huly no tiene:
+**Frente a Bash Logistics.** `src/lib/modulos.ts` ya va por delante en lo que Huly no tiene:
 
 1. Dependencias duras (`depende`) e integraciones opcionales (`integra`) declaradas, con `validarActivacion` y desactivación en cascada; Huly no tiene guarda alguna.
 2. El núcleo no se desactiva (`modulos_instalacion_nucleo_activo` en `04-instalacion-modulos.sql`), igual que `system: true`.
@@ -41,7 +41,7 @@ Ficha para el equipo de TailorSuite. Fuente: los siete informes de `crudo/platfo
 
 - El modelo comercial es mínimo. El embudo es un espacio y el lead es una tarea con título, inicio, estado, responsable y cliente, sin monto, moneda ni probabilidad (`models/lead/src/types.ts:55-90`, `plugins/lead/src/index.ts:55-61`). No hay cotización, pedido, puntuación ni pronóstico.
 - El cliente es un rol a demanda: al crear el primer lead de un contacto se le agrega el mixin `Customer` si no lo tenía. No hay tabla de prospectos ni paso de conversión (`plugins/lead-resources/src/components/CreateLead.svelte:115-125`).
-- Etapas como datos con categoría fija. Son cinco categorías (sin iniciar, por hacer, activa, ganada, perdida), no cuatro como decía un informe; solo ganada y perdida cierran (`models/task/src/index.ts:380-443`, `plugins/task/src/index.ts:272-279`). Un disparador marca `isDone`: al crear solo si la etapa es de cierre; reabre únicamente en un cambio de etapa (`server-plugins/task-resources/src/index.ts:23-54`). TailorSuite ya tiene el equivalente: el campo `cierre` (`ganada`, `perdida` o nulo) en el catálogo de etapas de `crm_ajustes()`.
+- Etapas como datos con categoría fija. Son cinco categorías (sin iniciar, por hacer, activa, ganada, perdida), no cuatro como decía un informe; solo ganada y perdida cierran (`models/task/src/index.ts:380-443`, `plugins/task/src/index.ts:272-279`). Un disparador marca `isDone`: al crear solo si la etapa es de cierre; reabre únicamente en un cambio de etapa (`server-plugins/task-resources/src/index.ts:23-54`). Bash Logistics ya tiene el equivalente: el campo `cierre` (`ganada`, `perdida` o nulo) en el catálogo de etapas de `crm_ajustes()`.
 - Duplicados antes de guardar: busca contactos con el mismo canal (proveedor y valor) y, solo si no hubo coincidencia de canal, por nombre aproximado. El canal suma 2 y el nombre exacto 1. Avisa sin bloquear y muestra el primero (`plugins/contact/src/utils.ts:169-243`, `plugins/lead-resources/src/components/CreateCustomer.svelte:162-169,277-283`).
 - Fusión campo por campo: elige qué valor gana, mueve canales e identidades y reescribe todas las referencias, en lotes de 100 y fuera de la transacción de canales. Solo aparece para empleados (`plugins/contact-resources/src/components/MergePersons.svelte:122-179,273-346`, `plugins/contact-resources/src/visibilityTester.ts:26-31`, `models/contact/src/index.ts:1201-1225`).
 - Canales como filas hijas del contacto (proveedor, valor, último mensaje), con los proveedores como catálogo (`models/contact/src/index.ts:167-182,763-773`). Las identidades (correo, teléfono, cuentas externas) tienen un id propio distinto del valor, verificación y borrado lógico, así que cambiar un correo no rompe el historial (`foundations/core/packages/core/src/classes.ts:1013-1026`).
@@ -103,7 +103,7 @@ Ficha para el equipo de TailorSuite. Fuente: los siete informes de `crudo/platfo
 - Secretos de integración en una tabla aparte, uno por clave (`server/account/src/types.ts:200-217`). Corrección: el `Integration` del espacio de trabajo guarda `value` en texto plano (`models/setting/src/index.ts:60-68`).
 - Textos por módulo e idioma con respaldo a inglés y formato ICU (`foundations/core/packages/platform/src/i18n.ts:35,141-170`, `plugins/contact-assets/lang/es.json:1-12`).
 
-## Propuestas para TailorSuite
+## Propuestas para Bash Logistics
 
 Orden: valor y, dentro del mismo valor, esfuerzo. «Fase» remite al registro: CRM es la 0.2; los ERP planeados van de la 0.7 a la 0.11 según `src/lib/modulos.ts`. Cuando una propuesta coincide con una de `odoo.md`, la nota lo dice y se queda con lo que añade Huly.
 
@@ -142,7 +142,7 @@ Orden: valor y, dentro del mismo valor, esfuerzo. «Fase» remite al registro: C
   - Complementa ODO-19 (avisar también entre las archivadas y ofrecer reactivar).
   - La función no mira `crm_salud` (PP-DEC-19).
 - **PLA-02.** Va como modos del filtro común del shell. «Vencido» y «sin fecha» son lo primero que pide cartera; en el CRM sirven sobre la fecha de la próxima actividad si llega ODO-10.
-- **PLA-03.** En Huly el bloqueo es una marca de solo lectura que el flujo revierte. En TailorSuite lo hace cumplir la base (una política de UPDATE con `not bloqueado` o un disparador), no la pantalla. Encaja con ODO-05 (escritura por estado).
+- **PLA-03.** En Huly el bloqueo es una marca de solo lectura que el flujo revierte. En Bash Logistics lo hace cumplir la base (una política de UPDATE con `not bloqueado` o un disparador), no la pantalla. Encaja con ODO-05 (escritura por estado).
 - **PLA-04.** Huly no resuelve que Excel en español abra bien el archivo. El BOM y el `;` son lo que falta.
   - La exportación pasa por el permiso de exportar de ODO-08.
   - Nunca incluye `crm_salud` (PP-DEC-19).
@@ -162,14 +162,14 @@ Orden: valor y, dentro del mismo valor, esfuerzo. «Fase» remite al registro: C
   - Opción b: las cuentas pasan al núcleo. Reabriría PP-DEC-18, que las deja en el módulo `crm` con tablas `crm_*`. Solo vale la pena si un cliente quiere compras sin CRM.
   - El glosario prohíbe «cliente» como nombre de la cuenta en el código. El rol se llamaría «rol de la cuenta» (valores `cliente`, `proveedor`), y hay que añadirlo al glosario.
   - Los empleados no entran aquí: sus datos no deben aparecer en la lista del CRM.
-- **PLA-11.** Hoy `roles.permissions` es aditivo y `has_perm` da verdadero a un administrador por serlo. Una columna `prohibiciones` haría que `has_perm` devuelva falso si cualquier rol del usuario prohíbe la clave. Hay que decidir si la prohibición alcanza al administrador; en salud ya existe un precedente de excepción a esa regla (`crm_perm_explicito`, PP-DEC-19). Huly no fija precedencia, así que la regla «denegar gana» es de TailorSuite.
+- **PLA-11.** Hoy `roles.permissions` es aditivo y `has_perm` da verdadero a un administrador por serlo. Una columna `prohibiciones` haría que `has_perm` devuelva falso si cualquier rol del usuario prohíbe la clave. Hay que decidir si la prohibición alcanza al administrador; en salud ya existe un precedente de excepción a esa regla (`crm_perm_explicito`, PP-DEC-19). Huly no fija precedencia, así que la regla «denegar gana» es de Bash Logistics.
 - **PLA-12.** Los avisos salen por `user_notifications` del núcleo. Para que «seguida» exista hace falta una tabla de seguidores; quien crea y el responsable entran solos.
 - **PLA-13.** `crm_cambios` ya guarda campos, antes y después. Falta la lectura legible por campo y su mezcla con las actividades en una sola lista. Nada de salud entra, como ya fija PP-DEC-19.
 - **PLA-14.** Solo hace falta si el tablero de etapas permite ordenar a mano dentro de una columna. Se escribe una función propia; no se copia la biblioteca.
 - **PLA-15.** Escapar los valores sustituidos es obligatorio: Huly mete el enlace como HTML crudo (`server-plugins/notification-resources/src/index.ts:230`). El catálogo de marcadores es por entidad y nunca incluye campos de salud.
 - **PLA-16.** Es el complemento de ODO-25. Las reglas que fallan no se reintentan solas, porque podrían repetir un correo o una tarea. El tope de encadenamiento evita bucles entre reglas.
 - **PLA-17.** Coincide con ODO-24 en el tipo declarativo. Huly añade la simplicidad del factor firmado: el saldo es una suma. En Huly los tipos están fijos en el código; aquí son una tabla de la instalación.
-- **PLA-18.** Es el complemento de ODO-18 (simulacro, mapeo recordado, id externo, que en TailorSuite es `crm_vinculos_externos`). Huly enseña lo que no hay que hacer: abortar al primer error.
+- **PLA-18.** Es el complemento de ODO-18 (simulacro, mapeo recordado, id externo, que en Bash Logistics es `crm_vinculos_externos`). Huly enseña lo que no hay que hacer: abortar al primer error.
 - **PLA-19.** `api_rate_limits` y `rate_limit_hit()` ya existen en `01-seguridad.sql` y sirven para la cuota. Huly guarda el JWT; aquí se guarda el hash. El token actúa con el rol de su dueño para que la RLS siga aplicando, y el de solo lectura se rechaza en toda escritura.
 - **PLA-20.** Hoy `crm_cuentas` y `crm_contactos` tienen un solo `telefono` y un solo `email`. El cambio va en un archivo de esquema nuevo (PP-DEC-02), con migración de las columnas actuales a filas principales. Es la base de PLA-01.
 - **PLA-21.** Las tablas que se reapuntan son `crm_contactos`, `crm_actividades`, `crm_vinculos_externos`, `crm_consentimientos` y las de módulos futuros.
@@ -188,11 +188,11 @@ Orden: valor y, dentro del mismo valor, esfuerzo. «Fase» remite al registro: C
 - **El motor de documentos con clases, mixins y transacciones como base de datos**, con CockroachDB, Elasticsearch, Redpanda, MinIO y unos 30 servicios (`ARCHITECTURE_OVERVIEW.md:20-37,76-78`). Choca con Postgres más RLS, con «sin servidores propios» (PP-DEC-03) y con una instalación por cliente (PP-DEC-01). De Huly se toman ideas, no la mecánica.
 - **Multiempresa por columna `workspaceId`** (`foundations/server/packages/postgres/src/storage.ts:342`). Contradice PP-DEC-01.
 - **Activar módulos desde la interfaz del dueño** (`foundations/server/packages/middleware/src/pluginConfig.ts:60`, `plugins/setting-resources/src/components/Configure.svelte:32-33`). Contradice PP-DEC-04: activa quien instala, con el script.
-- **Apagar un módulo solo en la interfaz** (`models/all/src/index.ts:157-168`). En TailorSuite la RLS restrictiva `modulo_<slug>` bloquea también los datos; no se debe aflojar.
+- **Apagar un módulo solo en la interfaz** (`models/all/src/index.ts:157-168`). En Bash Logistics la RLS restrictiva `modulo_<slug>` bloquea también los datos; no se debe aflojar.
 - **Semillas que corren aunque el módulo esté apagado** (`models/all/src/migration.ts:78`). Si un módulo siembra datos, que sea al activarlo.
 - **Seguridad solo en middleware, con mapas en memoria del servidor** (`server/server-pipeline/src/pipeline.ts:142-167`, `foundations/server/packages/middleware/src/spacePermissions.ts:46-60`, comprobado en esta ficha). Sin RLS no hay defensa en profundidad, y la memoria compartida no existe en Netlify Functions.
 - **Concatenar el id de la cuenta dentro del SQL de seguridad** (`storage.ts:636-644`, comprobado en esta ficha). Todo valor va como parámetro.
-- **Lectura sin filtro para Admin y DocGuest** (`storage.ts:627-633`). El acceso de soporte en TailorSuite debe ser explícito y auditado.
+- **Lectura sin filtro para Admin y DocGuest** (`storage.ts:627-633`). El acceso de soporte en Bash Logistics debe ser explícito y auditado.
 - **Autorización de RR. HH. solo en el cliente** (`plugins/hr-resources/src/components/ScheduleView.svelte:120-165`), **tipos de ausencia fijados en el código** (`models/hr/src/index.ts:227-309`), **alta automática de todo empleado activo** (`server-plugins/hr-resources/src/index.ts:279-303`) y **miembros de departamento materializados** (`:104-274`).
 - **Cargo como texto libre y oculto** (`models/contact/src/index.ts:255-281`). Para reportar, el cargo debe ser un catálogo.
 - **Lead heredado de una tarea, sin monto, moneda, probabilidad ni motivo de pérdida** (`models/lead/src/types.ts:69-90`). La oportunidad de ODO-09 debe ser una entidad propia.
@@ -201,7 +201,7 @@ Orden: valor y, dentro del mismo valor, esfuerzo. «Fase» remite al registro: C
 - **El DSL de procesos** con expresiones `${@campo}`, funciones encadenadas y contextos (`plugins/process/docs/dsl.md:10-57`), y **la acción de aprobación como transacción abierta** (`models/request/src/index.ts:71-72`). Se usa un catálogo cerrado de acciones con parámetros tipados.
 - **Pila de deshacer de 30 niveles** (`services/process/src/main.ts:487-503`). En ventas, facturación y contabilidad se revierte con un documento enlazado, no deshaciendo.
 - **Deduplicar eventos con un mapa en memoria de 1000 ids** (`services/process/src/main.ts:70-88`), **un temporizador que reenvía y borra después** (`services/worker/src/worker.ts:81-83`) y **el «primer día hábil» sin festivos** (`server-plugins/process-resources/src/transform.ts:243-253`).
-- **Crear clases y atributos desde el cliente** sin una regla de servidor confirmada sobre quién puede hacerlo (`foundations/server/packages/middleware/src/configuration.ts:39,56-67`). En TailorSuite, crear metadata exige un permiso explícito y queda en `audit_log`.
+- **Crear clases y atributos desde el cliente** sin una regla de servidor confirmada sobre quién puede hacerlo (`foundations/server/packages/middleware/src/configuration.ts:39,56-67`). En Bash Logistics, crear metadata exige un permiso explícito y queda en `audit_log`.
 - **Campos personalizados solo en JSONB y sin índice** (`foundations/server/packages/core/src/domainHelper.ts:46-50`) también para lo transaccional. Facturas, existencias y asientos llevan columnas tipadas; los campos del cliente son extensión, con índice por expresión donde se filtre mucho.
 - **`Integration.value` en texto plano** (`models/setting/src/index.ts:60-68`) y **un secreto compartido único entre servicios** (`ARCHITECTURE_OVERVIEW.md:354,412`, comprobado en esta ficha). Los secretos van cifrados y fuera del alcance del navegador.
 - **Enlace HTML sin escapar en los avisos** (`server-plugins/notification-resources/src/index.ts:230`).
@@ -220,4 +220,4 @@ Orden: valor y, dentro del mismo valor, esfuerzo. «Fase» remite al registro: C
   - Si `parallelExecutionForbidden` funciona: `RunSubProcess` filtra por un campo `done` que `Execution` no tiene (`server-plugins/process-resources/src/functions.ts:499`, `plugins/process/src/index.ts:115-125`); es lectura estática sin ejecutar.
   - Quién pasa un documento controlado a «por revisar» al vencer su intervalo, y quién publica en la fecha planificada: no se encontró.
   - Si el cambio de rol de un miembro deja registro en el servicio de cuentas.
-- **Del lado de TailorSuite.** Se leyeron `src/lib/modulos.ts`, `docs/modulos.md`, el listado de `supabase/esquema`, las tablas y catálogos de `21-crm.sql`, `roles`, `profiles` y `user_roles` de `00-base.sql`, `roles_guard_escalada` y `api_rate_limits` de `01-seguridad.sql`, `audit_log` de `02-auditoria.sql`, `modulos_instalacion` de `04-instalacion-modulos.sql`, el glosario y las decisiones PP-DEC-01 a 20. Igual que se anotó en `odoo.md`, el registro declara archivos de esquema (`10-calendario.sql`, `20-proyectos.sql`, `22-catalogo.sql`, `23-cotizador.sql`, `26-gerencia.sql` y otros) que no están en `supabase/esquema`; las referencias a cotizador, productos y proyectos se apoyan en los nombres de tabla del registro.
+- **Del lado de Bash Logistics.** Se leyeron `src/lib/modulos.ts`, `docs/modulos.md`, el listado de `supabase/esquema`, las tablas y catálogos de `21-crm.sql`, `roles`, `profiles` y `user_roles` de `00-base.sql`, `roles_guard_escalada` y `api_rate_limits` de `01-seguridad.sql`, `audit_log` de `02-auditoria.sql`, `modulos_instalacion` de `04-instalacion-modulos.sql`, el glosario y las decisiones PP-DEC-01 a 20. Igual que se anotó en `odoo.md`, el registro declara archivos de esquema (`10-calendario.sql`, `20-proyectos.sql`, `22-catalogo.sql`, `23-cotizador.sql`, `26-gerencia.sql` y otros) que no están en `supabase/esquema`; las referencias a cotizador, productos y proyectos se apoyan en los nombres de tabla del registro.

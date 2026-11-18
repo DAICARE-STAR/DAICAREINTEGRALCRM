@@ -18,7 +18,7 @@ Hallazgos que cambian una conclusión de los informes:
 
 ## monica-permisos
 
-### Adoptable para TailorSuite
+### Adoptable para Bash Logistics
 
 | Elemento | Veredicto | Cita comprobada | Nota |
 |---|---|---|---|
@@ -52,7 +52,7 @@ Comprobados además, sin discrepancia: hechos 1 (booleanos en `create_users_tabl
 
 ## monica-integracion
 
-### Adoptable para TailorSuite
+### Adoptable para Bash Logistics
 
 | Elemento | Veredicto | Cita comprobada | Nota |
 |---|---|---|---|

@@ -56,3 +56,51 @@ export function fmtDinero(n: unknown, moneda?: string | null, decimales = 0): st
   const sim = MONEDAS[cod]
   return `${cod}${sim ? ` ${sim}` : ''} ${fmtNumero(v, decimales)}`
 }
+
+// Importe con moneda (PP-DEC-24, docs/esquema.md): en la base son dos
+// columnas, <col> public.importe (numeric(18,4)) y <col>_moneda
+// public.codigo_moneda, que van las dos o ninguna. Estas utilidades siguen
+// las reglas de la base para avisar antes de escribir.
+
+/** Código ISO 4217: tres letras mayúsculas, como el dominio codigo_moneda. */
+export function esCodigoMoneda(c: unknown): c is string {
+  return typeof c === 'string' && /^[A-Z]{3}$/.test(c)
+}
+
+const vacio = (v: unknown) => v === null || v === undefined || (typeof v === 'string' && v.trim() === '')
+
+/**
+ * Valida un par importe y moneda: null si es válido (también los dos
+ * vacíos) o el motivo para mostrar. El importe es un número o el texto
+ * numérico que entrega la API («1234.5»), con hasta 4 decimales y 14 cifras
+ * enteras. Un número se redondea a 4 decimales, como al guardarse (0.1 + 0.2);
+ * del texto se cuentan las cifras, porque un número JSON solo es exacto
+ * hasta unas 15 (Number('99999999999999.9999') ya es 1e14).
+ */
+export function validarImporte(importe: unknown, moneda: unknown): string | null {
+  if (vacio(importe) && vacio(moneda)) return null
+  if (vacio(moneda)) return 'Falta la moneda del importe.'
+  if (vacio(importe)) return 'Falta el importe.'
+  if (!esCodigoMoneda(moneda)) return 'La moneda va en tres letras mayúsculas (COP).'
+  let demasiado: boolean
+  let decimalesOk = true
+  if (typeof importe === 'number') {
+    if (!Number.isFinite(importe)) return 'El importe no es un número válido.'
+    demasiado = Math.abs(Number(importe.toFixed(4))) >= 1e14
+  } else if (typeof importe === 'string' && /^-?\d+(\.\d+)?$/.test(importe.trim())) {
+    const [enteros, decimales = ''] = importe.trim().replace(/^-/, '').split('.')
+    demasiado = enteros.replace(/^0+(?=\d)/, '').length > 14
+    decimalesOk = decimales.length <= 4
+  } else {
+    return 'El importe no es un número válido.'
+  }
+  if (demasiado) return 'El importe es demasiado grande.'
+  if (!decimalesOk) return 'El importe admite hasta 4 decimales.'
+  return null
+}
+
+/** Un importe con su moneda («COP $ 1.234.567»); '—' si falta uno o no es válido. */
+export function fmtImporte(importe: unknown, moneda: unknown, decimales = 0): string {
+  if (vacio(importe) || validarImporte(importe, moneda) !== null) return '—'
+  return fmtDinero(importe, moneda as string, decimales)
+}

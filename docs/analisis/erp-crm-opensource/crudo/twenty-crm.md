@@ -57,7 +57,7 @@ Prefijos para abreviar: `S` = `packages/twenty-server/src`; `W` = `S/engine/work
 9. Todo es metadato: campos, vistas, índices, columnas del kanban y reglas se generan desde descripciones (`W/utils/field-metadata/`, `W/utils/view*/`, `W/utils/index/`). Un solo motor sirve a objetos estándar y personalizados.
 10. El producto se extiende por apps con eventos y funciones, y el núcleo no conoce cada vertical (`packages/twenty-apps/`).
 
-## Adoptable para TailorSuite (lista numerada A1, A2…: la idea, la cita que la respalda, por qué le sirve a una pyme, y el esfuerzo estimado bajo, medio o alto sobre Postgres con RLS y React)
+## Adoptable para Bash Logistics (lista numerada A1, A2…: la idea, la cita que la respalda, por qué le sirve a una pyme, y el esfuerzo estimado bajo, medio o alto sobre Postgres con RLS y React)
 
 A1. Embudo como vista kanban agrupada por un campo de etapa, con la suma de monto en el encabezado de cada columna, y columnas como registros con posición y visibilidad. Cita: `W/utils/view/compute-standard-opportunity-views.util.ts:35-41` y `W/utils/view-group/compute-standard-opportunity-view-groups.util.ts:11-65`. Sirve: el vendedor ve cuánto dinero hay en cada etapa sin informes. Esfuerzo: bajo (columna de etapa más consulta agregada; el kanban en React es trabajo de interfaz).
 
@@ -91,11 +91,11 @@ A15. Regla de validación de etapa: «no se puede pasar a ganada sin monto». Ci
 
 ## No conviene copiar (y por qué)
 
-1. El motor de metadatos completo (campos, vistas, índices y migraciones generadas en caliente por espacio). Twenty lo necesita porque cada espacio crea objetos nuevos; TailorSuite tiene una instalación por cliente y módulos a la carta, así que migraciones SQL normales son más simples y auditables.
+1. El motor de metadatos completo (campos, vistas, índices y migraciones generadas en caliente por espacio). Twenty lo necesita porque cada espacio crea objetos nuevos; Bash Logistics tiene una instalación por cliente y módulos a la carta, así que migraciones SQL normales son más simples y auditables.
 2. El motor de reglas de validación por expresiones: tiene licencia comercial (`S/engine/metadata-modules/validation-rule/utils/compute-record-validation-rule-violations.util.ts:1`) y es excesivo. Ver A15 para la alternativa.
 3. Embudo de cinco etapas sin estado final (A3 lo corrige).
 4. Duplicados por igualdad exacta: pierde variantes y no usa el NIT; corregir según A7.
-5. La tabla puente con una columna por objeto destino crece sin límite al sumar módulos (inventario, compras, cartera, RR. HH.). En TailorSuite conviene un conjunto cerrado de destinos del CRM y no un puente universal; además cada columna destino es una política RLS más.
+5. La tabla puente con una columna por objeto destino crece sin límite al sumar módulos (inventario, compras, cartera, RR. HH.). En Bash Logistics conviene un conjunto cerrado de destinos del CRM y no un puente universal; además cada columna destino es una política RLS más.
 6. Historial con una columna destino por objeto y copia JSON del tipo: más maquinaria de la que una pyme necesita (`F/compute-timeline-activity-standard-flat-field-metadata.util.ts:267-292`); basta con registro, acción, diff y fecha.
 7. Modelo «oportunidad = prospecto = cliente» con un solo cambio de etapa. Con facturación electrónica en Colombia conviene separar prospecto (aún sin NIT) de cliente fiscal; Twenty no lo resuelve y no hay nada que copiar.
 8. Dependencia de apps con funciones disparadas por eventos para derivados simples (`last-contact`): en Postgres es más barato y consistente un trigger o una vista.

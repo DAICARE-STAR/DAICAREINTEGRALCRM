@@ -139,7 +139,7 @@ Esquema `core` compartido (filas de metadata, columna de espacio de trabajo) má
 ## Decisiones de diseño que se notan y su porqué
 
 1. **Columnas reales en vez de EAV o jsonb para campos personalizados.** Cada campo nuevo crea una columna y, si hace falta, un enum o una llave foránea. Se gana: índices, ordenamiento y filtro nativos, tipos estrictos y una API generada que habla de columnas reales. Se paga: migraciones de esquema en caliente por cada cambio, que obligan al pipeline de validación y a un esquema por espacio de trabajo (H1, H20).
-2. **Un esquema Postgres por espacio de trabajo.** El aislamiento multiempresa se resuelve con esquemas, no con una columna de empresa en cada tabla (`get-workspace-schema-context-for-migration.util.ts:20-25`). Es lo opuesto a la decisión de TailorSuite (una instalación por cliente).
+2. **Un esquema Postgres por espacio de trabajo.** El aislamiento multiempresa se resuelve con esquemas, no con una columna de empresa en cada tabla (`get-workspace-schema-context-for-migration.util.ts:20-25`). Es lo opuesto a la decisión de Bash Logistics (una instalación por cliente).
 3. **Catálogo cerrado de tipos con compuestos.** Moneda, dirección, correos, teléfonos y nombre completo son tipos de primera clase que se aplanan en columnas. Se evita que el usuario invente «campo moneda» como número suelto sin código de moneda (H2, H3).
 4. **Metadata normalizada para las vistas.** Filtros, orden, columnas y grupos son tablas, no un blob. Permite validar cada fila contra los campos reales (operando válido, campo existente, agrupación permitida), borrar en cascada al desactivar un campo y componer vistas desde manifiestos (H11, H13, H15).
 5. **Visibilidad binaria de vistas (WORKSPACE o UNLISTED) con un permiso global.** Mínimo vocabulario: no hay roles por vista ni listas de acceso por vista; un solo permiso (`VIEWS`) decide quién edita las compartidas (H12).
@@ -149,12 +149,12 @@ Esquema `core` compartido (filas de metadata, columna de espacio de trabajo) má
 9. **Operandos y compilación de filtro compartidos entre frente y servidor.** Una sola fuente de verdad para qué se puede filtrar y cómo se traduce, en el paquete compartido (H13).
 10. **Mucho código heredado por versiones.** Casi cada columna lleva un decorador con el nombre del comando de actualización que la introdujo o retiró, y hay campos duplicados deprecados para despliegues progresivos (`field-metadata.entity.ts:113-141,179-181` bajo `packages/twenty-server/src/engine/metadata-modules/field-metadata/`). Es el costo real de operar este modelo en producción con varias instancias.
 
-## Adoptable para TailorSuite (lista numerada A1, A2…: la idea, la cita que la respalda, por qué le sirve a una pyme, y el esfuerzo estimado bajo, medio o alto sobre Postgres con RLS y React)
+## Adoptable para Bash Logistics (lista numerada A1, A2…: la idea, la cita que la respalda, por qué le sirve a una pyme, y el esfuerzo estimado bajo, medio o alto sobre Postgres con RLS y React)
 
 **A1. Tabla de definiciones de campos personalizados con catálogo cerrado de tipos y valores en una columna `jsonb` por registro, no columna física.**
 - Idea: tomar la lista de tipos y su configuración por tipo (H2, H4) pero, en lugar de `ALTER TABLE` por campo, guardar los valores en una columna `custom jsonb` de cada tabla de negocio (cuentas, contactos, más adelante productos, facturas) y validar en servidor contra la definición. Con una instalación por cliente no hace falta aislamiento por esquema.
 - Cita: `packages/twenty-shared/src/types/FieldMetadataSettings.ts:73-100`; `packages/twenty-server/src/engine/metadata-modules/field-metadata/field-metadata.entity.ts:104-134`.
-- Por qué le sirve: la pyme añade «sector», «canal de venta» o «límite de crédito» sin tocar código ni migrar la base. TailorSuite ya tiene campos personalizados en el CRM; esto los generaliza a todos los módulos con el mismo contrato.
+- Por qué le sirve: la pyme añade «sector», «canal de venta» o «límite de crédito» sin tocar código ni migrar la base. Bash Logistics ya tiene campos personalizados en el CRM; esto los generaliza a todos los módulos con el mismo contrato.
 - Esfuerzo: medio. Lo caro es la generalización a los futuros módulos, no el campo en sí.
 
 **A2. Tipos compuestos como tipos de primera clase: moneda (importe + código), dirección, teléfono, correo, nombre completo.**
@@ -179,12 +179,12 @@ Esquema `core` compartido (filas de metadata, columna de espacio de trabajo) má
 - Idea: `workspace` (todos) o `unlisted` (solo el autor) más un permiso «gestionar vistas compartidas»; cualquier miembro edita sus vistas propias (H12).
 - Cita: `packages/twenty-server/src/engine/metadata-modules/view/utils/is-view-visible-to-user.util.ts:4-20`; `packages/twenty-server/src/engine/permissions/metadata-permissions/services/view-access.service.ts:138-163`; `packages/twenty-front/src/modules/views/hooks/useCanPersistViewChanges.ts:8-25`.
 - Por qué le sirve: sin consola de administración, cada vendedor se arma sus filtros y el administrador publica unas pocas vistas oficiales. En Postgres con RLS se resuelve con una política equivalente a `visibility = 'workspace' OR created_by = auth.uid()`.
-- Esfuerzo: bajo. Encaja con el motor de permisos que TailorSuite ya tiene.
+- Esfuerzo: bajo. Encaja con el motor de permisos que Bash Logistics ya tiene.
 
 **A6. Operandos de filtro por tipo de campo en una tabla compartida, y un compilador único de filtro.**
 - Idea: tabla estática tipo→operandos y una función que traduce el árbol de filtros a la consulta; el mismo módulo valida al guardar y compila al leer (H13).
 - Cita: `packages/twenty-shared/src/utils/filter/utils/filterOperandsMap.ts:6-60`; `packages/twenty-shared/src/utils/filter/computeRecordGqlOperationFilter.ts:16-60`; `packages/twenty-server/src/engine/workspace-manager/workspace-migration/workspace-migration-builder/validators/utils/get-incompatible-view-filter-operand-error.util.ts:11-43`.
-- Por qué le sirve: evita filtros que no significan nada (contiene sobre un número) y asegura que lo que el usuario ve en pantalla es lo que consulta la base. Para TailorSuite el destino de compilación sería PostgREST o SQL parametrizado, no GraphQL.
+- Por qué le sirve: evita filtros que no significan nada (contiene sobre un número) y asegura que lo que el usuario ve en pantalla es lo que consulta la base. Para Bash Logistics el destino de compilación sería PostgREST o SQL parametrizado, no GraphQL.
 - Esfuerzo: medio (la compilación a SQL seguro con jsonb y relaciones es la parte difícil).
 
 **A7. Operandos de fecha relativa («en el pasado», «en el futuro», «hoy», rangos relativos).**
@@ -208,7 +208,7 @@ Esquema `core` compartido (filas de metadata, columna de espacio de trabajo) má
 **A10. Paquete base de campos y relaciones que todo objeto nuevo recibe (id, creado, actualizado, borrado lógico, creado por con origen, posición; y vínculo a notas, tareas y adjuntos).**
 - Idea: cualquier tipo de documento o entidad personalizada nace con historial, actividades y archivos sin configurarlos (H8). El «creado por» guarda el origen (manual, importación, API) además del usuario.
 - Cita: `packages/twenty-server/src/engine/twenty-orm/custom.workspace-entity.ts:17-27`; `packages/twenty-shared/src/types/composite-types/actor.composite-type.ts:8-19`; `packages/twenty-shared/src/metadata/constants/default-relations-object-standard-ids.constant.ts:3-8`.
-- Por qué le sirve: TailorSuite ya tiene auditoría y actividades en el CRM; hacer que sean obligatorias para todo módulo futuro evita rehacer esa integración en inventario, compras y ventas.
+- Por qué le sirve: Bash Logistics ya tiene auditoría y actividades en el CRM; hacer que sean obligatorias para todo módulo futuro evita rehacer esa integración en inventario, compras y ventas.
 - Esfuerzo: medio (relación polimórfica con tabla de vínculos de tipo + id, sin llave foránea real a diferencia del modelo de Twenty).
 
 **A11. Regla de validación por expresión, definida por el administrador, compilada contra los campos del objeto.**
@@ -230,7 +230,7 @@ Esquema `core` compartido (filas de metadata, columna de espacio de trabajo) má
 - Esfuerzo: alto. Conviene empezar con layout fijo por módulo y dejar los widgets configurables para después.
 
 **A14. Módulos «a la carta» como paquetes declarativos con identificadores estables.**
-- Idea: cada módulo de TailorSuite (inventario, compras…) se describe como un manifiesto con sus objetos, campos añadidos a objetos del núcleo, vistas por defecto, roles y menú; el instalador lo sincroniza y puede reinstalarse o desinstalarse (H19). El ejemplo inmobiliario añade campos a Persona, dos objetos nuevos, siete vistas y cuatro roles sin código de servidor.
+- Idea: cada módulo de Bash Logistics (inventario, compras…) se describe como un manifiesto con sus objetos, campos añadidos a objetos del núcleo, vistas por defecto, roles y menú; el instalador lo sincroniza y puede reinstalarse o desinstalarse (H19). El ejemplo inmobiliario añade campos a Persona, dos objetos nuevos, siete vistas y cuatro roles sin código de servidor.
 - Cita: `packages/twenty-apps/internal/real-estate/src/application.config.ts:6-11`; `packages/twenty-apps/internal/real-estate/src/fields/person-type.field.ts:16-26`; `packages/twenty-apps/internal/real-estate/src/views/buyer-pipeline.view.ts:28-59`; `packages/twenty-server/src/engine/workspace-manager/types/syncable-entity.interface.ts:6-22`.
 - Por qué le sirve: coincide con «módulos a la carta que activa quien instala» y con la posibilidad de vender verticales (por ejemplo taller o distribuidora) como paquetes de configuración. El `universalIdentifier` permite actualizar el paquete sin pisar lo que el cliente personalizó.
 - Esfuerzo: alto (instalador, desinstalador, diferencias entre versiones). Versión mínima de esfuerzo medio: semillas SQL idempotentes con UUID fijos por módulo.
@@ -250,7 +250,7 @@ Esquema `core` compartido (filas de metadata, columna de espacio de trabajo) má
 ## No conviene copiar (y por qué)
 
 1. **`ALTER TABLE` en caliente por cada campo personalizado y un esquema por espacio de trabajo.** Trae un pipeline completo de validación, ordenamiento de acciones, enums de Postgres y reintentos; es la mayor parte de la complejidad de este repo (H1, H20). Para una instalación por cliente sin multiempresa, el jsonb validado (A1) da la mayor parte del valor con una fracción del riesgo operativo. Si más adelante un campo necesita índice o agregación pesada, se promueve a columna por migración manual.
-2. **La arquitectura de cachés planos de metadata (`flat-*` por cada entidad), universal-flat, mapas por UUID universal y comandos de actualización por versión.** Existe para operar muchas instancias y despliegues progresivos con pods de versiones mezcladas (`packages/twenty-server/src/engine/metadata-modules/field-metadata/field-metadata.entity.ts:179`). TailorSuite no tiene ese problema.
+2. **La arquitectura de cachés planos de metadata (`flat-*` por cada entidad), universal-flat, mapas por UUID universal y comandos de actualización por versión.** Existe para operar muchas instancias y despliegues progresivos con pods de versiones mezcladas (`packages/twenty-server/src/engine/metadata-modules/field-metadata/field-metadata.entity.ts:179`). Bash Logistics no tiene ese problema.
 3. **El código de reglas de validación por expresión del servidor y cualquier archivo marcado Enterprise.** Está bajo licencia comercial (`LICENSE:4-5`; marca en `packages/twenty-server/src/engine/metadata-modules/validation-rule/utils/compile-validation-rule-expression-or-throw.util.ts:1`). La idea de A11 se puede estudiar; la implementación no se toca. Un conteo rápido encontró 795 archivos con esa marca bajo `packages/`, así que conviene revisar el encabezado antes de leer otra zona.
 4. **Relaciones polimórficas con tipo MORPH_RELATION y su regla de nombres derivados.** Hay campos espejo por objeto objetivo, índices, comprobaciones de consistencia y múltiples utilidades solo para mantenerlos (`packages/twenty-server/src/engine/metadata-modules/field-metadata/field-metadata.entity.ts:54-57,233-238`). Para notas y tareas basta una tabla de vínculos con (`tipo`, `registro_id`).
 5. **Tipos de widget y de objeto ligados al producto de Twenty (workflows, agentes de IA, hilos de chat, correo, grabaciones de llamada, campañas de mensajes).** No aplican a un ERP de pyme (`packages/twenty-shared/src/types/page-layout/WidgetType.ts:1-35`).

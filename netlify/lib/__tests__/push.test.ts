@@ -205,35 +205,35 @@ describe('idsQueVenApp (AU-DEC-04)', () => {
   })
   const MIEMBROS = [
     miembro('u-comercial', ['comercial', []]),
-    miembro('u-permiso', ['proyectos', ['app_licitaciones']]),
+    miembro('u-permiso', ['proyectos', ['app_crm']]),
     miembro('u-sin', ['proyectos', ['edit_crm']]),
     miembro('u-admin', ['admin', []]),
     { id: 'u-sin-roles', user_roles: [] },
   ]
 
-  const LIC = [{ slug: 'licitaciones', activo: true }]
+  const LIC = [{ slug: 'crm', activo: true }]
 
-  it('regla v2: quien tiene app_licitaciones, más los admins', async () => {
+  it('regla v2: quien tiene app_crm, más los admins', async () => {
     const c = cliente({ modulos: LIC, miembros: MIEMBROS })
-    expect(await idsQueVenApp(c.admin, 'licitaciones')).toEqual(['u-permiso', 'u-admin'])
+    expect(await idsQueVenApp(c.admin, 'crm')).toEqual(['u-permiso', 'u-admin'])
   })
 
   it('módulo inactivo o sin fila: nadie, ni los admins', async () => {
-    const c = cliente({ modulos: [{ slug: 'licitaciones', activo: false }], miembros: MIEMBROS })
-    expect(await idsQueVenApp(c.admin, 'licitaciones')).toEqual([])
+    const c = cliente({ modulos: [{ slug: 'crm', activo: false }], miembros: MIEMBROS })
+    expect(await idsQueVenApp(c.admin, 'crm')).toEqual([])
     reiniciarCacheModulos()
     const d = cliente({ modulos: [], miembros: MIEMBROS })
-    expect(await idsQueVenApp(d.admin, 'licitaciones')).toEqual([])
+    expect(await idsQueVenApp(d.admin, 'crm')).toEqual([])
   })
 
   it('sin las cuentas de servicio ni los suspendidos, y broadcastPush reutiliza esa lectura de Auth', async () => {
     const c = cliente({
       modulos: LIC,
-      miembros: [...MIEMBROS, miembro('u-dev', ['admin', []]), miembro('u-susp', ['x', ['app_licitaciones']])],
+      miembros: [...MIEMBROS, miembro('u-dev', ['admin', []]), miembro('u-susp', ['x', ['app_crm']])],
       usuarios: [...USUARIOS, { id: 'u-susp', email: 'susp@empresa.test', banned_until: '2999-01-01T00:00:00Z' }],
       subs: [sub('s1', 'u-admin')],
     })
-    const ids = await idsQueVenApp(c.admin, 'licitaciones')
+    const ids = await idsQueVenApp(c.admin, 'crm')
     expect(ids).toEqual(['u-permiso', 'u-admin'])
     await broadcastPush(c.admin, AVISO, { userIds: ids ?? [] })
     expect(c.listUsers).toHaveBeenCalledTimes(1)
@@ -242,19 +242,19 @@ describe('idsQueVenApp (AU-DEC-04)', () => {
   it('si Auth falla, los destinatarios salen sin esa exclusión (no se bloquea el aviso)', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const c = cliente({ modulos: LIC, miembros: MIEMBROS, authCaido: true })
-    expect(await idsQueVenApp(c.admin, 'licitaciones')).toEqual(['u-permiso', 'u-admin'])
+    expect(await idsQueVenApp(c.admin, 'crm')).toEqual(['u-permiso', 'u-admin'])
   })
 
   it('si no puede leer los módulos devuelve null (quien llama no avisa)', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const c = cliente({ errorModulos: true, miembros: MIEMBROS })
-    expect(await idsQueVenApp(c.admin, 'licitaciones')).toBeNull()
+    expect(await idsQueVenApp(c.admin, 'crm')).toBeNull()
   })
 
   it('si no puede leer los miembros devuelve null y registra el código', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     const c = cliente({ modulos: LIC, errorMiembros: true })
-    expect(await idsQueVenApp(c.admin, 'licitaciones')).toBeNull()
-    expect(error.mock.calls[0]?.[1]).toEqual({ app: 'licitaciones', codigo: '42501' })
+    expect(await idsQueVenApp(c.admin, 'crm')).toBeNull()
+    expect(error.mock.calls[0]?.[1]).toEqual({ app: 'crm', codigo: '42501' })
   })
 })

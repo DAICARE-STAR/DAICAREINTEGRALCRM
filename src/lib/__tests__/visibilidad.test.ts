@@ -3,14 +3,14 @@ import { modulosVisibles, puedeVerModulo } from '../modulos'
 
 describe('puedeVerModulo (PP-VIS)', () => {
   it('un módulo inactivo no lo ve nadie, ni el admin', () => {
-    expect(puedeVerModulo('calendario', ['admin'], ['app_calendario'], [])).toBe(false)
-    expect(puedeVerModulo('calendario', ['member'], ['app_calendario'], ['chat'])).toBe(false)
+    expect(puedeVerModulo('crm', ['admin'], ['app_crm'], [])).toBe(false)
+    expect(puedeVerModulo('crm', ['member'], ['app_crm'], ['chat'])).toBe(false)
   })
 
   it('activo sin permiso no se ve; con app_<slug> o siendo admin, sí', () => {
-    expect(puedeVerModulo('calendario', ['member'], [], ['calendario'])).toBe(false)
-    expect(puedeVerModulo('calendario', ['member'], ['app_calendario'], ['calendario'])).toBe(true)
-    expect(puedeVerModulo('calendario', ['admin'], null, ['calendario'])).toBe(true)
+    expect(puedeVerModulo('crm', ['member'], [], ['crm'])).toBe(false)
+    expect(puedeVerModulo('crm', ['member'], ['app_crm'], ['crm'])).toBe(true)
+    expect(puedeVerModulo('crm', ['admin'], null, ['crm'])).toBe(true)
   })
 
   it('el núcleo siempre; un planeado o desconocido nunca, aunque figure activo', () => {
@@ -24,8 +24,9 @@ describe('puedeVerModulo (PP-VIS)', () => {
     expect(puedeVerModulo('ia', ['member'], [], [])).toBe(false)
   })
 
-  it('modulosVisibles deja fuera el núcleo y los módulos sin pantalla', () => {
-    const slugs = modulosVisibles(['admin'], [], ['ia', 'chat', 'proyectos']).map((m) => m.slug)
-    expect(slugs).toEqual(['chat', 'proyectos'])
+  it('modulosVisibles deja fuera el núcleo, los módulos sin pantalla y los planeados', () => {
+    // chat y proyectos son planeados (PP-DEC-21): fuera aunque figuren activos
+    const slugs = modulosVisibles(['admin'], [], ['ia', 'crm', 'chat', 'proyectos']).map((m) => m.slug)
+    expect(slugs).toEqual(['crm'])
   })
 })

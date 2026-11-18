@@ -58,10 +58,10 @@ Alcance: facturación, cartera y contabilidad de Odoo Community. Todas las rutas
 - **Los impuestos y retenciones son datos, no código.** Un impuesto define su base, su orden y a qué cuentas reparte en factura y en nota crédito (`account_tax.py:5204-5236`). Por eso la localización colombiana es solo CSV (`l10n_co/data/template/*.csv`), sin código de cálculo propio. El costo es un catálogo grande: 269 filas de impuestos con tarifas de retención duplicadas entre compra y venta.
 - **Cálculo de impuestos duplicado en servidor y cliente.** Evita ida y vuelta mientras se edita la factura; el costo es mantener dos implementaciones idénticas (`account_tax.py:1096-1100`).
 - **Inalterabilidad opcional por diario.** El hash encadenado se activa por diario y puede forzarse; el resto se resuelve con reversa en vez de borrado (`account_move.py:4721-4830`, `:5968-5976`). La contabilidad colombiana exige consecutivos sin saltos; el repo ofrece detección (`made_sequence_gap`) pero no la política.
-- **Multicompañía en el modelo.** Casi todo lleva `company_id` y `_check_company_auto`; varios campos son `company_dependent` (`partner.py:587-603`). TailorSuite es una instalación por cliente, así que esta capa sobra.
+- **Multicompañía en el modelo.** Casi todo lleva `company_id` y `_check_company_auto`; varios campos son `company_dependent` (`partner.py:587-603`). Bash Logistics es una instalación por cliente, así que esta capa sobra.
 - **Dependencia del repo con módulos ausentes.** El manifiesto de `l10n_co` depende de `account_debit_note` y no incluye factura electrónica (`l10n_co/__manifest__.py:1-20`). Ni `account_debit_note` ni `l10n_co_edi` ni `account_edi_ubl_cii` están en el clon.
 
-## Adoptable para TailorSuite (lista numerada A1, A2…: la idea, la cita que la respalda, por qué le sirve a una pyme, y el esfuerzo estimado bajo, medio o alto sobre Postgres con RLS y React)
+## Adoptable para Bash Logistics (lista numerada A1, A2…: la idea, la cita que la respalda, por qué le sirve a una pyme, y el esfuerzo estimado bajo, medio o alto sobre Postgres con RLS y React)
 
 - **A1. Documento y asiento en el mismo modelo, con `move_type` y estados borrador/publicado/anulado.** Cita: `addons/account/models/account_move.py:138-166`. Sirve porque una sola tabla de líneas alimenta facturas, compras, cartera y contabilidad sin duplicar. En Postgres: tablas `movimiento` y `movimiento_linea` con enum de tipo. Esfuerzo: medio.
 - **A2. Restricciones CHECK en la línea contable.** Una de las dos columnas débito/crédito es cero; `balance` e importe en moneda con el mismo signo; cuenta obligatoria salvo líneas de sección. Cita: `addons/account/models/account_move_line.py:548-565`. Sirve porque protege la contabilidad aunque falle la aplicación. Esfuerzo: bajo.
@@ -84,14 +84,14 @@ Alcance: facturación, cartera y contabilidad de Odoo Community. Todas las rutas
 
 ## No conviene copiar (y por qué)
 
-- **Multicompañía y campos `company_dependent`.** TailorSuite es una instalación por cliente (`addons/account/models/partner.py:587-603`, `account_account.py:25-33`). Añade tablas puente y filtros que no aportan.
+- **Multicompañía y campos `company_dependent`.** Bash Logistics es una instalación por cliente (`addons/account/models/partner.py:587-603`, `account_account.py:25-33`). Añade tablas puente y filtros que no aportan.
 - **Motor de impuestos completo (descuento por pronto pago, cash basis, grupos, caso "división", redondeo por línea o global).** Son miles de líneas con dos implementaciones sincronizadas (`account_tax.py:1096-1100,2763-2770`). Una pyme necesita porcentaje, base afectada y signo negativo para retenciones. Para Colombia, el caso de caja (`account_partial_reconcile.py:545-560`) solo importa si algún cliente declara IVA por caja.
 - **Contabilidad "anglosajona" de inventario y COGS integrado en la línea de factura.** Mezcla facturación con costo de ventas (`account_move_line.py:385-404`, `addons/l10n_co/models/template_co.py:12-47`). Es mejor atar costo a inventario y contabilizarlo en el módulo de inventario cuando exista.
 - **`_inherits` del extracto bancario sobre el asiento.** Es cómodo en el ORM de Odoo (`account_bank_statement_line.py:10-33`), pero en Postgres con RLS conviene una tabla `movimiento_banco` simple con clave al asiento.
 - **Sistema de secuencias por expresiones regulares sobre el nombre.** Es frágil y existe para tolerar nombres editables (`sequence_mixin.py:18-50`). Con Postgres es mejor una secuencia por diario y por vigencia de resolución.
 - **Almacenar `debit`, `credit` y `balance` los tres.** Es redundante por rendimiento del ORM (`account_move_line.py:125-140`). En Postgres basta `balance` firmado, con vistas o columnas generadas para débito/crédito.
 - **Los porcentajes de retención del CSV como "verdad".** Los nombres de muchos impuestos son abreviaturas poco claras y duplican tarifas entre compra y venta (`addons/l10n_co/data/template/account.tax-co.csv:2-80`). Las tarifas y bases mínimas (UVT) cambian por decreto; deben modelarse con vigencia y verificarse.
-- **Mecanismo de plantillas de plan de cuentas (`account.chart.template`, `template_generic_coa.py`).** Es la forma de Odoo de cargar datos; en TailorSuite basta un script de siembra por instalación.
+- **Mecanismo de plantillas de plan de cuentas (`account.chart.template`, `template_generic_coa.py`).** Es la forma de Odoo de cargar datos; en Bash Logistics basta un script de siembra por instalación.
 
 ## No leído o dudoso
 

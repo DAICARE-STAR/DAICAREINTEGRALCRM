@@ -1,54 +1,50 @@
-# Handoff — TailorSuite
+# Handoff — Bash Logistics
 
-Estado vigente al 2026-11-17 (hora de Bogotá). Lo mantiene la sesión directora «TailorSuite»: se actualiza al cerrar cada fase u ola, antes de lanzar la siguiente. Sin secretos ni datos de personas.
+Estado vigente al 2026-11-17 (hora de Bogotá). Lo mantiene la sesión directora: se actualiza al cerrar cada lote u ola, antes de lanzar el siguiente. Sin secretos ni datos de personas.
 
 ## Qué es esta sesión
 
-Directora: orquesta agentes de investigación, desarrollo y pruebas de TailorSuite. No toca el código del portal de origen; eso lo lleva la sesión «Portal hardening, productos y perfiles». Los informes de los agentes van a archivos, no al chat.
+Directora: orquesta agentes de investigación, desarrollo y pruebas de Bash Logistics. No toca el código del portal de origen; eso lo lleva la sesión «Portal hardening, productos y perfiles». Los informes de los agentes van a archivos, no al chat. El producto se llama Bash Logistics (PP-DEC-27): el nombre anterior no se usa en ningún sitio y una prueba de `neutralidad.test.ts` lo vigila.
 
 ## Estado de los repos
 
 | Repo | Carpeta | Estado |
 |---|---|---|
-| TailorSuite (producto) | `personal/portal-producto` | `main` en 0.2.16 (c06243b). En GitHub hasta 0.2.10. Sin subir: 0.2.11 a 0.2.16. `docs/analisis/` sin versionar. |
-| CRM de DAI CARE | `clientes/daicare-crm` | En 0.2.16, ocho pasos sin subir. Su push publica en Netlify: solo con orden explícita. |
-| Portal de origen | lo lleva su sesión | 1.12.49 (autocompletado cerrado, 6324fcd) y 1.12.50 publicados. Los ejemplos en gris del perfil siguen. |
+| Bash Logistics (producto) | `personal/portal-producto` | `main` en 0.2.27: lote 1 del backlog y renombre integrados desde la rama de pruebas. En GitHub (`valdrighilorenzo-star/Bash_Logistics`) hasta 0.2.20. Sin subir: 0.2.21 a 0.2.27. `docs/analisis/crm-trycompai.md` sin versionar, de otra sesión. |
+| CRM de DAI CARE | `clientes/daicare-crm` | En 0.2.16, subido a GitHub el 2026-11-17 (publica en Netlify, app.daicareintegral.com; deploy sin comprobar). Su base tiene 13 archivos aplicados y la simulación en 96 OK. No tiene el lote 1. |
+| Portal de origen | lo lleva su sesión | 1.12.49 y 1.12.50 publicados. El arreglo del perfil (ayudante de campos de personas, sin ejemplos) lo tenía hecho sin comitear, a la espera del recorrido en navegador; iba como 1.12.53. |
 
-## Pendientes heredados
+## Bases de datos
 
-- Base de DAI CARE (los corre el usuario): `npm.cmd run instalar` (aplica 06b), `node --env-file=.env tools/instalar/modulos.mjs --activar crm` (aplica 21b), `--verificar` y la simulación de permisos, que debe dar 96 OK. No consta el resultado.
-- Push de `clientes\daicare-crm`: pendiente de orden.
-- Push de TailorSuite 0.2.11 a 0.2.16: pendiente de orden.
-- Antes de entregar a DAI CARE: Site URL y SMTP de Auth, borrar las cuentas de prueba, texto del consentimiento informado, sitio público y DNS.
+- **Pruebas**: proyecto Supabase propio del usuario (ref gfcusptkdcxatmsszgwk, organización Memento; el conector de Supabase de la sesión no lo ve). `.env` en `personal/portal-producto`, lo rellenó el usuario; no se lee. 19 archivos de esquema aplicados (núcleo, 00b, 01b, 09b, 09c, CRM 21 a 21d), `--verificar` 18 de 18, simulación 131 OK, 0 FALLA, 0 OMITIDO. Cuentas de prueba: testadmin, testmiembro y testqa en enzo.com.
+- **DAI CARE**: 13 archivos (hasta 21b), simulación 96 OK. Para llevarle el lote 1: primero `npm.cmd run instalar` y `modulos.mjs --activar crm` en su base (aplica 00b, 01b, 09b, 09c, 21c, 21d), `--verificar`, simulación, y solo entonces publicar su frontend. En el orden inverso nadie puede exportar del CRM.
+- Herramientas nuevas: `tools/instalar/simular.mjs` corre la simulación desde la terminal; `tools/instalar/diagnostico-url.mjs` revisa la forma de SUPABASE_DB_URL sin mostrarla. La contraseña de la base no debe llevar símbolos.
 
-## Plan en curso (aprobado el 2026-11-17)
+## Demo en Netlify
 
-Plan completo: `C:\Users\enzov\.claude\plans\en-la-repo-tailorsuite-peppy-lemon.md`.
+`https://dapper-sherbet-abfa4a.netlify.app`, sitio del usuario enlazado a `main` del repo del producto, contra la base de pruebas. **Incidente abierto**: en `VITE_SUPABASE_ANON_KEY` quedó pegada la clave secreta del proyecto de pruebas y está en el bundle público. Falta que el usuario la borre en Supabase, cree una nueva, ponga la clave publishable en esa variable, actualice `SUPABASE_SERVICE_ROLE_KEY` en Netlify y en el `.env` local, y vuelva a desplegar. Después hay que revisar el bundle publicado. También falta la Site URL en Auth.
 
-| Frente | Qué | Estado |
-|---|---|---|
-| 0 | Handoff, memoria, commit | hecho (0.2.14 ef53c2c) |
-| 2 | Perfil sin sugerencias ni ejemplos | hecho en el producto: 0.2.15 c1e34bf y 0.2.16 c06243b (ayudante campoPersona en src/lib/campos.ts, PP-DEC-20). Traído a clientes/daicare-crm por pull local, batería en verde (1265 pruebas). Falta: prueba del usuario en un Chrome real con autorrelleno guardado; si el teléfono o el correo aún sugieren, cambiar su type. Encargo al portal enviado el 2026-11-17, sin acuse: reenviar si su sesión no lo recoge. |
-| 3 | Nombre nuevo | Decidido por el usuario el 2026-11-17: **Bash Logistics**, definitivo (los cinco finalistas quedan descartados). Repo de GitHub ya renombrado a valdrighilorenzo-star/Bash_Logistics y remotos locales actualizados (origin aquí y producto en clientes/daicare-crm). Pendiente: renombre en código como paso propio cuando termine el lote 1 (nombre visible, documentos, PP-DEC nueva, prefijo ts- de campoPersona, claves pt_ del navegador, pruebas de neutralidad). No se verificaron dominios ni marcas de este nombre. |
-| 1 | Análisis de odoo, twenty, erpnext, monica y huly. Workflow `analisis-erp-crm` (script en la carpeta de workflows de la sesión, se relanza con args repos). Entregable en `docs/analisis/erp-crm-opensource/` | Hecho el 2026-11-17: fichas odoo, erpnext, twenty, monica y platform (117 propuestas, 777 citas verificadas, 91 corregidas, 2 descartadas), `comparativa.md` (decisiones D-1 a D-13) y `backlog.md` (73 BL; primer lote: BL-01, 02, 05, 06, 08, 10, 11, 12, 15, 16, 18, 20). Espera que el usuario decida D-1 a D-13 y apruebe el primer lote. Huecos comprobados: nueve módulos «disponible» sin archivo de esquema (10, 11, 13, 20, 22, 23, 26, 27, 28); sin guarda del último administrador; exportar el CRM no pide permiso propio. No se hizo el Artifact de resumen. |
+## Backlog y lotes
 
-## Reparto de modelos
+El usuario pidió aplicar las 73 propuestas de `docs/analisis/erp-crm-opensource/backlog.md` (corregido por la revisión crítica; resumen navegable en un Artifact privado del usuario). Flujo: cada lote en una rama de pruebas con worktree propio, implementación, revisión independiente y corrección por unidad, esquema aplicado en la base de pruebas, simulación, y a `main` con el visto bueno del usuario.
 
-Lectura masiva y verificación: Sonnet. Mecánico: Haiku. Síntesis, implementación y revisión: Opus. Fable solo en la directora. Reserva del 10 % semanal; se mide el consumo entre olas y, si el semanal pasa de 75 %, lo que falte espera al reinicio del 2026-11-21. Consumo al empezar: semanal 39 %, Fable 28 %. Tras los frentes 2 y 3 (12 agentes, 1,2 M de tokens): semanal 42 %. Ola 1 del frente 1 (23 agentes, 5,8 M de tokens): semanal 49 %, ventana de 5 horas 77 %. Ola 2 (26 agentes, 6,1 M) y síntesis hechas. Clones del frente 1 en personal/investigacion-erp (odoo parcial, erpnext, twenty, monica, platform).
+- **Lote 1 (núcleo), hecho** (0.2.21 a 0.2.25): módulos sin esquema a planeado y dependencias blandas (PP-DEC-21 y 22); guarda del último administrador y exportar como permiso propio; contrato base de tabla y moneda como par (PP-DEC-23 y 24); numeración de documentos y máquina de estados (PP-DEC-25 y 26).
+- **Renombre, hecho** (0.2.26 y 0.2.26b): PP-DEC-27, prefijo de campos `bl-`.
+- **Pendientes que dejó el lote 1, para el lote 2**: quien tiene `app_crm` sin `exportar_crm` aún puede recorrer `crm_buscar` por la API; la guarda del último administrador no cubre el bloqueo ni el borrado suave en Auth; el servidor (`exigir`, `moduloActivo`, `has_modulo`) no aplica la regla de planeados que sí aplica el shell.
+- **Lote 2 (CRM 0.2), siguiente**: visibilidad «lo mío o sin asignar» en las seis políticas de lectura, aviso de duplicados con función de base, catálogos con clave inmutable, tipo de documento DIAN, última actividad, ajustes de módulo en el registro, varios canales por cuenta, recordatorios, línea de tiempo.
+- **Decisiones abiertas** (D-1 a D-19 en `comparativa.md`): antes del primer módulo ERP, D-2 con D-3 (terceros: la opción recomendada es un tercero neutral fuera del CRM), D-14, D-15 y D-19. D-5 (notas crédito) es pregunta abierta al usuario y su asesor contable; no se toca hasta facturación.
+- Por decidir con el usuario: nombre corto de la app instalada (hoy «Bash Logistics», 14 caracteres; el móvil corta hacia los 12).
+
+## Reparto de modelos y consumo
+
+Lectura masiva y verificación: Sonnet. Síntesis, implementación y revisión: Opus. Fable solo en la directora. Reserva del 10 % semanal; se mide entre lotes y, si el semanal pasa de 75 %, lo que falte espera al reinicio del 2026-11-21. Gastado el 2026-11-17: análisis de cinco repos 12 M de tokens, crítica 2,5 M, lote 1 1,9 M, renombre 0,4 M. Semanal al 60 % antes del lote 1.
 
 ## Reglas que no se olvidan
 
-- No leer `.env`, ni las carpetas de respaldo y claves vetadas en las reglas personales. Las credenciales las teclea el usuario; el DDL lo corre él.
-- Push a `main`, deploy y cualquier acción difícil de revertir: solo con orden explícita y confirmada aparte.
+- No leer `.env`, ni las carpetas de respaldo y claves vetadas en las reglas personales. Las credenciales las teclea el usuario.
+- Push a `main`, deploy y cualquier acción difícil de revertir: solo con orden explícita. En la base de pruebas el esquema lo aplica la directora; en la del cliente, solo con orden.
 - Sin tareas programadas ni polling.
-- Las áreas no se mezclan: nada del portal de origen en TailorSuite ni en los clientes. Datos de salud y de personas del cliente, nunca en el chat.
-- Un archivo de esquema ya aplicado no se edita: las correcciones van en archivos con letra (06b, 21b).
+- Las áreas no se mezclan: nada del portal de origen en el producto ni en los clientes. Datos de salud y de personas del cliente, nunca en el chat.
+- Un archivo de esquema ya aplicado no se edita: las correcciones van en archivos con letra.
+- Un agente puede negarse a comitear si no ve la orden del usuario: decirle en el encargo que el commit viene de la directora por encargo expreso.
 - En PowerShell, `npm.cmd`. Los scripts con barras invertidas se escriben como archivo, no en heredoc.
-
-## Rama de pruebas y lotes del backlog
-
-- El usuario pidió aplicar las 73 propuestas del backlog, por lotes. Rama `pruebas/mejoras-backlog` en el worktree `personal/wt/tailorsuite-pruebas` (node_modules es un junction: desmontarlo antes de quitar el worktree). `main` queda en lo probado.
-- Lote 1 (núcleo) lanzado el 2026-11-17 como workflow `tailorsuite-lote-1-nucleo`: pasos 0.2.21 a 0.2.24 (módulos sin esquema y dependencias blandas; último administrador y permiso de exportar; contrato base y moneda; numeración y máquina de estados). El 0.2.20 queda reservado para los documentos corregidos por la revisión crítica en main.
-- Sin base de pruebas todavía: el SQL nuevo solo tiene pruebas estáticas. El usuario está creando un proyecto Supabase gratuito propio (no el del cliente) para correr instalador y simulación.
-- Revisión crítica de comparativa.md y backlog.md en curso (workflow `critica-comparativa-backlog`); después, Artifact de resumen.
-- Decisiones tomadas por defecto, reversibles: módulos sin esquema a planeado, dependencias blandas, cliente y proveedor como roles sobre la cuenta del CRM, el administrador sin excepción en aprobaciones. La de notas crédito no se toca hasta facturación.

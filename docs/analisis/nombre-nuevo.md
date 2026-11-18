@@ -1,4 +1,4 @@
-# Nombre nuevo para TailorSuite
+# Nombre nuevo para el producto
 
 Fecha: 2026-11-17. Doce candidatos evaluados contra los requisitos (4 a 7 letras, una palabra, dos o tres sílabas, se escribe como suena, pronunciación casi igual en español e inglés, sin tildes ni ñ, sin parecido con marcas o personas famosas, sin sentido vulgar o negativo en español, inglés o portugués) y contra la verificación web de software homónimo, dominios, GitHub y marcas.
 

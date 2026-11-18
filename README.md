@@ -1,6 +1,6 @@
-# TailorSuite
+# Bash Logistics
 
-ERP modular para pymes nacido del Team Portal: shell React, Supabase y Netlify Functions, una instalación por cliente con módulos a la carta. El nombre visible por defecto es «TailorSuite»; cada instalación pone el suyo en `VITE_PORTAL_NOMBRE`.
+ERP modular para pymes nacido del Team Portal: shell React, Supabase y Netlify Functions, una instalación por cliente con módulos a la carta. El nombre visible por defecto es «Bash Logistics»; cada instalación pone el suyo en `VITE_PORTAL_NOMBRE`.
 
 ## Cómo correrlo
 

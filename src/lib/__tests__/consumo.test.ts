@@ -19,7 +19,8 @@ describe('porcentajeConsumo', () => {
 describe('filasDeModulos', () => {
   const base = [
     { slug: 'nucleo', activo: true, limites: { miembros: 10, almacenamiento_mb: 1000 } },
-    { slug: 'chat', activo: false, limites: {} },
+    { slug: 'correo', activo: false, limites: {} },
+    { slug: 'chat', activo: true, limites: {} },
     { slug: 'viejo', activo: true, limites: {} },
   ]
   const filas = filasDeModulos(base, { miembros: 4, almacenamiento_mb: 250, ia_hoy: null })
@@ -33,8 +34,11 @@ describe('filasDeModulos', () => {
     expect(nucleo.estado).toBe('activo')
     expect(nucleo.limites.find((l) => l.clave === 'miembros')).toEqual({ clave: 'miembros', limite: 10, usado: 4, porcentaje: 40 })
     expect(nucleo.limites.find((l) => l.clave === 'retencion_uso_dias')).toMatchObject({ limite: null, porcentaje: null })
-    expect(filas.find((f) => f.slug === 'chat')!.estado).toBe('inactivo')
-    expect(filas.find((f) => f.slug === 'calendario')!.estado).toBe('inactivo')
+    expect(filas.find((f) => f.slug === 'correo')!.estado).toBe('inactivo')
+    expect(filas.find((f) => f.slug === 'crm')!.estado).toBe('inactivo')
+    // Sin esquema todavía (PP-DEC-21): planeado aunque su fila figure activa
+    expect(filas.find((f) => f.slug === 'chat')!.estado).toBe('planeado')
+    expect(filas.find((f) => f.slug === 'calendario')!.estado).toBe('planeado')
   })
   it('las listas del registro no son topes', () => {
     expect(filas.find((f) => f.slug === 'correo')!.limites).toEqual([])

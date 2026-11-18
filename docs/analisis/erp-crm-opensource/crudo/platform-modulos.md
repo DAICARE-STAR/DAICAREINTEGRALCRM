@@ -2,7 +2,7 @@
 
 Repo: Huly Platform (hcengineering/platform), licencia EPL-2.0 (ver `models/inventory/package.json`, campo license, y las cabeceras de archivos). Todas las citas son rutas relativas a la raíz del repo `platform`. Se estudian ideas; no se copia código.
 
-Alcance real: Huly es una plataforma de gestión de proyectos, CRM ligero, RR. HH., reclutamiento y documentos. NO es un ERP: no hay compras, ventas, facturación, cartera ni contabilidad. Su valor para TailorSuite está en el mecanismo de módulos (activar/desactivar, vistas, permisos), no en el catálogo de dominio.
+Alcance real: Huly es una plataforma de gestión de proyectos, CRM ligero, RR. HH., reclutamiento y documentos. NO es un ERP: no hay compras, ventas, facturación, cartera ni contabilidad. Su valor para Bash Logistics está en el mecanismo de módulos (activar/desactivar, vistas, permisos), no en el catálogo de dominio.
 
 ## Cómo lo resuelve (hechos, cada uno con su cita ruta/relativa/archivo:línea)
 
@@ -76,7 +76,7 @@ Alcance real: Huly es una plataforma de gestión de proyectos, CRM ligero, RR. H
 - **Plantillas de espacio con estados editables por el usuario.** El embudo de ventas no está fijo en código; Lead solo trae una plantilla por defecto (`models/lead/src/spaceType.ts:164-178`).
 - **El propietario es el único que activa módulos y los módulos de negocio nuevos nacen apagados.** Coincide con "módulos a la carta que activa quien instala".
 
-## Adoptable para TailorSuite (lista numerada A1, A2…: la idea, la cita que la respalda, por qué le sirve a una pyme, y el esfuerzo estimado bajo, medio o alto sobre Postgres con RLS y React)
+## Adoptable para Bash Logistics (lista numerada A1, A2…: la idea, la cita que la respalda, por qué le sirve a una pyme, y el esfuerzo estimado bajo, medio o alto sobre Postgres con RLS y React)
 
 **A1. Registro de módulos como datos, con una fila por módulo y bandera `enabled`.** Una tabla `modulos` (id, etiqueta, descripción, icono, enabled, sistema, oculto, beta) sembrada al instalar cada módulo. Respaldo: `models/all/src/index.ts:573-594` y `foundations/core/packages/core/src/classes.ts:293-312`. Sirve porque quien instala enciende solo lo que el cliente compró, sin redeploy. Esfuerzo: bajo.
 
@@ -86,7 +86,7 @@ Alcance real: Huly es una plataforma de gestión de proyectos, CRM ligero, RR. H
 
 **A4. Apagar un módulo oculta la interfaz pero conserva los datos.** Gate en el shell React (menú, rutas, acciones) por `enabled`, sin borrar tablas. Respaldo: `models/all/src/index.ts:157-168` (el filtro solo contiene clases de interfaz) y `foundations/core/packages/client-resources/src/index.ts:185-194`. Sirve porque una pyme puede activar y desactivar por prueba sin perder cartera. Hay que decidir si los datos de un módulo apagado salen de las listas globales. Esfuerzo: bajo.
 
-**A5. Manifiesto de módulo explícito con dependencias.** Huly no lo tiene (las dependencias son de paquete, `models/lead/package.json:44-52`) y eso deja sin guarda el caso "apagar un módulo del que otro depende". TailorSuite debería añadir `requiere: [ids]` al registro y bloquear apagar o encender con dependencias sin cumplir. Idea propia, derivada de esa carencia. Esfuerzo: bajo.
+**A5. Manifiesto de módulo explícito con dependencias.** Huly no lo tiene (las dependencias son de paquete, `models/lead/package.json:44-52`) y eso deja sin guarda el caso "apagar un módulo del que otro depende". Bash Logistics debería añadir `requiere: [ids]` al registro y bloquear apagar o encender con dependencias sin cumplir. Idea propia, derivada de esa carencia. Esfuerzo: bajo.
 
 **A6. Una aplicación de menú por módulo con navegación declarativa y nivel de acceso mínimo.** Etiqueta, icono, alias, rol mínimo, lista de vistas especiales y de espacios. Respaldo: `models/workbench/src/index.ts:45-55`, `models/lead/src/index.ts:80-143`. El menú se genera desde el registro y respeta el rol. Esfuerzo: medio.
 
@@ -108,16 +108,16 @@ Alcance real: Huly es una plataforma de gestión de proyectos, CRM ligero, RR. H
 
 **A15. Motor simple de procesos (estado, transición, disparador, acciones, log de ejecución).** Útil como futuro módulo de automatización o aprobaciones (por ejemplo, aprobar una compra mayor a un monto). Respaldo: `models/process/src/index.ts:89-210`, `:224-240`. Para una pyme basta un subconjunto (aprobaciones y avisos). Esfuerzo: alto si se hace completo; medio si solo aprobaciones.
 
-**A16. Orden mínimo útil de módulos, deducido de cómo Huly los activa por defecto.** Núcleo no apagable (contactos, avisos, ajustes), luego lo que Huly enciende de fábrica en negocio (calendario, tareas, RR. HH. básico: `models/all/src/index.ts:191-319`) y lo que deja apagado para activar a pedido (lead, inventario, documentos controlados, formación: `:254-287`, `:418-452`). Para TailorSuite la lectura es: núcleo + CRM (ya existe) + cuentas con roles de cliente y proveedor + catálogo de productos + ventas y facturación + cartera + inventario con existencias; RR. HH. y contabilidad después. Huly no aporta el dominio de ventas, compras ni contable. Esfuerzo: no aplica (decisión de producto).
+**A16. Orden mínimo útil de módulos, deducido de cómo Huly los activa por defecto.** Núcleo no apagable (contactos, avisos, ajustes), luego lo que Huly enciende de fábrica en negocio (calendario, tareas, RR. HH. básico: `models/all/src/index.ts:191-319`) y lo que deja apagado para activar a pedido (lead, inventario, documentos controlados, formación: `:254-287`, `:418-452`). Para Bash Logistics la lectura es: núcleo + CRM (ya existe) + cuentas con roles de cliente y proveedor + catálogo de productos + ventas y facturación + cartera + inventario con existencias; RR. HH. y contabilidad después. Huly no aporta el dominio de ventas, compras ni contable. Esfuerzo: no aplica (decisión de producto).
 
 ## No conviene copiar (y por qué)
 
-- **El modelo de objetos propio por transacciones (clases, mixins, `@Model`, `@Prop`) como base de datos.** Es un motor completo (CockroachDB, Elasticsearch, Redpanda, MinIO; ver `ARCHITECTURE_OVERVIEW.md:7-97`) incompatible con Postgres + RLS + Netlify Functions y desproporcionado para una pyme. TailorSuite debe quedarse con tablas relacionales.
+- **El modelo de objetos propio por transacciones (clases, mixins, `@Model`, `@Prop`) como base de datos.** Es un motor completo (CockroachDB, Elasticsearch, Redpanda, MinIO; ver `ARCHITECTURE_OVERVIEW.md:7-97`) incompatible con Postgres + RLS + Netlify Functions y desproporcionado para una pyme. Bash Logistics debe quedarse con tablas relacionales.
 - **Arquitectura de 30 servicios y colas** (`ARCHITECTURE_OVERVIEW.md:3-97`). Una instalación por cliente no la justifica.
 - **El filtro de modelo en cliente como mecanismo de seguridad.** `returnUITxes` es de interfaz; la protección de datos tiene que estar en RLS. En Huly lo seguro es el middleware de servidor.
 - **El módulo `inventory` como base de inventario.** Es solo catálogo con SKU (`models/inventory/src/index.ts:34-77`); sin existencias, costos, bodegas ni movimientos no sirve a un ERP.
 - **Los módulos `products`, `controlled-documents`, `training`, `test-management`.** Son gestión de calidad y documentación regulada (`models/products/src/roles.ts:20-57` usa roles QARA y QualifiedUser), fuera del alcance de una pyme comercial.
-- **Edición colaborativa con CRDT y oficina virtual** (`collaborator`, `love`): costo alto, valor bajo para TailorSuite.
+- **Edición colaborativa con CRDT y oficina virtual** (`collaborator`, `love`): costo alto, valor bajo para Bash Logistics.
 - **El modelo de Lead como tarea de un tablero (hereda de Task).** Sirve a su producto de proyectos; para ventas formales de una pyme conviene que oportunidad, cotización y pedido sean entidades propias con totales e impuestos.
 - **Facturación de Huly (`models/billing`).** Son niveles de almacenamiento del servicio alojado, no facturación a clientes (`models/billing/src/index.ts:28-39`).
 

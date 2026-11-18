@@ -10,7 +10,8 @@
 //   node tools/instalar/modulos.mjs --limites <slug> '<json>'
 //
 // El registro src/lib/modulos.ts manda: un módulo desconocido o planeado no
-// se activa, una dependencia inactiva lo impide y un dependiente activo
+// se activa, una dependencia dura inactiva lo impide (y la salida dice en qué
+// orden activar lo que falta; «integra» no bloquea) y un dependiente activo
 // impide desactivar (salvo --cascada, que desactiva del más lejano al
 // propio). Al activar se aplican con aplicar.mjs --archivo, en orden, los
 // archivos del módulo (el de su Modulo.sql y las correcciones con letra del
@@ -29,7 +30,7 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { main as aplicarMain } from './aplicar.mjs'
 import { CARPETA_ESQUEMA, VARIABLE_URL, crearCliente as crearClienteReal, leerUrlBase, listarArchivosEsquema, numeroDe, ocultarUrl } from './comun.mjs'
-import { MODULOS, NUCLEO, moduloPorSlug, validarActivacion, validarDesactivacion, validarLimites } from '../../src/lib/modulos.ts'
+import { MODULOS, NUCLEO, moduloPorSlug, ordenDeActivacion, validarActivacion, validarDesactivacion, validarLimites } from '../../src/lib/modulos.ts'
 
 // PP-LIM: lo que no figura aquí queda sin límite
 export const LIMITES_POR_DEFECTO = {
@@ -186,6 +187,11 @@ export async function main(argv = process.argv.slice(2), opciones = {}) {
       const v = validarActivacion(activos, o.slug)
       if (!v.ok) {
         for (const e of v.errores) error(`DIFIERE ${e}`)
+        const orden = ordenDeActivacion(activos, o.slug)
+        if (orden.length > 1) {
+          const marca = (s) => (moduloPorSlug(s)?.estado === 'planeado' ? `${s} (planeado)` : s)
+          error(`AVISO orden de activación: ${orden.map(marca).join(', ')}`)
+        }
         return 1
       }
       if (rutaSql && !existsSync(rutaSql)) {

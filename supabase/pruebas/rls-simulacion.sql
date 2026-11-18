@@ -9,7 +9,7 @@
 -- transacción de la sección 0. Nunca muestra valores de la base: solo
 -- conteos, códigos (SQLSTATE) y nombres de funciones o tablas.
 --
--- Requiere: supabase/esquema 00 a 04 aplicados (05 a 09 para las secciones 8 a 11, con 06b para el caso 9.7; 21-crm.sql para la 12 y la 13, con 21b para el caso 13.9) y las cuentas de prueba de
+-- Requiere: supabase/esquema 00 a 04 aplicados (05 a 09 para las secciones 8 a 11, con 06b para el caso 9.7; 21-crm.sql para la 12 y la 13, con 21b para el caso 13.9; 01b-ultimo-administrador.sql para la 14 y 21c-crm-exportar.sql para la 15; 00b-contrato-tabla.sql para la 16, con 21d-crm-contrato.sql para sus casos del CRM; 09b-numeracion.sql para la 17 y 09c-estados.sql para la 18) y las cuentas de prueba de
 -- node tools/instalar/cuentas-prueba.mjs (instalador.cuentas_prueba con qa,
 -- miembro y admin). Sin una cuenta, sus casos salen OMITIDO.
 --
@@ -39,8 +39,26 @@
 --  13) salud: permiso explícito, aal2, registro de accesos, consentimiento,
 --      crm_salud cerrada a la API, consentimientos sin borrado y vigente por
 --      created_at, cuenta con salud o consentimientos que no se borra
+--  14) último administrador: nadie se quita su propio admin ni borra su
+--      perfil; sin sesión se quita admin a quien no es el último, pero no
+--      al último (delete, update, es_servicio, truncate ni baja en Auth)
+--  15) exportar del crm: sin exportar_crm no se exporta; con él, la lista
+--      entera en un jsonb y una fila crm.exportar en la auditoría; más de
+--      10 000 cuentas se niega; crm_exportar sin salud ni definer
+--  16) contrato de tabla: dominios de moneda y vía; en el crm, autoría,
+--      fechas y creado_via sellados aunque el cliente mande otros, y el
+--      historial sin updated_by ni creado_via
+--  17) numeración: sin huecos sin hueco al deshacer, tope y vigencia que
+--      fallan cerrado, con huecos que no devuelve el número, la serie sin
+--      huecos no se pide suelta; miembro sin acceso y admin sin contador
+--  18) máquina de estados sobre una tabla temporal: estado inicial,
+--      transición válida con auditoría, fuera del catálogo, sin permiso,
+--      conflicto, update directo y administrador sin excepción
 -- Las secciones 8 a 11 salen OMITIDO si falta su archivo de 05 a 09; la 12
--- y la 13, si falta 21-crm.sql.
+-- y la 13, si falta 21-crm.sql; la 14, si falta 01b-ultimo-administrador.sql;
+-- la 15, si falta 21c-crm-exportar.sql; la 16, si falta 00b-contrato-tabla.sql
+-- (sus casos del CRM, si falta 21d-crm-contrato.sql); la 17, si falta
+-- 09b-numeracion.sql, y la 18, si falta 09c-estados.sql.
 -- ============================================================
 
 begin;
@@ -1370,6 +1388,694 @@ begin
   r := r || E'\n' || case when v = 'crm_cuenta_con_salud / crm_cuenta_con_consentimientos' and v_n > 0 then 'OK      ' else 'FALLA   ' end
        || '13.10 admin borra persona con salud y luego con consentimientos → crm_cuenta_con_salud / crm_cuenta_con_consentimientos · '
        || v || ' / ' || v_n;
+
+  perform set_config('request.jwt.claims', '', true);
+  perform set_config('rls.res', current_setting('rls.res') || r, true);
+end $$;
+
+-- ============ 14) Último administrador: el propio admin, el último y la baja ============
+-- Deja a la cuenta admin de prueba como único administrador real (se
+-- deshace con todo lo demás) y comprueba que ni sin sesión se le quita.
+do $$
+declare
+  r text := '';
+  v text;
+  v_n int;
+  v_miembro uuid := nullif(current_setting('rls.miembro'), '')::uuid;
+  v_admin uuid := nullif(current_setting('rls.admin'), '')::uuid;
+begin
+  if current_setting('rls.txid', true) is distinct from txid_current()::text then
+    raise exception 'rls-simulacion: correr el archivo entero de una vez (BEGIN … ROLLBACK), no una sección suelta';
+  end if;
+  if to_regprocedure('public.guarda_ultimo_admin()') is null then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 14    último administrador · falta 01b-ultimo-administrador.sql', true);
+    return;
+  end if;
+  if v_miembro is null or v_admin is null then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 14    último administrador · faltan las cuentas miembro o admin', true);
+    return;
+  end if;
+  if exists (select 1 from public.profiles where id = v_admin and es_servicio) then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 14    último administrador · la cuenta admin de prueba es de servicio y no cuenta', true);
+    return;
+  end if;
+
+  -- 14.1 El admin se quita su propio admin por la API
+  perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
+  set local role authenticated;
+  begin
+    delete from public.user_roles where user_id = v_admin and role = 'admin';
+    get diagnostics v_n = row_count;
+    v := v_n || ' filas';
+  exception when others then get stacked diagnostics v = pg_exception_hint; v := coalesce(nullif(v, ''), sqlstate);
+  end;
+  reset role;
+  r := r || E'\n' || case when v = 'admin_propio' then 'OK      ' else 'FALLA   ' end || '14.1  admin se quita su propio admin → admin_propio · ' || v;
+
+  -- 14.2 Sin sesión (service role, instalador) se quita admin a quien no es el último
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.user_roles (user_id, role) values (v_miembro, 'admin');
+  begin
+    delete from public.user_roles where user_id = v_miembro and role = 'admin';
+    get diagnostics v_n = row_count;
+    v := case when v_n = 1 then 'quitó' else v_n || ' filas' end;
+  exception when others then get stacked diagnostics v = pg_exception_hint; v := coalesce(nullif(v, ''), sqlstate);
+  end;
+  r := r || E'\n' || case when v = 'quitó' then 'OK      ' else 'FALLA   ' end || '14.2  sin sesión quita admin a quien no es el último → quitó · ' || v;
+
+  -- La cuenta admin de prueba queda como único administrador real
+  begin
+    delete from public.user_roles where role = 'admin' and user_id <> v_admin;
+    v := 'ok';
+  exception when others then get stacked diagnostics v = pg_exception_hint; v := coalesce(nullif(v, ''), sqlstate);
+  end;
+  if v <> 'ok' then
+    perform set_config('rls.res', current_setting('rls.res') || r || E'\nOMITIDO 14.3-8 no se pudo dejar a la cuenta admin de prueba como la última · ' || v, true);
+    return;
+  end if;
+
+  -- 14.3 Sin sesión, quitar el admin al último
+  begin
+    delete from public.user_roles where user_id = v_admin and role = 'admin';
+    v := 'quitó';
+  exception when others then get stacked diagnostics v = pg_exception_hint; v := coalesce(nullif(v, ''), sqlstate);
+  end;
+  r := r || E'\n' || case when v = 'ultimo_admin' then 'OK      ' else 'FALLA   ' end || '14.3  sin sesión quita admin al último → ultimo_admin · ' || v;
+
+  -- 14.4 Sin sesión, cambiar su fila admin por otro rol
+  begin
+    update public.user_roles set role = 'member' where user_id = v_admin and role = 'admin';
+    v := 'cambió';
+  exception when others then get stacked diagnostics v = pg_exception_hint; v := coalesce(nullif(v, ''), sqlstate);
+  end;
+  r := r || E'\n' || case when v = 'ultimo_admin' then 'OK      ' else 'FALLA   ' end || '14.4  sin sesión cambia la fila admin del último → ultimo_admin · ' || v;
+
+  -- 14.5 Sin sesión, marcar al último como cuenta de servicio
+  begin
+    update public.profiles set es_servicio = true where id = v_admin;
+    v := 'marcó';
+  exception when others then get stacked diagnostics v = pg_exception_hint; v := coalesce(nullif(v, ''), sqlstate);
+  end;
+  r := r || E'\n' || case when v = 'ultimo_admin' then 'OK      ' else 'FALLA   ' end || '14.5  sin sesión marca es_servicio al último → ultimo_admin · ' || v;
+
+  -- 14.6 Sin sesión, vaciar user_roles
+  begin
+    truncate public.user_roles;
+    v := 'vació';
+  exception when others then get stacked diagnostics v = pg_exception_hint; v := coalesce(nullif(v, ''), sqlstate);
+  end;
+  r := r || E'\n' || case when v = 'ultimo_admin' then 'OK      ' else 'FALLA   ' end || '14.6  sin sesión vacía user_roles → ultimo_admin · ' || v;
+
+  -- 14.7 Con sesión, borrar el propio perfil (auth.uid() lee el claim
+  -- aunque el rol sea postgres, que sí tiene delete sobre profiles)
+  perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
+  begin
+    delete from public.profiles where id = v_admin;
+    v := 'borró';
+  exception when others then get stacked diagnostics v = pg_exception_hint; v := coalesce(nullif(v, ''), sqlstate);
+  end;
+  perform set_config('request.jwt.claims', '', true);
+  r := r || E'\n' || case when v = 'borrar_propio' then 'OK      ' else 'FALLA   ' end || '14.7  con sesión borra su propio perfil → borrar_propio · ' || v;
+
+  -- 14.8 Sin sesión, la baja del último en Auth (cae en cascada a user_roles)
+  begin
+    delete from auth.users where id = v_admin;
+    v := 'borró';
+  exception when others then get stacked diagnostics v = pg_exception_hint; v := coalesce(nullif(v, ''), sqlstate);
+  end;
+  select count(*) into v_n from public.user_roles where user_id = v_admin and role = 'admin';
+  r := r || E'\n' || case when v = 'ultimo_admin' and v_n = 1 then 'OK      ' else 'FALLA   ' end || '14.8  sin sesión borra al último en Auth → ultimo_admin / 1 · ' || v || ' / ' || v_n;
+
+  perform set_config('rls.res', current_setting('rls.res') || r, true);
+end $$;
+
+-- ============ 15) CRM: exportar exige exportar_crm y queda en la auditoría ============
+do $$
+declare
+  r text := '';
+  v text;
+  v_n int;
+  v_m int;
+  v_j jsonb;
+  v_miembro uuid := nullif(current_setting('rls.miembro'), '')::uuid;
+begin
+  if current_setting('rls.txid', true) is distinct from txid_current()::text then
+    raise exception 'rls-simulacion: correr el archivo entero de una vez (BEGIN … ROLLBACK), no una sección suelta';
+  end if;
+  if to_regprocedure('public.crm_exportar(text,text,text,text,uuid,text,boolean)') is null then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 15    exportar crm · falta 21c-crm-exportar.sql', true);
+    return;
+  end if;
+  if v_miembro is null then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 15    exportar crm · falta la cuenta miembro', true);
+    return;
+  end if;
+
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.modulos_instalacion (slug, activo) values ('crm', true)
+  on conflict (slug) do update set activo = true;
+  insert into public.roles (name, permissions) values ('prueba-rls-crm-lector', array['app_crm']);
+  insert into public.user_roles (user_id, role) values (v_miembro, 'prueba-rls-crm-lector');
+
+  -- 15.1 Lee el CRM pero no tiene exportar_crm (si un rol real de la
+  -- cuenta ya lo da, el caso no es un negativo)
+  perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+  if public.has_perm('exportar_crm') then
+    r := r || E'\nOMITIDO 15.1  miembro sin exportar_crm · la cuenta miembro ya lo tiene por un rol de la instalación';
+  else
+    set local role authenticated;
+    begin
+      perform * from public.crm_exportar();
+      v := 'exportó';
+    exception when others then get stacked diagnostics v = pg_exception_hint; v := coalesce(nullif(v, ''), sqlstate);
+    end;
+    reset role;
+    r := r || E'\n' || case when v = 'crm_exportar' then 'OK      ' else 'FALLA   ' end || '15.1  miembro con app_crm y sin exportar_crm exporta → crm_exportar · ' || v;
+  end if;
+
+  -- 15.2 Con exportar_crm exporta la lista entera en un solo jsonb (sin
+  -- la columna total) y la base deja la fila de auditoría con el total
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.roles (name, permissions) values ('prueba-rls-crm-exportar', array['app_crm', 'exportar_crm']);
+  insert into public.user_roles (user_id, role) values (v_miembro, 'prueba-rls-crm-exportar');
+  insert into public.crm_cuentas (tipo, nombre)
+  select 'persona', 'Prueba RLS exportar ' || g from generate_series(1, 3) g;
+  select count(*) into v_m from public.audit_log
+   where user_id = v_miembro and action = 'crm.exportar' and detail = 'Exportó 3 cuentas';
+  perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+  set local role authenticated;
+  begin
+    v_j := public.crm_exportar(p_q => 'Prueba RLS exportar');
+    v := 'exportó';
+  exception when others then get stacked diagnostics v = pg_exception_hint; v := coalesce(nullif(v, ''), sqlstate);
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  select count(*) - v_m into v_m from public.audit_log
+   where user_id = v_miembro and action = 'crm.exportar' and detail = 'Exportó 3 cuentas';
+  v_n := coalesce(jsonb_array_length(v_j -> 'filas'), -1);
+  if v = 'exportó' and (v_j ->> 'total' is distinct from '3' or (v_j -> 'filas' -> 0) ? 'total') then
+    v := 'filas con total o total distinto';
+  end if;
+  r := r || E'\n' || case when v = 'exportó' and v_n = 3 and v_m = 1 then 'OK      ' else 'FALLA   ' end || '15.2  miembro con exportar_crm exporta 3 cuentas y deja una fila crm.exportar → exportó / 3 / 1 · ' || v || ' / ' || v_n || ' / ' || v_m;
+
+  -- 15.3 Sin security definer y nada de salud en el código ni en las columnas
+  select count(*) into v_n
+    from pg_catalog.pg_proc p
+   where p.oid = to_regprocedure('public.crm_exportar(text,text,text,text,uuid,text,boolean)')
+     and (p.prosecdef or p.prosrc ~* 'salud' or pg_catalog.pg_get_function_result(p.oid) ~* 'salud'
+          or p.proretset or p.prorettype <> 'jsonb'::regtype);
+  r := r || E'\n' || case when v_n = 0 then 'OK      ' else 'FALLA   ' end || '15.3  crm_exportar sin security definer ni salud y devuelve un solo jsonb → 0 · ' || v_n;
+
+  -- 15.4 Anónimo sin EXECUTE
+  v := case when has_function_privilege('anon', 'public.crm_exportar(text,text,text,text,uuid,text,boolean)', 'execute') then 'ejecuta' else 'no' end;
+  r := r || E'\n' || case when v = 'no' then 'OK      ' else 'FALLA   ' end || '15.4  anon ejecuta crm_exportar → no · ' || v;
+
+  -- 15.5 Con más de 10 000 cuentas se niega sin exportar ni dejar fila de
+  -- auditoría, en vez de entregar un archivo cortado
+  insert into public.crm_cuentas (tipo, nombre)
+  select 'persona', 'Prueba RLS tope ' || g from generate_series(1, 10001) g;
+  select count(*) into v_m from public.audit_log where user_id = v_miembro and action = 'crm.exportar';
+  perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+  set local role authenticated;
+  begin
+    v_j := public.crm_exportar(p_q => 'Prueba RLS tope');
+    v := 'exportó';
+  exception when others then get stacked diagnostics v = pg_exception_hint; v := coalesce(nullif(v, ''), sqlstate);
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  select count(*) - v_m into v_m from public.audit_log where user_id = v_miembro and action = 'crm.exportar';
+  r := r || E'\n' || case when v = 'crm_exportar_tope' and v_m = 0 then 'OK      ' else 'FALLA   ' end || '15.5  exportar 10 001 cuentas → crm_exportar_tope / 0 · ' || v || ' / ' || v_m;
+
+  perform set_config('rls.res', current_setting('rls.res') || r, true);
+end $$;
+
+-- ============ 16) Contrato de tabla y moneda: sellos que el cliente no falsea ============
+-- Dominios de 00b-contrato-tabla.sql y, con 21d-crm-contrato.sql, el
+-- contrato en cuentas y actividades del CRM: el miembro manda autoría,
+-- fechas y creado_via falsos y la base los sella; el historial no anota
+-- updated_by ni creado_via.
+do $$
+declare
+  r text := '';
+  v text;
+  v_n int;
+  v_m int;
+  v_cuenta uuid;
+  v_act uuid;
+  v_miembro uuid := nullif(current_setting('rls.miembro'), '')::uuid;
+  v_otro uuid := gen_random_uuid();
+begin
+  if current_setting('rls.txid', true) is distinct from txid_current()::text then
+    raise exception 'rls-simulacion: correr el archivo entero de una vez (BEGIN … ROLLBACK), no una sección suelta';
+  end if;
+  if to_regprocedure('public.contrato_sellar()') is null then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 16    contrato de tabla · falta 00b-contrato-tabla.sql', true);
+    return;
+  end if;
+
+  -- 16.1 Dominios: moneda en minúscula, importe NaN y vía desconocida
+  perform set_config('request.jwt.claims', '', true);
+  v := '';
+  begin
+    perform 'cop'::public.codigo_moneda;
+    v := v || 'entró';
+  exception when others then v := v || sqlstate;
+  end;
+  begin
+    perform 'NaN'::public.importe;
+    v := v || ' / entró';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  begin
+    perform 'otra'::public.via_creacion;
+    v := v || ' / entró';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  begin
+    perform 'COP'::public.codigo_moneda, 1234.5::public.importe, 'importacion'::public.via_creacion;
+    v := v || ' / válidos';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  r := r || E'\n' || case when v = '23514 / 23514 / 23514 / válidos' then 'OK      ' else 'FALLA   ' end || '16.1  dominios rechazan cop, NaN y una vía desconocida → 23514 ×3 / válidos · ' || v;
+
+  if to_regclass('public.crm_cuentas') is null
+     or not exists (select 1 from pg_catalog.pg_trigger g
+                     where g.tgrelid = 'public.crm_cuentas'::regclass and g.tgname = 'zz_contrato_sellar') then
+    perform set_config('rls.res', current_setting('rls.res') || r || E'\nOMITIDO 16.2-6 contrato en el crm · falta 21d-crm-contrato.sql', true);
+    return;
+  end if;
+  if v_miembro is null then
+    perform set_config('rls.res', current_setting('rls.res') || r || E'\nOMITIDO 16.2-6 contrato en el crm · falta la cuenta miembro', true);
+    return;
+  end if;
+
+  insert into public.modulos_instalacion (slug, activo) values ('crm', true)
+  on conflict (slug) do update set activo = true;
+  insert into public.roles (name, permissions) values ('prueba-rls-contrato', array['app_crm', 'edit_crm']);
+  insert into public.user_roles (user_id, role) values (v_miembro, 'prueba-rls-contrato');
+
+  -- 16.2 Alta con autoría, fechas y vía mandadas por el cliente
+  perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+  set local role authenticated;
+  begin
+    insert into public.crm_cuentas (tipo, nombre, created_by, updated_by, created_at, updated_at, creado_via)
+    values ('persona', 'Prueba RLS contrato', v_otro, v_otro, '2000-01-01', '2000-01-01', 'importacion')
+    returning id into v_cuenta;
+    v := 'entró';
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  select count(*) into v_n from public.crm_cuentas
+   where id = v_cuenta and created_by = v_miembro and updated_by = v_miembro
+     and created_at = now() and updated_at = now() and creado_via = 'importacion';
+  r := r || E'\n' || case when v = 'entró' and v_n = 1 then 'OK      ' else 'FALLA   ' end || '16.2  miembro crea una cuenta con autoría y fechas falsas → entró / 1 sellada · ' || v || ' / ' || v_n;
+
+  if v_cuenta is null then
+    perform set_config('request.jwt.claims', '', true);
+    perform set_config('rls.res', current_setting('rls.res') || r || E'\nOMITIDO 16.3-6 contrato en el crm · no se creó la cuenta de prueba', true);
+    return;
+  end if;
+
+  -- 16.3 Cambio que intenta reescribir autoría, fecha de alta y vía
+  set local role authenticated;
+  begin
+    update public.crm_cuentas
+       set nombre = 'Prueba RLS contrato 2', created_by = v_otro, created_at = '2000-01-01',
+           creado_via = 'api', updated_by = v_otro
+     where id = v_cuenta;
+    get diagnostics v_n = row_count;
+    v := v_n || ' filas';
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  select count(*) into v_n from public.crm_cuentas
+   where id = v_cuenta and created_by = v_miembro and updated_by = v_miembro
+     and created_at = now() and creado_via = 'importacion';
+  r := r || E'\n' || case when v = '1 filas' and v_n = 1 then 'OK      ' else 'FALLA   ' end || '16.3  miembro cambia la cuenta y reescribe autoría y vía → 1 filas / 1 sin cambio · ' || v || ' / ' || v_n;
+
+  -- 16.4 Sin sesión (service role, instalador): updated_by queda null y
+  -- created_by se conserva
+  perform set_config('request.jwt.claims', '', true);
+  update public.crm_cuentas set nombre = 'Prueba RLS contrato 3' where id = v_cuenta;
+  select count(*) into v_n from public.crm_cuentas where id = v_cuenta and updated_by is null and created_by = v_miembro;
+  r := r || E'\n' || case when v_n = 1 then 'OK      ' else 'FALLA   ' end || '16.4  sin sesión cambia la cuenta → updated_by null y created_by intacto · ' || v_n;
+
+  -- 16.5 El historial no anota updated_by ni creado_via: los dos cambios de
+  -- nombre quedan con campos = {nombre}
+  select count(*) into v_n from public.crm_cambios
+   where entidad = 'cuenta' and entidad_id = v_cuenta
+     and (campos && array['updated_by', 'creado_via', 'updated_at']
+          or coalesce(despues, '{}') ?| array['updated_by', 'creado_via']
+          or coalesce(antes, '{}') ?| array['updated_by', 'creado_via']);
+  select count(*) into v_m from public.crm_cambios
+   where entidad = 'cuenta' and entidad_id = v_cuenta and operacion = 'update' and campos = array['nombre'];
+  r := r || E'\n' || case when v_n = 0 and v_m = 2 then 'OK      ' else 'FALLA   ' end || '16.5  historial sin updated_by ni creado_via; dos cambios de nombre → 0 / 2 · ' || v_n || ' / ' || v_m;
+
+  -- 16.6 Actividad: autor_id y updated_by sellados, vía manual por defecto
+  perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+  set local role authenticated;
+  begin
+    insert into public.crm_actividades (tipo, cuenta_id, asunto, autor_id, updated_by)
+    values ('nota', v_cuenta, 'Prueba RLS contrato', v_otro, v_otro)
+    returning id into v_act;
+    v := 'entró';
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  select count(*) into v_n from public.crm_actividades
+   where id = v_act and autor_id = v_miembro and updated_by = v_miembro and creado_via = 'manual';
+  r := r || E'\n' || case when v = 'entró' and v_n = 1 then 'OK      ' else 'FALLA   ' end || '16.6  miembro crea una actividad con autor falso → entró / 1 sellada · ' || v || ' / ' || v_n;
+
+  perform set_config('rls.res', current_setting('rls.res') || r, true);
+end $$;
+
+-- ============ 17) Numeración: series del servidor y contador cerrado a la API ============
+-- 09b-numeracion.sql: sin huecos, una transacción deshecha no deja hueco y
+-- el tope y la vigencia fallan cerrado; con huecos, el número entregado no
+-- vuelve; una serie sin huecos no se numera suelta por la API. Un miembro
+-- sin gestionar_series no ve ni crea series ni ejecuta series_siguiente;
+-- un administrador crea una serie pero no escribe su contador (PP-DEC-25).
+-- Con reinicio, un primer número del periodo nuevo deshecho no repite
+-- números del anterior; sin fecha, cuenta el día de la instalación y no el
+-- de la sesión.
+do $$
+declare
+  r text := '';
+  v text;
+  v_n int;
+  v_hoy date;
+  v_zona text;
+  v_tz text;
+  v_miembro uuid := nullif(current_setting('rls.miembro'), '')::uuid;
+  v_admin uuid := nullif(current_setting('rls.admin'), '')::uuid;
+begin
+  if current_setting('rls.txid', true) is distinct from txid_current()::text then
+    raise exception 'rls-simulacion: correr el archivo entero de una vez (BEGIN … ROLLBACK), no una sección suelta';
+  end if;
+  if to_regprocedure('public.series_siguiente(text,date)') is null then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 17    numeración · falta 09b-numeracion.sql', true);
+    return;
+  end if;
+
+  -- Series de prueba, sin sesión (como el servidor)
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.series (clave, prefijo, relleno, tope, modo) values ('prueba_rls_sin', 'F-', 4, 2, 'sin_huecos');
+  insert into public.series (clave, prefijo, relleno, modo) values ('prueba_rls_con', 'C-', 3, 'con_huecos');
+
+  -- 17.1 Sin huecos: el número de una transacción deshecha se vuelve a dar
+  v := public.series_siguiente('prueba_rls_sin');
+  begin
+    perform public.series_siguiente('prueba_rls_sin');
+    raise exception using errcode = 'P0004';
+  exception when sqlstate 'P0004' then
+    null;
+  end;
+  v := v || ' / ' || public.series_siguiente('prueba_rls_sin');
+  r := r || E'\n' || case when v = 'F-0001 / F-0002' then 'OK      ' else 'FALLA   ' end || '17.1  sin huecos: uno, otro deshecho, otro → F-0001 / F-0002 · ' || v;
+
+  -- 17.2 Tope agotado y fuera de vigencia: no entrega número
+  begin
+    perform public.series_siguiente('prueba_rls_sin');
+    v := 'entregó';
+  exception when others then v := sqlstate;
+  end;
+  update public.series set tope = null, vigente_desde = current_date + 1 where clave = 'prueba_rls_sin';
+  begin
+    perform public.series_siguiente('prueba_rls_sin');
+    v := v || ' / entregó';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  r := r || E'\n' || case when v = '54000 / 22023' then 'OK      ' else 'FALLA   ' end || '17.2  sin huecos con tope agotado y fuera de vigencia → 54000 / 22023 · ' || v;
+
+  -- 17.3 Con huecos: el número de una transacción deshecha no vuelve
+  v := public.series_siguiente('prueba_rls_con');
+  begin
+    perform public.series_siguiente('prueba_rls_con');
+    raise exception using errcode = 'P0004';
+  exception when sqlstate 'P0004' then
+    null;
+  end;
+  v := v || ' / ' || public.series_siguiente('prueba_rls_con');
+  r := r || E'\n' || case when v = 'C-001 / C-003' then 'OK      ' else 'FALLA   ' end || '17.3  con huecos: uno, otro deshecho, otro → C-001 / C-003 · ' || v;
+
+  -- 17.4 Una serie sin huecos pedida directa por la API se niega, también
+  -- con un prefijo del proxy delante de la ruta
+  perform set_config('request.path', '/rpc/series_siguiente', true);
+  begin
+    perform public.series_siguiente('prueba_rls_sin');
+    v := 'entregó';
+  exception when others then v := sqlstate;
+  end;
+  perform set_config('request.path', '/rest/v1/rpc/series_siguiente', true);
+  begin
+    perform public.series_siguiente('prueba_rls_sin');
+    v := v || ' / entregó';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  perform set_config('request.path', '', true);
+  r := r || E'\n' || case when v = '42501 / 42501' then 'OK      ' else 'FALLA   ' end || '17.4  sin huecos por /rpc/ y /rest/v1/rpc/series_siguiente → 42501 / 42501 · ' || v;
+
+  if v_miembro is null then
+    r := r || E'\nOMITIDO 17.5  numeración del miembro · falta la cuenta miembro';
+  else
+    -- 17.5 Miembro sin gestionar_series: no ve, no crea, no numera
+    perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+    set local role authenticated;
+    select count(*) into v_n from public.series;
+    begin
+      insert into public.series (clave, modo) values ('prueba_rls_miembro', 'con_huecos');
+      v := 'entró';
+    exception when others then v := sqlstate;
+    end;
+    begin
+      perform public.series_siguiente('prueba_rls_con');
+      v := v || ' / entregó';
+    exception when others then v := v || ' / ' || sqlstate;
+    end;
+    reset role;
+    r := r || E'\n' || case when v_n = 0 and v = '42501 / 42501' then 'OK      ' else 'FALLA   ' end || '17.5  miembro ve, crea y numera series → 0 / 42501 / 42501 · ' || v_n || ' / ' || v;
+  end if;
+
+  if v_admin is null then
+    r := r || E'\nOMITIDO 17.6  numeración del administrador · falta la cuenta admin';
+  else
+    -- 17.6 Administrador: crea una serie, no escribe el contador ni numera
+    perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
+    set local role authenticated;
+    begin
+      insert into public.series (clave, prefijo, modo) values ('prueba_rls_admin', 'A-', 'sin_huecos');
+      v := 'entró';
+    exception when others then v := sqlstate;
+    end;
+    begin
+      update public.series set actual = 99 where clave = 'prueba_rls_admin';
+      v := v || ' / cambió';
+    exception when others then v := v || ' / ' || sqlstate;
+    end;
+    begin
+      perform public.series_siguiente('prueba_rls_admin');
+      v := v || ' / entregó';
+    exception when others then v := v || ' / ' || sqlstate;
+    end;
+    reset role;
+    r := r || E'\n' || case when v = 'entró / 42501 / 42501' then 'OK      ' else 'FALLA   ' end || '17.6  admin crea serie, escribe actual y numera → entró / 42501 / 42501 · ' || v;
+  end if;
+
+  -- 17.7 Con reinicio anual: el primer número de 2027 deshecho no reinicia
+  -- 2026; una fecha de 2026 sigue su cuenta y 2027 empieza en 001
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.series (clave, prefijo, relleno, reinicio, modo) values ('prueba_rls_anual', 'C-', 3, 'anual', 'con_huecos');
+  v := public.series_siguiente('prueba_rls_anual', date '2026-12-30');
+  v := v || ' / ' || public.series_siguiente('prueba_rls_anual', date '2026-12-31');
+  begin
+    perform public.series_siguiente('prueba_rls_anual', date '2027-01-02');
+    raise exception using errcode = 'P0004';
+  exception when sqlstate 'P0004' then
+    null;
+  end;
+  v := v || ' / ' || public.series_siguiente('prueba_rls_anual', date '2026-12-31');
+  v := v || ' / ' || public.series_siguiente('prueba_rls_anual', date '2027-01-02');
+  r := r || E'\n' || case when v = 'C-2026-001 / C-2026-002 / C-2026-003 / C-2027-001' then 'OK      ' else 'FALLA   ' end || '17.7  anual: 2026, 2026, 2027 deshecho, 2026, 2027 → C-2026-001 / 002 / 003 / C-2027-001 · ' || v;
+
+  -- 17.8 Sin fecha cuenta el día de la instalación: con la sesión en una
+  -- zona en la que ya (o aún) es otro día, una serie vigente solo hoy
+  -- entrega número
+  v_hoy := (now() at time zone public.zona_instalacion())::date;
+  v_zona := case when (now() at time zone 'Pacific/Kiritimati')::date <> v_hoy then 'Pacific/Kiritimati' else 'Etc/GMT+12' end;
+  insert into public.series (clave, prefijo, relleno, vigente_desde, vigente_hasta, modo) values ('prueba_rls_hoy', 'H-', 3, v_hoy, v_hoy, 'sin_huecos');
+  v_tz := current_setting('timezone');
+  perform set_config('timezone', v_zona, true);
+  begin
+    v := public.series_siguiente('prueba_rls_hoy');
+  exception when others then v := sqlstate;
+  end;
+  perform set_config('timezone', v_tz, true);
+  r := r || E'\n' || case when v = 'H-001' then 'OK      ' else 'FALLA   ' end || '17.8  sin fecha, sesión en ' || v_zona || ', serie vigente solo hoy → H-001 · ' || v;
+
+  perform set_config('request.jwt.claims', '', true);
+  perform set_config('rls.res', current_setting('rls.res') || r, true);
+end $$;
+
+-- ============ 18) Máquina de estados: transición, permiso y conflicto ============
+-- 09c-estados.sql sobre una entidad de ejemplo con una tabla temporal (se
+-- deshace con todo): nace en su estado inicial; una transición del
+-- catálogo con su permiso cambia el estado y queda en la auditoría; una
+-- fuera del catálogo, sin permiso o con el estado esperado ya cambiado
+-- (otro llegó antes) se niega; un update directo del estado también; solo
+-- se borra en borrador, y el administrador no tiene excepción (PP-DEC-26).
+do $$
+declare
+  r text := '';
+  v text;
+  v_n int;
+  v_m int;
+  v_id uuid;
+  v_otro uuid;
+  v_miembro uuid := nullif(current_setting('rls.miembro'), '')::uuid;
+  v_admin uuid := nullif(current_setting('rls.admin'), '')::uuid;
+begin
+  if current_setting('rls.txid', true) is distinct from txid_current()::text then
+    raise exception 'rls-simulacion: correr el archivo entero de una vez (BEGIN … ROLLBACK), no una sección suelta';
+  end if;
+  if to_regprocedure('public.aplicar_transicion(text,uuid,text,text)') is null then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 18    máquina de estados · falta 09c-estados.sql', true);
+    return;
+  end if;
+  if v_miembro is null then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 18    máquina de estados · falta la cuenta miembro', true);
+    return;
+  end if;
+
+  -- Entidad de ejemplo, como postgres
+  perform set_config('request.jwt.claims', '', true);
+  create temp table prueba_rls_estados (id uuid primary key default gen_random_uuid(), estado text not null default 'borrador');
+  grant select, insert, update, delete on prueba_rls_estados to authenticated;
+  perform public.estados_registrar('prueba_rls', 'prueba_rls_estados'::regclass);
+  insert into public.estados (entidad, clave, nombre, categoria, inicial, orden) values
+    ('prueba_rls', 'borrador', 'Borrador', 'borrador', true, 1),
+    ('prueba_rls', 'aprobado', 'Aprobado', 'aprobado', false, 2),
+    ('prueba_rls', 'anulado', 'Anulado', 'anulado', false, 3);
+  insert into public.estados_transiciones (entidad, desde, hacia, permiso) values
+    ('prueba_rls', 'borrador', 'aprobado', 'prueba_rls_aprobar'),
+    ('prueba_rls', 'borrador', 'anulado', 'prueba_rls_anular');
+  insert into public.roles (name, permissions) values ('prueba-rls-estados', array['prueba_rls_aprobar']);
+  insert into public.user_roles (user_id, role) values (v_miembro, 'prueba-rls-estados');
+
+  perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+  set local role authenticated;
+
+  -- 18.1 Alta fuera del estado inicial se niega; en borrador entra
+  begin
+    insert into prueba_rls_estados (estado) values ('aprobado');
+    v := 'entró';
+  exception when others then v := sqlstate;
+  end;
+  begin
+    insert into prueba_rls_estados (estado) values ('borrador') returning id into v_id;
+    v := v || ' / entró';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  r := r || E'\n' || case when v = '23514 / entró' then 'OK      ' else 'FALLA   ' end || '18.1  alta en aprobado y en borrador → 23514 / entró · ' || v;
+
+  -- 18.2 Transición válida con su permiso: cambia y deja una fila en la auditoría
+  begin
+    perform public.aplicar_transicion('prueba_rls', v_id, 'borrador', 'aprobado');
+    v := 'aplicó';
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  select count(*) into v_n from prueba_rls_estados where id = v_id and estado = 'aprobado';
+  select count(*) into v_m from public.audit_log
+   where action = 'estados.transicion' and entity = 'prueba_rls' and entity_id = v_id::text and user_id = v_miembro;
+  r := r || E'\n' || case when v = 'aplicó' and v_n = 1 and v_m = 1 then 'OK      ' else 'FALLA   ' end || '18.2  miembro aplica borrador → aprobado → aplicó / 1 aprobado / 1 en auditoría · ' || v || ' / ' || v_n || ' / ' || v_m;
+
+  set local role authenticated;
+  -- 18.3 Transición que no está en el catálogo
+  begin
+    perform public.aplicar_transicion('prueba_rls', v_id, 'aprobado', 'borrador');
+    v := 'aplicó';
+  exception when others then v := sqlstate;
+  end;
+  r := r || E'\n' || case when v = '22023' then 'OK      ' else 'FALLA   ' end || '18.3  aprobado → borrador, fuera del catálogo → 22023 · ' || v;
+
+  -- 18.4 Permiso faltante: borrador → anulado exige prueba_rls_anular
+  insert into prueba_rls_estados (estado) values ('borrador') returning id into v_otro;
+  begin
+    perform public.aplicar_transicion('prueba_rls', v_otro, 'borrador', 'anulado');
+    v := 'aplicó';
+  exception when others then v := sqlstate;
+  end;
+  r := r || E'\n' || case when v = '42501' then 'OK      ' else 'FALLA   ' end || '18.4  borrador → anulado sin su permiso → 42501 · ' || v;
+
+  -- 18.5 Conflicto: se espera borrador, pero otro ya lo pasó a aprobado
+  begin
+    perform public.aplicar_transicion('prueba_rls', v_id, 'borrador', 'aprobado');
+    v := 'aplicó';
+  exception when others then v := sqlstate;
+  end;
+  r := r || E'\n' || case when v = '40001' then 'OK      ' else 'FALLA   ' end || '18.5  borrador → aprobado sobre uno ya aprobado → 40001 · ' || v;
+
+  -- 18.6 Update directo del estado
+  begin
+    update prueba_rls_estados set estado = 'anulado' where id = v_otro;
+    v := 'cambió';
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  r := r || E'\n' || case when v = '42501' then 'OK      ' else 'FALLA   ' end || '18.6  miembro cambia el estado con un update directo → 42501 · ' || v;
+
+  if v_admin is null then
+    r := r || E'\nOMITIDO 18.7  administrador sin excepción · falta la cuenta admin';
+  else
+    -- 18.7 Administrador: ni fuera del catálogo ni con un update directo
+    perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
+    set local role authenticated;
+    begin
+      perform public.aplicar_transicion('prueba_rls', v_id, 'aprobado', 'anulado');
+      v := 'aplicó';
+    exception when others then v := sqlstate;
+    end;
+    begin
+      update prueba_rls_estados set estado = 'borrador' where id = v_id;
+      v := v || ' / cambió';
+    exception when others then v := v || ' / ' || sqlstate;
+    end;
+    reset role;
+    r := r || E'\n' || case when v = '22023 / 42501' then 'OK      ' else 'FALLA   ' end || '18.7  admin: aprobado → anulado y update directo → 22023 / 42501 · ' || v;
+  end if;
+
+  if v_admin is null then
+    r := r || E'\nOMITIDO 18.8  borrado fuera de borrador · falta la cuenta admin';
+  else
+    -- 18.8 Borrar: un aprobado no, ni el miembro ni el administrador; un
+    -- borrador sí
+    perform set_config('request.jwt.claims', json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal1')::text, true);
+    set local role authenticated;
+    begin
+      delete from prueba_rls_estados where id = v_id;
+      v := 'borró';
+    exception when others then v := sqlstate;
+    end;
+    begin
+      delete from prueba_rls_estados where id = v_otro;
+      get diagnostics v_n = row_count;
+      v := v || ' / borró ' || v_n;
+    exception when others then v := v || ' / ' || sqlstate;
+    end;
+    reset role;
+    perform set_config('request.jwt.claims', json_build_object('sub', v_admin, 'role', 'authenticated', 'aal', 'aal2')::text, true);
+    set local role authenticated;
+    begin
+      delete from prueba_rls_estados where id = v_id;
+      v := v || ' / borró';
+    exception when others then v := v || ' / ' || sqlstate;
+    end;
+    reset role;
+    r := r || E'\n' || case when v = '42501 / borró 1 / 42501' then 'OK      ' else 'FALLA   ' end || '18.8  miembro borra aprobado y borrador, admin borra aprobado → 42501 / borró 1 / 42501 · ' || v;
+  end if;
 
   perform set_config('request.jwt.claims', '', true);
   perform set_config('rls.res', current_setting('rls.res') || r, true);

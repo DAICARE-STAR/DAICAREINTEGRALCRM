@@ -1054,7 +1054,7 @@ describe('aviso de reunión (notify-event)', () => {
     expect(envios.correos).toHaveLength(1)
     const lineas = (envios.correos[0].ics ?? '').replace(/\r\n /g, '').split('\r\n')
     expect(lineas).toContain(
-      'ORGANIZER;CN="Ana; ROLE=CHAIR:mailto:x@malo.test jefa — TailorSuite":mailto:marketing@empresa.test',
+      'ORGANIZER;CN="Ana; ROLE=CHAIR:mailto:x@malo.test jefa — Bash Logistics":mailto:marketing@empresa.test',
     )
   })
 
