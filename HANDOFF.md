@@ -10,7 +10,7 @@ Directora: orquesta agentes de investigación, desarrollo y pruebas de Bash Logi
 
 | Repo | Carpeta | Estado |
 |---|---|---|
-| Bash Logistics (producto) | `personal/portal-producto` | `main` en 0.2.27: lote 1 del backlog y renombre integrados desde la rama de pruebas. En GitHub (`valdrighilorenzo-star/Bash_Logistics`) hasta 0.2.20. Sin subir: 0.2.21 a 0.2.27. `docs/analisis/crm-trycompai.md` sin versionar, de otra sesión. |
+| Bash Logistics (producto) | `personal/portal-producto` | `main` en 0.2.28 (4f9441f). En GitHub (`valdrighilorenzo-star/Bash_Logistics`) hasta 0.2.27 (41bd22d). Sin subir: 0.2.28 y el commit de este handoff. `docs/analisis/crm-trycompai.md` sin versionar, de otra sesión (solo se le cambió el nombre del producto). |
 | CRM de DAI CARE | `clientes/daicare-crm` | En 0.2.16, subido a GitHub el 2026-11-17 (publica en Netlify, app.daicareintegral.com; deploy sin comprobar). Su base tiene 13 archivos aplicados y la simulación en 96 OK. No tiene el lote 1. |
 | Portal de origen | lo lleva su sesión | 1.12.49 y 1.12.50 publicados. El arreglo del perfil (ayudante de campos de personas, sin ejemplos) lo tenía hecho sin comitear, a la espera del recorrido en navegador; iba como 1.12.53. |
 
@@ -22,7 +22,7 @@ Directora: orquesta agentes de investigación, desarrollo y pruebas de Bash Logi
 
 ## Demo en Netlify
 
-`https://dapper-sherbet-abfa4a.netlify.app`, sitio del usuario enlazado a `main` del repo del producto, contra la base de pruebas. **Incidente abierto**: en `VITE_SUPABASE_ANON_KEY` quedó pegada la clave secreta del proyecto de pruebas y está en el bundle público. Falta que el usuario la borre en Supabase, cree una nueva, ponga la clave publishable en esa variable, actualice `SUPABASE_SERVICE_ROLE_KEY` en Netlify y en el `.env` local, y vuelva a desplegar. Después hay que revisar el bundle publicado. También falta la Site URL en Auth.
+`https://dapper-sherbet-abfa4a.netlify.app`, sitio del usuario enlazado a `main` del repo del producto, contra la base de pruebas. **Incidente abierto**: en `VITE_SUPABASE_ANON_KEY` quedó pegada la clave secreta del proyecto de pruebas y está en el bundle público (comprobado en el sitio; por eso el login falla). Arreglo de código hecho en 0.2.28: el build descarta una clave secreta de esa variable (`src/lib/clave-supabase.ts`, `vite.config.ts`) y el login lo avisa; probado con una clave falsa. **Falta subir 0.2.28**: el push quedó bloqueado por falta de orden expresa y el usuario cerró la sesión sin responder; es lo primero que hay que preguntarle al retomar. Tras el push: comprobar en el sitio que el bundle ya no trae ninguna clave secreta (buscar el prefijo seguido de caracteres, no el prefijo solo, que ahora está en el código). Aparte, lo hace el usuario porque la directora no maneja claves: borrar la secreta en Supabase y crear otra, poner la clave publishable en `VITE_SUPABASE_ANON_KEY` y la secreta nueva en `SUPABASE_SERVICE_ROLE_KEY` de Netlify y del `.env` local, y redesplegar con caché limpia. Los despliegues viejos de Netlify siguen accesibles por su enlace: por eso hay que rotar. También falta la Site URL en Auth. La contraseña de testadmin la cambió el usuario por SQL.
 
 ## Backlog y lotes
 
@@ -48,3 +48,10 @@ Lectura masiva y verificación: Sonnet. Síntesis, implementación y revisión: 
 - Un archivo de esquema ya aplicado no se edita: las correcciones van en archivos con letra.
 - Un agente puede negarse a comitear si no ve la orden del usuario: decirle en el encargo que el commit viene de la directora por encargo expreso.
 - En PowerShell, `npm.cmd`. Los scripts con barras invertidas se escriben como archivo, no en heredoc.
+
+## Al retomar
+
+1. Preguntar si se sube 0.2.28 (saca la clave del sitio) y verificar la demo.
+2. Confirmar que el usuario rotó la clave y corrigió las variables; revisar login con testadmin.
+3. Lanzar el lote 2 (CRM) en una rama de pruebas nueva con worktree propio (no reutilizar nombres viejos).
+4. Pendientes del usuario: nombre corto de la app, decisiones D-2, D-3, D-14, D-15 y D-19, llevar el lote 1 a DAI CARE (esquema antes que frontend), comprobar el deploy de app.daicareintegral.com y Editar perfil en su Chrome.
