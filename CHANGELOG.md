@@ -32,7 +32,8 @@ Formato: cada commit a `main` es un Paso `Mayor.Fase.Paso — descripción`. La 
 - 0.2.25 — Herramientas internas del proyecto. (748f391)
 - 0.2.26 — Nombre: el producto pasa a llamarse Bash Logistics. Es el nombre que se ve por defecto en la pestaña del navegador, el inicio de sesión, la aplicación instalada, las notificaciones, el remitente de los correos y los calendarios exportados; una instalación que ya puso su propio nombre no cambia. Los calendarios ya exportados conservan el nombre anterior. Los campos con datos de personas cambian su identificador interno, así que el navegador olvida lo que hubiera aprendido de ellos. (b493da1)
 - 0.2.26b — Documentación interna del proyecto. (f867f97)
-- 0.2.27 — Herramientas internas del proyecto.
+- 0.2.27 — Herramientas internas del proyecto. (41bd22d)
+- 0.2.28 — Seguridad: si al configurar la instalación se pega una clave secreta donde va la clave pública, la aplicación la descarta y avisa en la pantalla de ingreso, en lugar de publicarla.
 
 ## 0.1 — Arranque (2026-11-07)
 

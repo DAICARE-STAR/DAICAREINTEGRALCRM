@@ -1,5 +1,6 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig, loadEnv, type Plugin } from 'vite'
+import { esClaveSecreta } from './src/lib/clave-supabase'
 
 // Modelo: team-portal/vite.config.ts (hash en docs/origen.md). Cambios del
 // producto: nombre del portal por VITE_PORTAL_NOMBRE (título, manifest),
@@ -98,7 +99,19 @@ export default defineConfig(({ mode }) => {
   // entorno (Netlify las define en el panel)
   const env = loadEnv(mode, process.cwd(), 'VITE_')
   const nombre = env.VITE_PORTAL_NOMBRE?.trim() || NOMBRE_POR_DEFECTO
+  // Fallar cerrado: una clave secreta en la variable pública no llega al
+  // bundle. Se vacía antes de que Vite lea el entorno y además se fija con
+  // define, y la app arranca con el aviso de configuración pendiente.
+  const claveSecreta = esClaveSecreta(env.VITE_SUPABASE_ANON_KEY)
+  if (claveSecreta) {
+    process.env.VITE_SUPABASE_ANON_KEY = ''
+    console.error('[seguridad] VITE_SUPABASE_ANON_KEY contiene una clave SECRETA de Supabase. Se descarta del build: pon ahí la clave pública (publishable o anon) y rota la secreta, que ya estuvo expuesta.')
+  }
   return {
+    define: {
+      __CLAVE_SECRETA_DESCARTADA__: JSON.stringify(claveSecreta),
+      ...(claveSecreta ? { 'import.meta.env.VITE_SUPABASE_ANON_KEY': '""' } : {}),
+    },
     plugins: [react(), portal(nombre, cspDelShell(env.VITE_SUPABASE_URL))],
     server: { port: 5190, strictPort: true },
     preview: { port: 4190, strictPort: true },

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { createPath, Navigate, useLocation, useNavigate } from 'react-router'
 import { useAuth } from '../context/AuthContext'
 import { esEnlaceInterno } from '../lib/enlaces'
-import { supabaseConfigured } from '../lib/supabase'
+import { claveSecretaDescartada, supabaseConfigured } from '../lib/supabase'
 import { leerLogosCache, logoDe, NOMBRE_PORTAL } from '../lib/instalacion'
 
 export default function Login() {
@@ -63,8 +63,9 @@ export default function Login() {
         <h1>{NOMBRE_PORTAL}</h1>
         {!supabaseConfigured && (
           <p className="alert">
-            Supabase no está configurado. Define VITE_SUPABASE_URL y
-            VITE_SUPABASE_ANON_KEY en las variables de entorno.
+            {claveSecretaDescartada
+              ? 'VITE_SUPABASE_ANON_KEY tenía una clave secreta y se descartó. Pon ahí la clave pública y rota la secreta.'
+              : 'Supabase no está configurado. Define VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en las variables de entorno.'}
           </p>
         )}
         <label>

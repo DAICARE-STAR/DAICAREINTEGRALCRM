@@ -10,3 +10,6 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+// La pone vite.config.ts: el build descartó una clave secreta de la variable pública
+declare const __CLAVE_SECRETA_DESCARTADA__: boolean
