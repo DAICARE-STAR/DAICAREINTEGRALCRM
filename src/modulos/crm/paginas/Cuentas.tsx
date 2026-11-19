@@ -4,7 +4,7 @@ import BarraFiltros from '../../../components/BarraFiltros'
 import CabeceraPagina from '../../../components/CabeceraPagina'
 import EstadoVacio from '../../../components/EstadoVacio'
 import Resumen from '../../../components/Resumen'
-import { SkeletonFilas } from '../../../components/Skeleton'
+import { SkeletonFilas, SkeletonLista } from '../../../components/Skeleton'
 import { useAuth } from '../../../context/AuthContext'
 import { useAvisos } from '../../../context/AvisosContext'
 import { partirFiltro } from '../../../lib/resumen'
@@ -52,6 +52,18 @@ export function CuentasVista(p: VistaProps) {
   const nombreResp = (id: string | null) => p.responsables.find((r) => r.id === id)?.nombre ?? '—'
   const opciones = (neutra: string, lista: { valor: string; label: string }[]) => [{ valor: '', label: neutra }, ...lista]
   const deLista = (l: string[]) => l.map((v) => ({ valor: v, label: v }))
+  const cabecera = (
+    <thead>
+      <tr>
+        <th scope="col">Nombre</th>
+        <th scope="col">Tipo</th>
+        <th scope="col">Etapa</th>
+        <th scope="col">Responsable</th>
+        <th scope="col">Teléfono</th>
+        <th scope="col">Ciudad</th>
+      </tr>
+    </thead>
+  )
   return (
     <div className="page page-crm">
       <CabeceraPagina titulo="Cuentas">
@@ -99,7 +111,20 @@ export function CuentasVista(p: VistaProps) {
       />
 
       {p.cuentas === null ? (
-        <SkeletonFilas filas={6} columnas={5} />
+        // Las filas del esqueleto van dentro de la tabla; en móvil, donde no hay tabla, bloques
+        <>
+          <div className="table-scroll crm-tabla">
+            <table className="table">
+              {cabecera}
+              <tbody>
+                <SkeletonFilas filas={6} columnas={6} />
+              </tbody>
+            </table>
+          </div>
+          <div className="crm-tarjetas">
+            <SkeletonLista n={6} avatar={false} lineas={2} />
+          </div>
+        </>
       ) : p.cuentas.length === 0 ? (
         <EstadoVacio
           causa={p.error ?? 'No hay cuentas con estos filtros.'}
@@ -115,16 +140,7 @@ export function CuentasVista(p: VistaProps) {
         <>
           <div className="table-scroll crm-tabla">
             <table className="table">
-              <thead>
-                <tr>
-                  <th scope="col">Nombre</th>
-                  <th scope="col">Tipo</th>
-                  <th scope="col">Etapa</th>
-                  <th scope="col">Responsable</th>
-                  <th scope="col">Teléfono</th>
-                  <th scope="col">Ciudad</th>
-                </tr>
-              </thead>
+              {cabecera}
               <tbody>
                 {p.cuentas.map((c) => (
                   <tr key={c.id}>

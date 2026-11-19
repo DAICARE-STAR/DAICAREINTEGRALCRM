@@ -4,7 +4,7 @@ import BarraFiltros from '../../../components/BarraFiltros'
 import CabeceraPagina from '../../../components/CabeceraPagina'
 import EstadoVacio from '../../../components/EstadoVacio'
 import Resumen from '../../../components/Resumen'
-import { SkeletonFilas } from '../../../components/Skeleton'
+import { SkeletonFilas, SkeletonLista } from '../../../components/Skeleton'
 import { useAvisos } from '../../../context/AvisosContext'
 import { buscarContactos, traducirError, type ContactoConCuenta, type FiltrosContactos } from '../lib/datos'
 
@@ -23,6 +23,17 @@ type VistaProps = {
 }
 
 export function ContactosVista(p: VistaProps) {
+  const cabecera = (
+    <thead>
+      <tr>
+        <th scope="col">Nombre</th>
+        <th scope="col">Cuenta</th>
+        <th scope="col">Relación</th>
+        <th scope="col">Teléfono</th>
+        <th scope="col">Correo</th>
+      </tr>
+    </thead>
+  )
   return (
     <div className="page page-crm">
       <CabeceraPagina titulo="Contactos">
@@ -48,22 +59,27 @@ export function ContactosVista(p: VistaProps) {
       />
       <Resumen destacado={{ label: 'Contactos', valor: p.contactos === null ? null : p.total.toLocaleString('es-CO') }} cuentas={[]} />
       {p.contactos === null ? (
-        <SkeletonFilas filas={6} columnas={4} />
+        // Las filas del esqueleto van dentro de la tabla; en móvil, donde no hay tabla, bloques
+        <>
+          <div className="table-scroll crm-tabla">
+            <table className="table">
+              {cabecera}
+              <tbody>
+                <SkeletonFilas filas={6} columnas={5} />
+              </tbody>
+            </table>
+          </div>
+          <div className="crm-tarjetas">
+            <SkeletonLista n={6} avatar={false} lineas={2} />
+          </div>
+        </>
       ) : p.contactos.length === 0 ? (
         <EstadoVacio causa={p.error ?? 'No hay contactos con estos filtros.'} />
       ) : (
         <>
           <div className="table-scroll crm-tabla">
             <table className="table">
-              <thead>
-                <tr>
-                  <th scope="col">Nombre</th>
-                  <th scope="col">Cuenta</th>
-                  <th scope="col">Relación</th>
-                  <th scope="col">Teléfono</th>
-                  <th scope="col">Correo</th>
-                </tr>
-              </thead>
+              {cabecera}
               <tbody>
                 {p.contactos.map((c) => (
                   <tr key={c.id}>

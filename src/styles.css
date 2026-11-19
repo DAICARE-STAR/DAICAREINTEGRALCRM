@@ -625,8 +625,11 @@ code {
 }
 
 /* Casillas y radios fuera (:where no suma especificidad): conservan el
-   anillo de foco de base.css */
-.modal input:where(:not([type='checkbox'], [type='radio'])) {
+   anillo de foco de base.css. Select y textarea de los formularios de los
+   módulos entran con :where (peso de una clase): .select y .form-field,
+   que van después, siguen mandando donde se usan */
+.modal input:where(:not([type='checkbox'], [type='radio'])),
+.modal :where(select, textarea) {
   background: var(--input-bg);
   border: 1px solid var(--border-control);
   border-radius: var(--pal-radio-md);
@@ -635,9 +638,15 @@ code {
   font-size: var(--pal-texto-base);
 }
 
+/* Select y textarea no heredan la fuente del documento */
+.modal :where(select, textarea) {
+  font-family: var(--font-body);
+}
+
 /* Campos del shell: el foco engrosa el borde en --focus. El outline
    transparente reaparece con los colores forzados de Windows. */
-.modal input:where(:not([type='checkbox'], [type='radio'])):focus {
+.modal input:where(:not([type='checkbox'], [type='radio'])):focus,
+.modal :where(select, textarea):focus {
   outline: 2px solid transparent;
   border-color: var(--focus);
   box-shadow: 0 0 0 1px var(--focus);
@@ -5650,6 +5659,32 @@ html {
 .fbar-mas { position: relative; }
 .fbar-mas-cuerpo { display: flex; flex-wrap: wrap; gap: var(--pal-esp-2); margin-top: var(--pal-esp-2); }
 .fbar-count { color: var(--text-muted); font-size: var(--pal-texto-sm, 0.85rem); }
+/* Buscador y desplegables de la barra con el aspecto de .form-field y .select,
+   alto táctil de 36 px como .btn. En móvil el buscador toma la fila entera y
+   los desplegables se reparten sin bajar de unos 130 px */
+.fbar input[type='search'],
+.fbar select {
+  min-height: 2.25rem;
+  max-width: 100%;
+  background: var(--input-bg);
+  border: 1px solid var(--border-control);
+  border-radius: var(--pal-radio-md);
+  padding: 0.4rem 0.7rem;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: var(--pal-texto-base);
+}
+.fbar input[type='search'] { flex: 1 1 14rem; min-width: 0; }
+.fbar input[type='search']:focus,
+.fbar select:focus {
+  outline: 2px solid transparent;
+  border-color: var(--focus);
+  box-shadow: 0 0 0 1px var(--focus);
+}
+@media (max-width: 760px) {
+  .fbar input[type='search'] { flex-basis: 100%; }
+  .fbar select { flex: 1 1 8.125rem; min-width: 0; }
+}
 .resumen { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: flex-end; margin-bottom: 1rem; }
 .res-destacado { display: flex; flex-direction: column; }
 .rd-valor { font-family: var(--font-display); font-size: 1.8rem; font-weight: 600; }
