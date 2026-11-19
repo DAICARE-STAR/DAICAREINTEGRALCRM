@@ -1,5 +1,7 @@
 import { fmtImporte } from '../../../lib/moneda'
 import { ruta } from './categorias'
+import { traducirError } from './errores'
+import { esUuid } from './filtros'
 import { fmtCantidad } from './numeros'
 import { nombreTipo, type Cambio, type Catalogos, type ClaseImpuesto } from './tipos'
 
@@ -14,6 +16,22 @@ export const PESTANAS_FICHA: { id: PestanaFicha; label: string }[] = [
   { id: 'unidades', label: 'Unidades' },
   { id: 'historial', label: 'Historial' },
 ]
+
+export const PRODUCTO_NO_EXISTE = 'Ese producto no existe.'
+
+/**
+ * Error de la ficha antes de leer: un identificador sin forma de uuid
+ * (/productos/abc) no existe y no llega a la base. null si se puede leer.
+ */
+export function errorIdFicha(id: string): string | null {
+  return esUuid(id) ? null : PRODUCTO_NO_EXISTE
+}
+
+/** Error de la ficha al leer: la base no devolvió la fila (PGRST116) es «no existe». */
+export function errorLecturaFicha(err: unknown): string {
+  const code = typeof err === 'object' && err !== null ? (err as { code?: unknown }).code : undefined
+  return code === 'PGRST116' ? PRODUCTO_NO_EXISTE : traducirError(err)
+}
 
 export function nombreUnidad(c: Catalogos, clave: string): string {
   return c.unidades.find((u) => u.clave === clave)?.nombre ?? clave

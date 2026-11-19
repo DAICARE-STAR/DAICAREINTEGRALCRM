@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router'
 import BarraFiltros from '../../../components/BarraFiltros'
 import CabeceraPagina from '../../../components/CabeceraPagina'
 import EstadoVacio from '../../../components/EstadoVacio'
-import { SkeletonFilas } from '../../../components/Skeleton'
+import { SkeletonFilas, SkeletonLista } from '../../../components/Skeleton'
 import { useAuth } from '../../../context/AuthContext'
 import { useAvisos } from '../../../context/AvisosContext'
 import { aplanar, opcionesArbol, ruta } from '../lib/categorias'
@@ -46,6 +46,20 @@ export function ProductosVista(p: VistaProps) {
   const c = p.catalogos
   const cat = (id: string | null) => (id ? ruta(c.categorias, id) || '—' : '—')
   const archivado = (x: Producto) => x.archivado_en && <span className="muted"> · archivado</span>
+  const cabecera = (
+    <thead>
+      <tr>
+        <th scope="col">Código</th>
+        <th scope="col">Nombre</th>
+        <th scope="col">Categoría</th>
+        <th scope="col">Unidad</th>
+        <th scope="col">Impuesto</th>
+        <th scope="col" className="prod-num">
+          Precio de lista
+        </th>
+      </tr>
+    </thead>
+  )
   return (
     <div className="page page-productos">
       <CabeceraPagina titulo="Productos">
@@ -89,7 +103,20 @@ export function ProductosVista(p: VistaProps) {
           }
         />
       ) : p.productos === null ? (
-        <SkeletonFilas filas={6} columnas={6} />
+        // Las filas del esqueleto van dentro de la tabla; en móvil, donde no hay tabla, bloques
+        <>
+          <div className="table-scroll prod-tabla">
+            <table className="table">
+              {cabecera}
+              <tbody>
+                <SkeletonFilas filas={6} columnas={6} />
+              </tbody>
+            </table>
+          </div>
+          <div className="prod-tarjetas">
+            <SkeletonLista n={6} avatar={false} lineas={2} />
+          </div>
+        </>
       ) : p.productos.length === 0 ? (
         p.error ? (
           <EstadoVacio
@@ -126,18 +153,7 @@ export function ProductosVista(p: VistaProps) {
           <p className="small muted">{p.total.toLocaleString('es-CO')} productos</p>
           <div className="table-scroll prod-tabla">
             <table className="table">
-              <thead>
-                <tr>
-                  <th scope="col">Código</th>
-                  <th scope="col">Nombre</th>
-                  <th scope="col">Categoría</th>
-                  <th scope="col">Unidad</th>
-                  <th scope="col">Impuesto</th>
-                  <th scope="col" className="prod-num">
-                    Precio de lista
-                  </th>
-                </tr>
-              </thead>
+              {cabecera}
               <tbody>
                 {p.productos.map((x) => (
                   <tr key={x.id} className={x.archivado_en ? 'row-inactive' : undefined}>

@@ -17,6 +17,8 @@ export const FILTROS_VACIOS: FiltrosProductos = { q: '', categoria: '', tipo: ''
 
 const RE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+export const esUuid = (s: string): boolean => RE_UUID.test(s)
+
 export function desdeParametros(p: URLSearchParams): FiltrosProductos {
   const tipo = p.get('tipo')
   const uso = p.get('uso')

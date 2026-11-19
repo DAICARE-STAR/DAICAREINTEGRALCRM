@@ -9,7 +9,7 @@ import { useAvisos } from '../../../context/AvisosContext'
 import { ruta } from '../lib/categorias'
 import { archivarProducto, borrarProducto, leerConversiones, leerHistorial, leerPersonas, leerProducto, traducirError, type Persona } from '../lib/datos'
 import { nombreTipo, type Cambio, type Catalogos, type Conversion, type Producto } from '../lib/tipos'
-import { describirCambio, fmtFechaHora, fmtPrecio, nombreUnidad, PESTANAS_FICHA, textoClase, type PestanaFicha } from '../lib/vistas'
+import { describirCambio, errorIdFicha, errorLecturaFicha, fmtFechaHora, fmtPrecio, nombreUnidad, PESTANAS_FICHA, textoClase, type PestanaFicha } from '../lib/vistas'
 import FormProducto from './FormProducto'
 import UnidadesProducto from './UnidadesProducto'
 import { useCatalogos } from './useCatalogos'
@@ -238,15 +238,18 @@ export default function FichaProducto() {
       ),
     [id],
   )
-  const recargar = useCallback(() => leerProducto(id).then(setProducto, (e) => setError(traducirError(e))), [id])
+  const recargar = useCallback(() => leerProducto(id).then(setProducto, (e) => setError(errorLecturaFicha(e))), [id])
 
   useEffect(() => {
     setProducto(null)
-    setError(null)
     setActiva('datos')
+    // Sin forma de uuid no existe: no se pregunta a la base
+    const errorId = errorIdFicha(id)
+    setError(errorId)
+    if (errorId) return
     void recargar()
     void recargarConversiones()
-  }, [recargar, recargarConversiones])
+  }, [id, recargar, recargarConversiones])
 
   function archivar() {
     if (!producto) return
