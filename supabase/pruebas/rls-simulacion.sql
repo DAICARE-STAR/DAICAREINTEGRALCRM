@@ -9,7 +9,7 @@
 -- transacción de la sección 0. Nunca muestra valores de la base: solo
 -- conteos, códigos (SQLSTATE) y nombres de funciones o tablas.
 --
--- Requiere: supabase/esquema 00 a 04 aplicados (05 a 09 para las secciones 8 a 11, con 06b para el caso 9.7; 21-crm.sql para la 12 y la 13, con 21b para el caso 13.9; 01b-ultimo-administrador.sql para la 14 y 21c-crm-exportar.sql para la 15; 00b-contrato-tabla.sql para la 16, con 21d-crm-contrato.sql para sus casos del CRM; 09b-numeracion.sql para la 17 y 09c-estados.sql para la 18) y las cuentas de prueba de
+-- Requiere: supabase/esquema 00 a 04 aplicados (05 a 09 para las secciones 8 a 11, con 06b para el caso 9.7; 21-crm.sql para la 12 y la 13, con 21b para el caso 13.9; 01b-ultimo-administrador.sql para la 14 y 21c-crm-exportar.sql para la 15; 00b-contrato-tabla.sql para la 16, con 21d-crm-contrato.sql para sus casos del CRM; 09b-numeracion.sql para la 17, 09c-estados.sql para la 18 y 22-catalogo.sql para la 19) y las cuentas de prueba de
 -- node tools/instalar/cuentas-prueba.mjs (instalador.cuentas_prueba con qa,
 -- miembro y admin). Sin una cuenta, sus casos salen OMITIDO.
 --
@@ -54,11 +54,19 @@
 --  18) máquina de estados sobre una tabla temporal: estado inicial,
 --      transición válida con auditoría, fuera del catálogo, sin permiso,
 --      conflicto, update directo y administrador sin excepción
+--  19) productos: lectura con app_productos, alta con edit_productos,
+--      código normalizado, único y de la serie, impuesto y moneda por
+--      defecto, conversiones exactas, unidad base fija con conversiones,
+--      precio o líneas, copias de las líneas, borrado de administrador,
+--      catálogos inmutables, clase predeterminada, árbol de categorías,
+--      historial, lectura desde inventario, módulo inactivo, importación
+--      simulada y real, repetidos, topes del lote y anónimo
 -- Las secciones 8 a 11 salen OMITIDO si falta su archivo de 05 a 09; la 12
 -- y la 13, si falta 21-crm.sql; la 14, si falta 01b-ultimo-administrador.sql;
 -- la 15, si falta 21c-crm-exportar.sql; la 16, si falta 00b-contrato-tabla.sql
 -- (sus casos del CRM, si falta 21d-crm-contrato.sql); la 17, si falta
--- 09b-numeracion.sql, y la 18, si falta 09c-estados.sql.
+-- 09b-numeracion.sql; la 18, si falta 09c-estados.sql, y la 19, si falta
+-- 22-catalogo.sql.
 -- ============================================================
 
 begin;
@@ -2076,6 +2084,691 @@ begin
     reset role;
     r := r || E'\n' || case when v = '42501 / borró 1 / 42501' then 'OK      ' else 'FALLA   ' end || '18.8  miembro borra aprobado y borrador, admin borra aprobado → 42501 / borró 1 / 42501 · ' || v;
   end if;
+
+  perform set_config('request.jwt.claims', '', true);
+  perform set_config('rls.res', current_setting('rls.res') || r, true);
+end $$;
+
+-- ============ 19) Productos: catálogo, código, unidades, impuestos, historial e importación ============
+-- 22-catalogo.sql con el módulo activo en la transacción (se deshace),
+-- roles de prueba app_productos y edit_productos para el miembro, unidades,
+-- una clase y una tabla de líneas propias de la prueba (en public: una
+-- temporal no admite llaves hacia una tabla permanente). Los códigos y
+-- nombres de prueba llevan PRUEBA-RLS para no chocar con el catálogo de la
+-- instalación.
+do $$
+declare
+  r text := '';
+  v text;
+  w text;
+  v_n int;
+  v_m int;
+  v_k int;
+  v_j jsonb;
+  v_filas jsonb;
+  v_miembro uuid := nullif(current_setting('rls.miembro'), '')::uuid;
+  v_admin uuid := nullif(current_setting('rls.admin'), '')::uuid;
+  v_jm text := json_build_object('sub', v_miembro, 'role', 'authenticated', 'aal', 'aal1')::text;
+  v_ja text := json_build_object('sub', v_admin, 'role', 'authenticated', 'aal', 'aal2')::text;
+  v_otro uuid := gen_random_uuid();
+  v_moneda text;
+  v_otra_moneda text;
+  v_prefijo text;
+  v_relleno int;
+  v_l1 bigint;
+  v_l2 bigint;
+  v_cod text;
+  v_cod2 text;
+  v_ocupado text;
+  v_serie text;
+  v_tope text;
+  v_t0 timestamptz;
+  v_ms int;
+  v_p1 uuid;
+  v_p5 uuid;
+  v_p6 uuid;
+  v_p7 uuid;
+  v_p8a uuid;
+  v_p8b uuid;
+  v_p9 uuid;
+  v_p10 uuid;
+  v_linea uuid;
+  v_cat_a uuid;
+  v_cat_b uuid;
+  v_cat_x uuid;
+  v_cat_x1 uuid;
+begin
+  if current_setting('rls.txid', true) is distinct from txid_current()::text then
+    raise exception 'rls-simulacion: correr el archivo entero de una vez (BEGIN … ROLLBACK), no una sección suelta';
+  end if;
+  if to_regclass('public.productos') is null or to_regprocedure('public.productos_importar(jsonb,boolean)') is null then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 19    productos · falta 22-catalogo.sql', true);
+    return;
+  end if;
+  if v_miembro is null or v_admin is null then
+    perform set_config('rls.res', current_setting('rls.res') || E'\nOMITIDO 19    productos · faltan las cuentas miembro o admin', true);
+    return;
+  end if;
+
+  -- Datos de prueba, como postgres
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.modulos_instalacion (slug, activo) values ('productos', true)
+  on conflict (slug) do update set activo = true;
+  insert into public.roles (name, permissions) values ('prueba-rls-prod-ver', array['app_productos']);
+  insert into public.roles (name, permissions) values ('prueba-rls-prod-edit', array['app_productos', 'edit_productos']);
+  insert into public.roles (name, permissions) values ('prueba-rls-prod-inv', array['app_inventario']);
+  insert into public.user_roles (user_id, role) values (v_miembro, 'prueba-rls-prod-ver');
+  insert into public.productos_unidades (clave, nombre, decimales) values
+    ('prueba_rls_caja', 'Prueba RLS caja', 0), ('prueba_rls_otra', 'Prueba RLS otra', 0), ('prueba_rls_fina', 'Prueba RLS fina', 3);
+  insert into public.productos_impuestos (clave, nombre, tipo, tratamiento, porcentaje) values ('prueba_rls_iva', 'Prueba RLS IVA', 'iva', 'gravado', 7);
+  select i.moneda_base into v_moneda from public.instalacion i where i.id = 1;
+  v_otra_moneda := case when v_moneda = 'USD' then 'EUR' else 'USD' end;
+  create table public.prueba_rls_lineas (id uuid primary key default gen_random_uuid());
+  alter table public.prueba_rls_lineas disable row level security;
+  perform public.productos_aplicar_linea('public.prueba_rls_lineas', 'inventario', true);
+  grant select, insert, update on public.prueba_rls_lineas to authenticated;
+
+  -- 19.1 Con app_productos lee y no crea (si un rol real de la cuenta ya da
+  -- edit_productos, el caso no es un negativo)
+  perform set_config('request.jwt.claims', v_jm, true);
+  if public.has_perm('edit_productos') then
+    r := r || E'\nOMITIDO 19.1  miembro sin edit_productos · la cuenta miembro ya lo tiene por un rol de la instalación';
+  else
+    set local role authenticated;
+    begin
+      select count(*) into v_n from public.productos;
+      v := 'lee';
+    exception when others then v := sqlstate;
+    end;
+    begin
+      insert into public.productos (codigo, nombre) values ('PRUEBA-RLS-1', 'Prueba RLS lectura');
+      v := v || ' / entró';
+    exception when others then v := v || ' / ' || sqlstate;
+    end;
+    reset role;
+    r := r || E'\n' || case when v = 'lee / 42501' then 'OK      ' else 'FALLA   ' end || '19.1  miembro con app_productos lee y crea → lee / 42501 · ' || v;
+  end if;
+
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.user_roles (user_id, role) values (v_miembro, 'prueba-rls-prod-edit');
+  perform set_config('request.jwt.claims', v_jm, true);
+
+  -- 19.2 Código « Prueba-RLS-ab 12 » y autoría falsa: normalizado y sellado
+  set local role authenticated;
+  begin
+    insert into public.productos (codigo, nombre, created_by, updated_by, creado_via)
+    values (' Prueba-RLS-ab 12 ', 'Prueba RLS producto', v_otro, v_otro, 'manual') returning id into v_p1;
+    v := 'entró';
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  select count(*) into v_n from public.productos
+   where id = v_p1 and codigo = 'PRUEBA-RLS-AB12' and created_by = v_miembro and updated_by = v_miembro and creado_via = 'manual';
+  r := r || E'\n' || case when v = 'entró' and v_n = 1 then 'OK      ' else 'FALLA   ' end || '19.2  miembro con edit_productos crea con código sin normalizar y autoría falsa → entró / 1 normalizado y sellado · ' || v || ' / ' || v_n;
+
+  -- 19.3 Otro alta con el mismo código escrito distinto
+  set local role authenticated;
+  begin
+    insert into public.productos (codigo, nombre) values ('prueba-rls-AB12', 'Prueba RLS repetido');
+    v := 'entró';
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  r := r || E'\n' || case when v = '23505' then 'OK      ' else 'FALLA   ' end || '19.3  alta con el mismo código normalizado → 23505 · ' || v;
+
+  -- 19.4 Alta sin código: el de la serie; con el siguiente número ya usado
+  -- como código manual, el siguiente libre
+  perform set_config('request.jwt.claims', '', true);
+  select s.prefijo, s.relleno into v_prefijo, v_relleno from public.series s where s.clave = 'producto';
+  perform set_config('request.jwt.claims', v_jm, true);
+  set local role authenticated;
+  begin
+    insert into public.productos (nombre) values ('Prueba RLS automático') returning codigo into v_cod;
+    v := 'entró';
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  select last_value into v_l1 from public.serie_producto;
+  v := v || case when v_cod = upper(regexp_replace(v_prefijo || lpad(v_l1::text, greatest(v_relleno, char_length(v_l1::text)), '0'), '[[:space:]]', '', 'g'))
+                 then ' serie' else ' otro' end;
+  v_ocupado := upper(regexp_replace(v_prefijo || lpad((v_l1 + 1)::text, greatest(v_relleno, char_length((v_l1 + 1)::text)), '0'), '[[:space:]]', '', 'g'));
+  insert into public.productos (codigo, nombre) values (v_ocupado, 'Prueba RLS ocupa el siguiente') on conflict do nothing;
+  perform set_config('request.jwt.claims', v_jm, true);
+  set local role authenticated;
+  begin
+    insert into public.productos (nombre) values ('Prueba RLS automático 2') returning codigo into v_cod2;
+    v := v || ' / entró';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  select last_value into v_l2 from public.serie_producto;
+  v := v || case when v_l2 > v_l1 + 1 and v_cod2 is distinct from v_ocupado
+                   and v_cod2 = upper(regexp_replace(v_prefijo || lpad(v_l2::text, greatest(v_relleno, char_length(v_l2::text)), '0'), '[[:space:]]', '', 'g'))
+                 then ' saltó' else ' no saltó' end;
+  r := r || E'\n' || case when v = 'entró serie / entró saltó' then 'OK      ' else 'FALLA   ' end || '19.4  alta sin código y alta con el siguiente número ocupado → entró serie / entró saltó · ' || v;
+
+  -- 19.5 Sin impuesto y con precio sin moneda: la predeterminada y la base;
+  -- luego impuesto nulo en un cambio
+  perform set_config('request.jwt.claims', v_jm, true);
+  set local role authenticated;
+  begin
+    insert into public.productos (codigo, nombre, precio_lista) values ('PRUEBA-RLS-5', 'Prueba RLS precio', 1000) returning id into v_p5;
+    v := 'entró';
+  exception when others then v := sqlstate;
+  end;
+  begin
+    update public.productos set impuesto = null where id = v_p5;
+    v := v || ' / cambió';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  reset role;
+  select count(*) into v_n from public.productos p
+   where p.id = v_p5 and p.precio_lista_moneda = v_moneda
+     and p.impuesto = (select i.clave from public.productos_impuestos i where i.predeterminado and i.archivado_en is null);
+  r := r || E'\n' || case when v = 'entró / 23502' and v_n = 1 then 'OK      ' else 'FALLA   ' end || '19.5  alta sin impuesto ni moneda y cambio con impuesto nulo → entró / 23502 / 1 con predeterminada y moneda base · ' || v || ' / ' || v_n;
+
+  -- 19.6 Precio negativo, otra moneda, moneda sin precio; un producto con
+  -- precio en una moneda que dejó de ser la base se sigue renombrando
+  set local role authenticated;
+  begin
+    insert into public.productos (codigo, nombre, precio_lista) values ('PRUEBA-RLS-6A', 'Prueba RLS negativo', -1);
+    v := 'entró';
+  exception when others then v := sqlstate;
+  end;
+  begin
+    insert into public.productos (codigo, nombre, precio_lista, precio_lista_moneda) values ('PRUEBA-RLS-6B', 'Prueba RLS otra moneda', 10, v_otra_moneda);
+    v := v || ' / entró';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  begin
+    insert into public.productos (codigo, nombre, precio_lista_moneda) values ('PRUEBA-RLS-6C', 'Prueba RLS moneda sin precio', v_moneda);
+    v := v || ' / entró';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.productos (codigo, nombre, precio_lista) values ('PRUEBA-RLS-6D', 'Prueba RLS base cambiada', 10) returning id into v_p6;
+  update public.instalacion set moneda_base = v_otra_moneda where id = 1;
+  perform set_config('request.jwt.claims', v_jm, true);
+  set local role authenticated;
+  begin
+    update public.productos set nombre = 'Prueba RLS base cambiada 2' where id = v_p6;
+    get diagnostics v_n = row_count;
+    v := v || ' / ' || v_n || ' filas';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  update public.instalacion set moneda_base = v_moneda where id = 1;
+  r := r || E'\n' || case when v = '23514 / 23514 / 23514 / 1 filas' then 'OK      ' else 'FALLA   ' end || '19.6  precio negativo, otra moneda, moneda sin precio, renombrar con la base cambiada → 23514 ×3 / 1 filas · ' || v;
+
+  -- 19.7 Conversiones: factor 0, la unidad base, factor inexacto y 0.001
+  perform set_config('request.jwt.claims', v_jm, true);
+  set local role authenticated;
+  insert into public.productos (codigo, nombre) values ('PRUEBA-RLS-7', 'Prueba RLS conversiones') returning id into v_p7;
+  begin
+    insert into public.productos_conversiones (producto_id, unidad, factor) values (v_p7, 'prueba_rls_caja', 0);
+    v := 'entró';
+  exception when others then v := sqlstate;
+  end;
+  begin
+    insert into public.productos_conversiones (producto_id, unidad, factor) values (v_p7, 'und', 2);
+    v := v || ' / entró';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  begin
+    insert into public.productos_conversiones (producto_id, unidad, factor) values (v_p7, 'prueba_rls_otra', 0.083333);
+    v := v || ' / entró';
+  exception when others then get stacked diagnostics w = pg_exception_hint; v := v || ' / ' || sqlstate || ' ' || w;
+  end;
+  begin
+    insert into public.productos_conversiones (producto_id, unidad, factor) values (v_p7, 'prueba_rls_fina', 0.001);
+    v := v || ' / entró';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  reset role;
+  r := r || E'\n' || case when v = '23514 / 23514 / 23514 productos_factor_inexacto / entró' then 'OK      ' else 'FALLA   ' end || '19.7  conversión con factor 0, a la base, 0.083333 y 0.001 → 23514 / 23514 / 23514 productos_factor_inexacto / entró · ' || v;
+
+  -- 19.8 Cambiar la unidad base: con conversiones, con precio, con una línea
+  -- y sin nada de eso
+  set local role authenticated;
+  insert into public.productos (codigo, nombre) values ('PRUEBA-RLS-8A', 'Prueba RLS en uso') returning id into v_p8a;
+  insert into public.productos (codigo, nombre) values ('PRUEBA-RLS-8B', 'Prueba RLS libre') returning id into v_p8b;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.prueba_rls_lineas (producto_id, cantidad) values (v_p8a, 1);
+  perform set_config('request.jwt.claims', v_jm, true);
+  set local role authenticated;
+  v := '';
+  foreach w in array array[v_p7::text, v_p5::text, v_p8a::text] loop
+    begin
+      update public.productos set unidad_base = 'prueba_rls_caja' where id = w::uuid;
+      v := v || 'cambió / ';
+    exception when others then get stacked diagnostics v_cod = pg_exception_hint; v := v || sqlstate || ' ' || v_cod || ' / ';
+    end;
+  end loop;
+  begin
+    update public.productos set unidad_base = 'prueba_rls_caja' where id = v_p8b;
+    get diagnostics v_n = row_count;
+    v := v || v_n || ' filas';
+  exception when others then v := v || sqlstate;
+  end;
+  reset role;
+  r := r || E'\n' || case when v = '23514 productos_unidad_con_conversiones / 23514 productos_unidad_con_precio / 23514 productos_unidad_en_uso / 1 filas' then 'OK      ' else 'FALLA   ' end || '19.8  cambiar la unidad base con conversiones, con precio, con una línea y libre → 23514 ×3 / 1 filas · ' || v;
+
+  -- 19.9 productos_factor; una línea con factor y nombre falsos guarda los
+  -- del catálogo, y corregir luego el factor del catálogo no la cambia
+  set local role authenticated;
+  insert into public.productos (codigo, nombre) values ('PRUEBA-RLS-9', 'Prueba RLS factor') returning id into v_p9;
+  insert into public.productos_conversiones (producto_id, unidad, factor) values (v_p9, 'prueba_rls_caja', 12);
+  begin
+    v := trim_scale(public.productos_factor(v_p9, 'und'))::text || ' / ' || trim_scale(public.productos_factor(v_p9, 'prueba_rls_caja'))::text;
+  exception when others then v := sqlstate;
+  end;
+  begin
+    perform public.productos_factor(v_p9, 'prueba_rls_otra');
+    v := v || ' / dio factor';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.prueba_rls_lineas (producto_id, producto_codigo, producto_nombre, unidad, factor, cantidad)
+  values (v_p9, 'FALSO', 'Nombre falso', 'prueba_rls_caja', 99, 2) returning id into v_linea;
+  perform set_config('request.jwt.claims', v_jm, true);
+  set local role authenticated;
+  update public.productos_conversiones set factor = 10 where producto_id = v_p9 and unidad = 'prueba_rls_caja';
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  select count(*) into v_n
+    from public.prueba_rls_lineas l
+    join public.productos p on p.id = l.producto_id
+    join public.productos_impuestos i on i.clave = p.impuesto
+   where l.id = v_linea and l.factor = 12 and l.cantidad_base = 24 and l.producto_nombre = 'Prueba RLS factor'
+     and l.producto_codigo = 'PRUEBA-RLS-9' and l.impuesto = p.impuesto and l.porcentaje_impuesto = i.porcentaje;
+  r := r || E'\n' || case when v = '1 / 12 / 22023' and v_n = 1 then 'OK      ' else 'FALLA   ' end || '19.9  factor de la base, de caja y sin conversión; línea con copias del catálogo que no cambian → 1 / 12 / 22023 / 1 · ' || v || ' / ' || v_n;
+
+  -- 19.10 Borrar: el miembro no; el administrador sí, con historial del
+  -- producto y de su conversión y una fila en la auditoría
+  perform set_config('request.jwt.claims', v_jm, true);
+  set local role authenticated;
+  insert into public.productos (codigo, nombre) values ('PRUEBA-RLS-10', 'Prueba RLS borrar') returning id into v_p10;
+  insert into public.productos_conversiones (producto_id, unidad, factor) values (v_p10, 'prueba_rls_caja', 6);
+  begin
+    delete from public.productos where id = v_p10;
+    get diagnostics v_n = row_count;
+    v := v_n || ' filas';
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', v_ja, true);
+  set local role authenticated;
+  begin
+    delete from public.productos where id = v_p10;
+    get diagnostics v_n = row_count;
+    v := v || ' / ' || v_n || ' filas';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  select count(*) filter (where c.entidad = 'producto' and c.antes ? 'codigo' and c.autor_id = v_admin),
+         count(*) filter (where c.entidad = 'conversion' and c.antes ->> 'unidad' = 'prueba_rls_caja')
+    into v_n, v_m
+    from public.productos_cambios c where c.entidad_id = v_p10::text and c.operacion = 'delete';
+  select count(*) into v_k from public.audit_log a where a.action = 'productos.delete' and a.entity_id = v_p10::text;
+  v := v || ' / ' || v_n || ' / ' || v_m || ' / ' || v_k;
+  r := r || E'\n' || case when v = '0 filas / 1 filas / 1 / 1 / 1' then 'OK      ' else 'FALLA   ' end || '19.10 miembro y admin borran un producto; historial del producto y su conversión y auditoría → 0 filas / 1 filas / 1 / 1 / 1 · ' || v;
+
+  -- 19.11 Unidades: la clave por la API y sin sesión, una en uso, und y las
+  -- columnas que la API no escribe
+  perform set_config('request.jwt.claims', v_ja, true);
+  set local role authenticated;
+  begin
+    update public.productos_unidades set clave = 'prueba_rls_nueva' where clave = 'prueba_rls_otra';
+    v := 'cambió';
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  begin
+    update public.productos_unidades set clave = 'prueba_rls_nueva' where clave = 'prueba_rls_otra';
+    v := v || ' / cambió';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  perform set_config('request.jwt.claims', v_ja, true);
+  set local role authenticated;
+  begin
+    delete from public.productos_unidades where clave = 'prueba_rls_caja';
+    v := v || ' / borró';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  begin
+    delete from public.productos_unidades where clave = 'und';
+    v := v || ' / borró';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', v_jm, true);
+  set local role authenticated;
+  begin
+    update public.productos_unidades set sistema = false where clave = 'und';
+    v := v || ' / cambió';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  begin
+    insert into public.productos_unidades (clave, nombre, sistema) values ('prueba_rls_sis', 'Prueba RLS sistema', true);
+    v := v || ' / entró';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  begin
+    update public.productos_unidades set codigo_dian = 'ZZ' where clave = 'prueba_rls_fina';
+    v := v || ' / cambió';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  reset role;
+  r := r || E'\n' || case when v = '42501 / 23514 / 23503 / 23514 / 42501 / 42501 / 42501' then 'OK      ' else 'FALLA   ' end || '19.11 clave por la API y sin sesión, unidad en uso, und, sistema y codigo_dian → 42501 / 23514 / 23503 / 23514 / 42501 ×3 · ' || v;
+
+  -- 19.12 Clases de impuesto: el miembro no crea; una segunda predeterminada
+  -- a mano choca; desmarcar la única falla al confirmar;
+  -- productos_impuesto_predeterminar deja una sola; el tratamiento no cambia
+  set local role authenticated;
+  begin
+    insert into public.productos_impuestos (clave, nombre, tipo, tratamiento, porcentaje) values ('prueba_rls_miembro', 'Prueba RLS miembro', 'iva', 'gravado', 1);
+    v := 'entró';
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', v_ja, true);
+  set local role authenticated;
+  begin
+    update public.productos_impuestos set predeterminado = true where clave = 'prueba_rls_iva';
+    v := v || ' / cambió';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  begin
+    update public.productos_impuestos set predeterminado = false where predeterminado and archivado_en is null;
+    set constraints public.productos_impuestos_predeterminado immediate;
+    v := v || ' / confirmó';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  set constraints public.productos_impuestos_predeterminado deferred;
+  begin
+    perform public.productos_impuesto_predeterminar('prueba_rls_iva');
+    set constraints public.productos_impuestos_predeterminado immediate;
+    select count(*) into v_n from public.productos_impuestos i where i.predeterminado and i.archivado_en is null and i.clave = 'prueba_rls_iva';
+    select count(*) into v_m from public.productos_impuestos i where i.predeterminado and i.archivado_en is null;
+    v := v || ' / ' || v_n || ' de ' || v_m;
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  set constraints public.productos_impuestos_predeterminado deferred;
+  begin
+    update public.productos_impuestos set tratamiento = 'exento', porcentaje = 0 where clave = 'prueba_rls_iva';
+    v := v || ' / cambió';
+  exception when others then get stacked diagnostics w = pg_exception_hint; v := v || ' / ' || sqlstate || ' ' || w;
+  end;
+  reset role;
+  r := r || E'\n' || case when v = '42501 / 23505 / 23514 / 1 de 1 / 23514 productos_clase_inmutable' then 'OK      ' else 'FALLA   ' end || '19.12 miembro crea clase, segunda predeterminada, sin predeterminada, predeterminar y cambio de tratamiento → 42501 / 23505 / 23514 / 1 de 1 / 23514 productos_clase_inmutable · ' || v;
+
+  -- 19.13 Categorías: ciclo, archivar con hija activa y un subárbol de tres
+  -- niveles bajo una de nivel 2
+  perform set_config('request.jwt.claims', v_jm, true);
+  set local role authenticated;
+  insert into public.productos_categorias (nombre) values ('Prueba RLS A') returning id into v_cat_a;
+  insert into public.productos_categorias (nombre, padre_id) values ('Prueba RLS B', v_cat_a) returning id into v_cat_b;
+  insert into public.productos_categorias (nombre) values ('Prueba RLS X') returning id into v_cat_x;
+  insert into public.productos_categorias (nombre, padre_id) values ('Prueba RLS X1', v_cat_x) returning id into v_cat_x1;
+  insert into public.productos_categorias (nombre, padre_id) values ('Prueba RLS X2', v_cat_x1);
+  v := '';
+  begin
+    update public.productos_categorias set padre_id = v_cat_b where id = v_cat_a;
+    v := v || 'cambió';
+  exception when others then get stacked diagnostics w = pg_exception_hint; v := v || sqlstate || ' ' || w;
+  end;
+  begin
+    update public.productos_categorias set archivado_en = now() where id = v_cat_a;
+    v := v || ' / cambió';
+  exception when others then get stacked diagnostics w = pg_exception_hint; v := v || ' / ' || sqlstate || ' ' || w;
+  end;
+  begin
+    update public.productos_categorias set padre_id = v_cat_b where id = v_cat_x;
+    v := v || ' / cambió';
+  exception when others then get stacked diagnostics w = pg_exception_hint; v := v || ' / ' || sqlstate || ' ' || w;
+  end;
+  reset role;
+  r := r || E'\n' || case when v = '23514 productos_categoria_ciclo / 23514 productos_categoria_con_hijas / 23514 productos_categoria_profundidad' then 'OK      ' else 'FALLA   ' end || '19.13 categoría en ciclo, archivar con hija activa y mover tres niveles bajo el nivel 2 → 23514 ciclo / con_hijas / profundidad · ' || v;
+
+  -- 19.14 Historial: precio sin updated_by ni creado_via, nombre de una
+  -- unidad con su clave, y el miembro no escribe el historial
+  set local role authenticated;
+  update public.productos set precio_lista = 1200 where id = v_p5;
+  update public.productos_unidades set nombre = 'Prueba RLS caja grande' where clave = 'prueba_rls_caja';
+  begin
+    insert into public.productos_cambios (entidad, entidad_id, operacion) values ('producto', v_p5::text, 'delete');
+    v := 'entró';
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  select count(*) into v_n from public.productos_cambios c
+   where c.entidad = 'producto' and c.entidad_id = v_p5::text and c.operacion = 'update' and c.campos = array['precio_lista']
+     and not (coalesce(c.despues, '{}') ?| array['updated_by', 'creado_via', 'updated_at'])
+     and not (coalesce(c.antes, '{}') ?| array['updated_by', 'creado_via', 'updated_at']);
+  select count(*) into v_m from public.productos_cambios c
+   where c.entidad = 'unidad' and c.entidad_id = 'prueba_rls_caja' and c.operacion = 'update' and c.campos = array['nombre'];
+  r := r || E'\n' || case when v_n = 1 and v_m = 1 and v = '42501' then 'OK      ' else 'FALLA   ' end || '19.14 historial del precio y del nombre de una unidad; miembro escribe el historial → 1 / 1 / 42501 · ' || v_n || ' / ' || v_m || ' / ' || v;
+
+  -- 19.15 Con solo app_inventario e inventario activo: lee el catálogo, no
+  -- el historial. 19.23: y crea una línea, con las copias del catálogo
+  insert into public.user_roles (user_id, role) values (v_miembro, 'prueba-rls-prod-inv');
+  delete from public.user_roles where user_id = v_miembro and role in ('prueba-rls-prod-ver', 'prueba-rls-prod-edit');
+  begin
+    insert into public.modulos_instalacion (slug, activo) values ('inventario', true)
+    on conflict (slug) do update set activo = true;
+    v := 'activó';
+  exception when others then v := sqlstate;
+  end;
+  perform set_config('request.jwt.claims', v_jm, true);
+  if v <> 'activó' then
+    r := r || E'\nOMITIDO 19.15 lector desde inventario · no se pudo activar inventario en la transacción: ' || v
+           || E'\nOMITIDO 19.23 línea desde inventario · no se pudo activar inventario en la transacción: ' || v;
+  elsif public.puede_ver_app('productos') then
+    r := r || E'\nOMITIDO 19.15 lector desde inventario · la cuenta miembro ya ve Productos por un rol de la instalación'
+           || E'\nOMITIDO 19.23 línea desde inventario · la cuenta miembro ya ve Productos por un rol de la instalación';
+  else
+    set local role authenticated;
+    begin
+      select count(*) into v_n from public.productos where id = v_p9;
+      select count(*) into v_m from public.productos_cambios;
+      v := case when v_n = 1 then 'lee' else 'no lee' end || ' / ' || v_m || ' filas';
+    exception when others then v := sqlstate;
+    end;
+    begin
+      insert into public.prueba_rls_lineas (producto_id, cantidad) values (v_p9, 3) returning id into v_linea;
+      w := 'entró';
+    exception when others then w := sqlstate;
+    end;
+    reset role;
+    r := r || E'\n' || case when v = 'lee / 0 filas' then 'OK      ' else 'FALLA   ' end || '19.15 miembro con solo app_inventario lee productos y productos_cambios → lee / 0 filas · ' || v;
+    perform set_config('request.jwt.claims', '', true);
+    select count(*) into v_n from public.prueba_rls_lineas l
+     where l.id = v_linea and w = 'entró' and l.unidad = 'und' and l.factor = 1 and l.cantidad_base = 3
+       and l.producto_codigo = 'PRUEBA-RLS-9' and l.impuesto = (select p.impuesto from public.productos p where p.id = v_p9);
+    r := r || E'\n' || case when w = 'entró' and v_n = 1 then 'OK      ' else 'FALLA   ' end || '19.23 miembro con solo app_inventario crea una línea con unidad nula → entró / 1 en la unidad base con copias · ' || w || ' / ' || v_n;
+  end if;
+  perform set_config('request.jwt.claims', '', true);
+  delete from public.user_roles where user_id = v_miembro and role = 'prueba-rls-prod-inv';
+  insert into public.user_roles (user_id, role) values (v_miembro, 'prueba-rls-prod-edit');
+
+  -- 19.16 Módulo inactivo: ni lee ni escribe
+  update public.modulos_instalacion set activo = false where slug = 'productos';
+  perform set_config('request.jwt.claims', v_jm, true);
+  set local role authenticated;
+  begin
+    select count(*) into v_n from public.productos;
+    v := v_n || ' filas';
+  exception when others then v := sqlstate;
+  end;
+  begin
+    insert into public.productos (codigo, nombre) values ('PRUEBA-RLS-16', 'Prueba RLS inactivo');
+    v := v || ' / entró';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  update public.modulos_instalacion set activo = true where slug = 'productos';
+  r := r || E'\n' || case when v = '0 filas / 42501' then 'OK      ' else 'FALLA   ' end || '19.16 módulo inactivo: lee y escribe → 0 filas / 42501 · ' || v;
+
+  -- 19.17 Importación simulada: una nueva sin código, una existente con otro
+  -- nombre y una con una unidad que no existe; nada queda y la serie no avanza
+  v_filas := jsonb_build_array(
+    jsonb_build_object('fila', 1, 'nombre', 'Prueba RLS importada',
+                       'conversiones', jsonb_build_array(jsonb_build_object('unidad', 'prueba_rls_caja', 'factor', '6'))),
+    jsonb_build_object('fila', 2, 'codigo', 'prueba-rls-5', 'nombre', 'Prueba RLS precio renombrado'),
+    jsonb_build_object('fila', 3, 'codigo', 'PRUEBA-RLS-IMP3', 'nombre', 'Prueba RLS sin unidad', 'unidad_base', 'prueba_rls_no_existe'));
+  select last_value || '/' || is_called into v_serie from public.serie_producto;
+  perform set_config('request.jwt.claims', v_jm, true);
+  set local role authenticated;
+  begin
+    v_j := public.productos_importar(v_filas, true);
+    v := (v_j ->> 'crear') || ' / ' || (v_j ->> 'actualizar') || ' / ' || (v_j ->> 'error');
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  select count(*) into v_n from public.productos p
+   where p.nombre in ('Prueba RLS importada', 'Prueba RLS precio renombrado', 'Prueba RLS sin unidad');
+  select v || ' / ' || v_n || ' escritas / ' || case when last_value || '/' || is_called = v_serie then 'serie igual' else 'serie avanzó' end
+    into v from public.serie_producto;
+  r := r || E'\n' || case when v = '1 / 1 / 1 / 0 escritas / serie igual' then 'OK      ' else 'FALLA   ' end || '19.17 importación simulada: nueva, existente y con error → 1 / 1 / 1 / 0 escritas / serie igual · ' || v;
+
+  -- 19.18 La misma importación sin simular; reimportar las válidas idénticas
+  -- (con el código que recibió la nueva y sus conversiones) no cambia nada
+  select count(*) into v_m from public.audit_log a where a.user_id = v_miembro and a.action = 'productos.importar';
+  perform set_config('request.jwt.claims', v_jm, true);
+  set local role authenticated;
+  begin
+    v_j := public.productos_importar(v_filas, false);
+    v := 'crear ' || (v_j ->> 'crear') || ' / actualizar ' || (v_j ->> 'actualizar') || ' / error ' || (v_j ->> 'error');
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  v_cod := v_j -> 'filas' -> 0 ->> 'codigo';
+  select count(*) into v_n from public.productos p
+   where p.codigo = v_cod and p.nombre = 'Prueba RLS importada' and p.creado_via = 'importacion'
+     and exists (select 1 from public.productos_conversiones k where k.producto_id = p.id and k.unidad = 'prueba_rls_caja' and k.factor = 6);
+  select count(*) - v_m into v_m from public.audit_log a where a.user_id = v_miembro and a.action = 'productos.importar';
+  v := v || ' / importacion ' || v_n || ' / auditoría ' || v_m;
+  select count(*) into v_k from public.productos_cambios c
+   where c.entidad_id in (v_p5::text, (select p.id::text from public.productos p where p.codigo = v_cod));
+  perform set_config('request.jwt.claims', v_jm, true);
+  set local role authenticated;
+  begin
+    v_j := public.productos_importar(jsonb_build_array(
+      jsonb_build_object('fila', 1, 'codigo', v_cod, 'nombre', 'Prueba RLS importada',
+                         'conversiones', jsonb_build_array(jsonb_build_object('unidad', 'prueba_rls_caja', 'factor', 6))),
+      jsonb_build_object('fila', 2, 'codigo', 'prueba-rls-5', 'nombre', 'Prueba RLS precio renombrado')), false);
+    v := v || ' / sin_cambio ' || (v_j ->> 'sin_cambio');
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  select count(*) - v_k into v_k from public.productos_cambios c
+   where c.entidad_id in (v_p5::text, (select p.id::text from public.productos p where p.codigo = v_cod));
+  v := v || ' / historial ' || v_k;
+  r := r || E'\n' || case when v = 'crear 1 / actualizar 1 / error 1 / importacion 1 / auditoría 1 / sin_cambio 2 / historial 0' then 'OK      ' else 'FALLA   ' end || '19.18 importación real y reimportación idéntica → crear 1 / actualizar 1 / error 1 / importacion 1 / auditoría 1 / sin_cambio 2 / historial 0 · ' || v;
+
+  -- 19.19 Repetidos en el lote: el mismo código, dos que normalizan igual y
+  -- dos sin código con el mismo nombre; todas con error y nada escrito
+  perform set_config('request.jwt.claims', v_jm, true);
+  set local role authenticated;
+  begin
+    v_j := public.productos_importar(jsonb_build_array(
+      jsonb_build_object('fila', 1, 'codigo', 'PRUEBA-RLS-R1', 'nombre', 'Prueba RLS r1'),
+      jsonb_build_object('fila', 2, 'codigo', 'prueba-rls-r1', 'nombre', 'Prueba RLS r1 bis'),
+      jsonb_build_object('fila', 3, 'codigo', 'PRUEBA-RLS R2', 'nombre', 'Prueba RLS r2'),
+      jsonb_build_object('fila', 4, 'codigo', 'PRUEBA-RLSR2', 'nombre', 'Prueba RLS r2 bis'),
+      jsonb_build_object('fila', 5, 'nombre', 'Prueba RLS repetido'),
+      jsonb_build_object('fila', 6, 'nombre', ' prueba rls  repetido ')), false);
+    v := 'error ' || (v_j ->> 'error') || ' / crear ' || (v_j ->> 'crear');
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  select count(*) into v_n from public.productos p
+   where p.codigo in ('PRUEBA-RLS-R1', 'PRUEBA-RLSR2') or lower(p.nombre) like 'prueba rls r_' or lower(p.nombre) like '%repetido%';
+  v := v || ' / ' || v_n || ' escritas';
+  r := r || E'\n' || case when v = 'error 6 / crear 0 / 0 escritas' then 'OK      ' else 'FALLA   ' end || '19.19 lote con códigos repetidos, normalizados iguales y nombres repetidos → error 6 / crear 0 / 0 escritas · ' || v;
+
+  -- 19.20 Importar sin edit_productos; un lote de 501 filas
+  delete from public.user_roles where user_id = v_miembro and role = 'prueba-rls-prod-edit';
+  insert into public.user_roles (user_id, role) values (v_miembro, 'prueba-rls-prod-ver');
+  perform set_config('request.jwt.claims', v_jm, true);
+  if public.has_perm('edit_productos') then
+    v := 'omitido';
+  else
+    set local role authenticated;
+    begin
+      perform public.productos_importar('[]'::jsonb, true);
+      v := 'importó';
+    exception when others then v := sqlstate;
+    end;
+    reset role;
+  end if;
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.user_roles (user_id, role) values (v_miembro, 'prueba-rls-prod-edit');
+  perform set_config('request.jwt.claims', v_jm, true);
+  set local role authenticated;
+  begin
+    perform public.productos_importar((select jsonb_agg(jsonb_build_object('fila', g, 'nombre', 'Prueba RLS tope ' || g)) from generate_series(1, 501) g), true);
+    v := v || ' / importó';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  reset role;
+  if v like 'omitido%' then
+    r := r || E'\nOMITIDO 19.20 importar sin edit_productos · la cuenta miembro ya lo tiene por un rol de la instalación';
+  else
+    r := r || E'\n' || case when v = '42501 / 22023' then 'OK      ' else 'FALLA   ' end || '19.20 importar sin edit_productos y 501 filas → 42501 / 22023 · ' || v;
+  end if;
+
+  -- 19.21 Lote de 500 filas nuevas con conversión, simulado como el miembro:
+  -- tiene que caber holgado en el statement_timeout del rol authenticated
+  perform set_config('request.jwt.claims', '', true);
+  select coalesce((select substr(c, char_length('statement_timeout=') + 1)
+                     from pg_catalog.pg_roles x, unnest(x.rolconfig) c
+                    where x.rolname = 'authenticated' and c like 'statement_timeout=%'), 'sin tope')
+    into v_tope;
+  perform set_config('request.jwt.claims', v_jm, true);
+  set local role authenticated;
+  v_t0 := clock_timestamp();
+  begin
+    v_j := public.productos_importar((select jsonb_agg(jsonb_build_object(
+             'fila', g, 'codigo', 'PRUEBA-RLS-L' || g, 'nombre', 'Prueba RLS lote ' || g, 'precio_lista', '1000.5',
+             'conversiones', jsonb_build_array(jsonb_build_object('unidad', 'prueba_rls_caja', 'factor', '12'))))
+             from generate_series(1, 500) g), true);
+    v := 'terminó ' || (v_j ->> 'crear');
+  exception when others then v := sqlstate;
+  end;
+  v_ms := (extract(epoch from clock_timestamp() - v_t0) * 1000)::int;
+  reset role;
+  r := r || E'\n' || case when v = 'terminó 500' and v_ms < 6000 then 'OK      ' else 'FALLA   ' end || '19.21 lote de 500 filas simulado en menos de 6 s → terminó 500 · ' || v || ' en ' || v_ms || ' ms (statement_timeout de authenticated: ' || v_tope || ')';
+
+  -- 19.22 Anónimo: sin lectura ni EXECUTE en las funciones del módulo
+  perform set_config('request.jwt.claims', '', true);
+  set local role anon;
+  begin
+    select count(*) into v_n from public.productos;
+    v := v_n || ' filas';
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  v := v || ' / ' || case when has_function_privilege('anon', 'public.productos_buscar(text,uuid,boolean,text,text,boolean,integer,integer)', 'execute')
+                            or has_function_privilege('anon', 'public.productos_importar(jsonb,boolean)', 'execute')
+                            or has_function_privilege('anon', 'public.productos_factor(uuid,text)', 'execute')
+                            or has_function_privilege('anon', 'public.productos_impuesto_predeterminar(text)', 'execute')
+                          then 'ejecuta' else 'no ejecuta' end;
+  r := r || E'\n' || case when v = '42501 / no ejecuta' then 'OK      ' else 'FALLA   ' end || '19.22 anon lee productos y ejecuta buscar, importar, factor y predeterminar → 42501 / no ejecuta · ' || v;
 
   perform set_config('request.jwt.claims', '', true);
   perform set_config('rls.res', current_setting('rls.res') || r, true);

@@ -491,14 +491,14 @@ describe('supabase/pruebas/rls-simulacion.sql', () => {
     expect(sim.match(/^do \$\$$/gm)?.length).toBe(sim.match(/^end \$\$;$/gm)?.length)
   })
 
-  it('tiene las secciones 0 a 18 y la 0 lee instalador.cuentas_prueba', () => {
-    for (let n = 0; n <= 18; n++) expect(sim).toContain(`-- ============ ${n}) `)
+  it('tiene las secciones 0 a 19 y la 0 lee instalador.cuentas_prueba', () => {
+    for (let n = 0; n <= 19; n++) expect(sim).toContain(`-- ============ ${n}) `)
     expect(bloques.find((b) => b.startsWith('-- ============ 0) '))).toMatch(/from instalador\.cuentas_prueba where rol = 'qa'/)
   })
 
   it('cada sección después de la 0 se niega a correr suelta', () => {
     const secciones = bloques.filter((b) => /^-- ============ [1-9]\d*\) /.test(b))
-    expect(secciones.length).toBe(18)
+    expect(secciones.length).toBe(19)
     for (const s of secciones) expect(s).toMatch(/current_setting\('rls\.txid', true\) is distinct from txid_current\(\)::text then\s+raise exception/)
   })
 
@@ -696,6 +696,161 @@ describe('esquema: 21-crm', () => {
     expect(sql).toMatch(/create trigger crm_mover_actividades after update of cuenta_id on public\.crm_contactos/)
     expect(cuerpo('crm_contacto_mover_actividades')).toMatch(/update public\.crm_actividades a set cuenta_id = new\.cuenta_id\s+where a\.contacto_id = new\.id/)
     expect(funciones(sql).find((x) => x.nombre === 'crm_contacto_mover_actividades')!.definer).toBe(true)
+  })
+})
+
+describe('esquema: 22-catalogo', () => {
+  const a = archivos.find((x) => x.nombre === '22-catalogo.sql')!
+  const sql = a.sql
+  const cuerpo = (nombre: string) => new RegExp(`function\\s+public\\.${nombre}\\([^)]*\\)[\\s\\S]*?\\$\\$([\\s\\S]*?)\\$\\$`, 'i').exec(sql)![1]
+  const sentencias = sql.split(';').map((s) => s.trim())
+  const verificar = readFileSync(CARPETA + 'verificar.sql', 'utf8')
+  const sim = readFileSync(fileURLToPath(new URL('../../../supabase/pruebas/rls-simulacion.sql', import.meta.url)), 'utf8').replace(/\r\n?/g, '\n')
+  const s19 = sim.split(/\n(?=-- ============ )/).find((b) => b.startsWith('-- ============ 19) '))!
+
+  // Tablas de un create table que declaran una columna producto_id y si el
+  // mismo archivo les aplica productos_aplicar_linea
+  const lineasSinContrato = (texto: string) =>
+    [...texto.matchAll(/create\s+table\s+(?:if\s+not\s+exists\s+)?(?:public\.)?(\w+)\s*\(([\s\S]*?)\);/gi)]
+      .filter((m) => /(?:^|[(,\s])producto_id\s/i.test(m[2]))
+      .map((m) => m[1])
+      .filter((t) => !new RegExp(`productos_aplicar_linea\\(\\s*'public\\.${t}'`, 'i').test(texto))
+
+  it('cada tabla del registro productos se crea en el archivo y lleva aplicar_politica_modulo', async () => {
+    const { tablasDe } = await import('../modulos')
+    const lista = tablasDe('productos')
+    expect(lista.length).toBe(7)
+    for (const t of lista) {
+      expect(tablas(sql), t).toContain(t)
+      expect(sql, t).toMatch(new RegExp(`select\\s+public\\.aplicar_politica_modulo\\('public\\.${t}',\\s*array\\['productos'\\]\\);`, 'i'))
+    }
+    expect(sql.search(/select\s+public\.aplicar_exigir_mfa\(\);/i)).toBeLessThan(sql.lastIndexOf('do $$'))
+  })
+
+  it('las únicas security definer son productos_preparar y productos_registrar_cambio', () => {
+    expect(funciones(sql).filter((f) => f.definer).map((f) => f.nombre).sort()).toEqual(['productos_preparar', 'productos_registrar_cambio'])
+    expect(sql).toMatch(/revoke\s+execute\s+on\s+function\s+public\.productos_aplicar_linea\(regclass, text, boolean\)\s+from\s+public,\s*anon,\s*authenticated,\s*service_role;/i)
+    expect(sql).not.toMatch(/grant\s+execute\s+on\s+function\s+public\.productos_aplicar_linea/i)
+  })
+
+  it('productos_puede_leer, en su última definición entre 22 y sus correcciones, nombra los módulos que dependen directamente del catálogo', async () => {
+    const { MODULOS } = await import('../modulos')
+    const definiciones = archivos
+      .filter((x) => /^22[a-z]?-/.test(x.nombre))
+      .flatMap((x) => [...x.sql.matchAll(/create\s+or\s+replace\s+function\s+public\.productos_puede_leer\(\)[\s\S]*?\$\$([\s\S]*?)\$\$/gi)].map((m) => m[1]))
+    const ultima = definiciones[definiciones.length - 1]
+    expect(ultima).toMatch(/where public\.puede_ver_app\(s\)/)
+    const lista = [.../array\[([^\]]*)\]/.exec(ultima)![1].matchAll(/'([a-z0-9-]+)'/g)].map((m) => m[1])
+    expect(lista[0]).toBe('productos')
+    // Directos, no dependientesDe (transitiva: sumaría cartera por facturación)
+    expect(lista.slice(1).sort()).toEqual(MODULOS.filter((m) => m.depende.includes('productos')).map((m) => m.slug).sort())
+    expect(lista).not.toContain('cartera')
+  })
+
+  it('ningún archivo fuera de 22-catalogo.sql crea una tabla con producto_id sin productos_aplicar_linea', () => {
+    expect(lineasSinContrato("create table if not exists public.x_lineas (id uuid, producto_id uuid not null);")).toEqual(['x_lineas'])
+    expect(lineasSinContrato("create table if not exists public.x_lineas (id uuid,\n  producto_id uuid);\nselect public.productos_aplicar_linea('public.x_lineas', 'inventario', true);")).toEqual([])
+    expect(lineasSinContrato('create table if not exists public.x (id uuid, otro_producto_id uuid);')).toEqual([])
+    for (const x of archivos.filter((f) => f.nombre !== '22-catalogo.sql')) expect(lineasSinContrato(x.sql), x.nombre).toEqual([])
+  })
+
+  it('ningún grant ni política para anon y ninguna política abre con true', () => {
+    for (const s of sentencias.filter((x) => /^(grant|create\s+policy)\b/i.test(x))) expect(s).not.toMatch(/\banon\b/i)
+    expect(sql).not.toMatch(/using\s*\(\s*true\s*\)/i)
+    expect(sql).not.toMatch(/with\s+check\s*\(\s*true\s*\)/i)
+  })
+
+  it('borrar productos, categorías, unidades y clases exige is_admin; leer, productos_puede_leer; el historial, puede_ver_app', () => {
+    const del = [...sql.matchAll(/create\s+policy\s+\w+\s+on\s+public\.(productos\w*)\s+for\s+delete\s+([^;]*);/gi)]
+    expect(del.map((m) => m[1]).sort()).toEqual(['productos', 'productos_categorias', 'productos_conversiones', 'productos_impuestos', 'productos_unidades'])
+    for (const m of del) {
+      if (m[1] === 'productos_conversiones') expect(m[2]).toMatch(/has_perm\('edit_productos'\)/)
+      else expect(m[2], m[1]).toMatch(/\(select public\.is_admin\(\)\)/)
+    }
+    for (const t of ['productos', 'productos_categorias', 'productos_unidades', 'productos_conversiones', 'productos_impuestos']) {
+      expect(sql, t).toMatch(new RegExp(`create policy ${t}_select on public\\.${t}\\s+for select to authenticated using \\(\\(select public\\.productos_puede_leer\\(\\)\\)\\);`))
+    }
+    expect(sql).toMatch(/create policy productos_cambios_select on public\.productos_cambios\s+for select to authenticated using \(\(select public\.puede_ver_app\('productos'\)\)\);/)
+    expect(sql).not.toMatch(/create\s+policy\s+\w+\s+on\s+public\.productos_lineas\b/i)
+    for (const accion of ['insert', 'update']) {
+      expect(sql, accion).toMatch(new RegExp(`create policy productos_impuestos_${accion} on public\\.productos_impuestos\\s+for ${accion} to authenticated\\s+(?:using|with check) \\(\\(select public\\.is_admin\\(\\)\\)\\)`))
+    }
+  })
+
+  it('unidades: sistema y codigo_dian fuera de los grants de la API; und no se borra ni se archiva', () => {
+    const insert = /grant insert \(([^)]*)\) on table public\.productos_unidades to authenticated;/.exec(sql)![1]
+    const update = /grant update \(([^)]*)\) on table public\.productos_unidades to authenticated;/.exec(sql)![1]
+    for (const col of ['sistema', 'codigo_dian']) {
+      expect(insert).not.toContain(col)
+      expect(update).not.toContain(col)
+    }
+    expect(update).not.toContain('clave')
+    expect(sql).toMatch(/grant select, delete on table public\.productos_unidades to authenticated;/)
+    expect(cuerpo('productos_clave_inmutable')).toContain("hint = 'productos_sistema'")
+    expect(sql).toContain("('und', 'Unidad', 'und', 0, true, 'sistema')")
+  })
+
+  it('código normalizado, único también entre archivados y de la serie producto con huecos y sin reinicio', () => {
+    expect(sql).toContain("check (codigo ~ '^[A-Z0-9][A-Z0-9._/-]{0,39}$')")
+    expect(sql).toContain('create unique index if not exists productos_codigo_unico on public.productos (codigo);')
+    const preparar = cuerpo('productos_preparar')
+    expect(preparar).toContain("upper(regexp_replace(new.codigo, '[[:space:]]', '', 'g'))")
+    expect(preparar).toContain("public.series_siguiente('producto')")
+    expect(preparar).toContain("hint = 'productos_codigo_serie'")
+    expect(sql).toContain("insert into public.series (clave, prefijo, relleno, modo) values ('producto', 'P-', 5, 'con_huecos')")
+    expect(sql).toMatch(/s\.clave = 'producto' and s\.modo = 'con_huecos' and s\.reinicio = 'nunca'/)
+    // El simulacro de la importación no pide número a la serie
+    expect(cuerpo('productos_importar')).toContain("'SIM-' || replace(gen_random_uuid()::text, '-', '')")
+  })
+
+  it('producto con vendible y comprable, precio de lista como par y una clase de impuesto', () => {
+    expect(sql).toMatch(/vendible boolean not null default true,\s+comprable boolean not null default true,/)
+    expect(sql).toMatch(/precio_lista public\.importe constraint productos_precio_lista_check check \(precio_lista is null or precio_lista >= 0\)/)
+    expect(sql).toContain('constraint productos_precio_lista_moneda_check check ((precio_lista is null) = (precio_lista_moneda is null))')
+    expect(sql).toMatch(/impuesto text not null constraint productos_impuesto_fkey references public\.productos_impuestos \(clave\) on delete restrict/)
+    expect(cuerpo('productos_buscar')).toMatch(/p_uso = 'venta' and p\.vendible\) or \(p_uso = 'compra' and p\.comprable\)/)
+    expect(cuerpo('productos_preparar')).toContain("hint = 'productos_moneda'")
+  })
+
+  it('semilla de clases colombianas con claves neutras y una sola predeterminada', () => {
+    const semilla = /insert into public\.productos_impuestos \(clave[^;]*;/.exec(sql)![0]
+    expect([...semilla.matchAll(/\('(\w+)', '[^']+', 'iva', '(\w+)', (\d+), (true|false), 'sistema'\)/g)].map((m) => [m[1], m[2], m[3], m[4]])).toEqual([
+      ['iva_general', 'gravado', '19', 'true'],
+      ['iva_reducido', 'gravado', '5', 'false'],
+      ['iva_exento', 'exento', '0', 'false'],
+      ['iva_excluido', 'excluido', '0', 'false'],
+    ])
+    expect(semilla).not.toMatch(/'iva_\d+'/)
+    expect(semilla).toMatch(/on conflict do nothing;$/)
+    expect(sql).toMatch(/create constraint trigger productos_impuestos_predeterminado after insert or update or delete on public\.productos_impuestos\s+deferrable initially deferred/)
+  })
+
+  it('las líneas: productos_aplicar_linea pone llaves restrict, columna generada, índice y trigger, y el trigger protege con un bloqueo compartido', () => {
+    const aplicar = cuerpo('productos_aplicar_linea')
+    expect(aplicar).toContain("('cantidad_base', 'numeric(18, 6) generated always as (round(cantidad * factor, 6)) stored'")
+    expect(aplicar.match(/on delete restrict/g)?.length).toBe(3)
+    expect(aplicar).toContain("create index if not exists %I on %I.%I (producto_id)', v_nombre || '_producto_idx'")
+    expect(aplicar).toMatch(/insert into public\.productos_lineas \(tabla, modulo, con_impuesto\)/)
+    expect(cuerpo('productos_linea_preparar')).toContain("pg_advisory_xact_lock_shared(hashtext('public.productos'), hashtext(new.producto_id::text))")
+    expect(cuerpo('productos_preparar')).toContain("pg_advisory_xact_lock(hashtext('public.productos'), hashtext(new.id::text))")
+    expect(cuerpo('productos_conversiones_validar')).toMatch(/for share;/)
+    expect(cuerpo('productos_categorias_validar')).toContain("pg_advisory_xact_lock(hashtext('public.productos_categorias'))")
+  })
+
+  it('verificar.sql trae las comprobaciones 19 a 26 de Productos, OMITIDO si no está instalado', () => {
+    for (let n = 19; n <= 26; n++) expect(verificar, String(n)).toMatch(new RegExp(`select ${n},\\s+'productos: `))
+    expect(verificar.match(/'Productos no está instalado \(22-catalogo\.sql\)'/g)?.length).toBe(8)
+    expect(verificar).toMatch(/to_regclass\('public\.productos'\) is not null as existe/)
+  })
+
+  it('la sección 19 de rls-simulacion sale OMITIDO sin 22-catalogo.sql y trae los casos del diseño', () => {
+    expect(s19).toContain('OMITIDO 19    productos · falta 22-catalogo.sql')
+    for (let n = 1; n <= 23; n++) expect(s19, `19.${n}`).toContain(`'19.${n}${n < 10 ? '  ' : ' '}`)
+    expect(s19).toContain("perform public.productos_aplicar_linea('public.prueba_rls_lineas', 'inventario', true);")
+    expect(s19).toContain('set constraints public.productos_impuestos_predeterminado immediate;')
+    expect(s19.match(/set constraints public\.productos_impuestos_predeterminado deferred;/g)?.length).toBe(2)
+    expect(s19).toContain('generate_series(1, 501)')
+    expect(s19).toMatch(/when v = 'terminó 500' and v_ms < 6000 then 'OK/)
   })
 })
 

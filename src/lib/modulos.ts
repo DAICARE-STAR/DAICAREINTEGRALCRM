@@ -222,6 +222,10 @@ export const MODULOS: readonly Modulo[] = [
     limites: {},
   },
   {
+    // Catálogo (fase 0.7, docs/modulos/productos.md). Su esquema ya está en
+    // 22-catalogo.sql, pero sigue planeado hasta que existan sus pantallas:
+    // modulos.mjs --activar no lo activa y nadie lo ve. Solo
+    // ensayar.mjs --simular lo deja activo, dentro del ensayo que se deshace.
     slug: 'productos',
     nombre: 'Productos',
     icono: 'productos',
@@ -229,18 +233,18 @@ export const MODULOS: readonly Modulo[] = [
     estado: 'planeado',
     permisos: [
       { clave: 'app_productos', etiqueta: 'Ver Productos' },
-      { clave: 'manage_products', etiqueta: 'Gestionar el catálogo' },
+      { clave: 'edit_productos', etiqueta: 'Editar productos, categorías y unidades' },
     ],
     widgets: [],
     acciones: [],
     tablas: [
-      'products', 'product_price_history', 'product_cambios', 'product_lotes', 'product_variantes', 'product_documentos',
-      'marcas', 'marca_tasas', 'familias', 'atributos_def', 'price_lists', 'price_list_items',
+      'productos', 'productos_categorias', 'productos_unidades', 'productos_conversiones',
+      'productos_impuestos', 'productos_cambios', 'productos_lineas',
     ],
     sql: '22-catalogo.sql',
     depende: [],
     integra: [],
-    conectores: ['cambio'],
+    conectores: [],
     limites: {},
   },
   {

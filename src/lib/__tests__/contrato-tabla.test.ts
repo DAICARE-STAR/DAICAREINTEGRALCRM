@@ -31,6 +31,8 @@ const EXENTAS: Record<string, string> = {
   crm_salud: 'datos cifrados: solo los escribe crm_salud_guardar, que sella actualizado_por y updated_at; se borran, no se archivan',
   crm_consentimientos: 'prueba legal inmutable: crm_consentimientos_preparar sella registrado_por y created_at y solo admite revocar',
   crm_accesos_salud: 'registro de accesos inmutable: lo escriben las funciones de salud',
+  productos_cambios: 'historial inmutable: solo lo escribe productos_registrar_cambio, con autor_id y created_at propios',
+  productos_lineas: 'registro interno: solo lo escribe productos_aplicar_linea, que ejecuta el dueño',
 }
 
 // Columnas del contrato que una tabla omite (contrato_aplicar(tabla, sin))
@@ -38,6 +40,9 @@ const PARCIALES: Record<string, Record<string, string>> = {
   crm_actividades: {
     created_by: 'la autoría es autor_id, que sella crm_preparar desde 21-crm.sql; la usan la pantalla y la política de borrado del autor',
     archivado_en: 'una actividad es un hecho con fecha: la borra su autor o un administrador, no se archiva',
+  },
+  productos_conversiones: {
+    archivado_en: 'una conversión se quita, no se archiva: las líneas que la usaron guardan su propio factor',
   },
 }
 
@@ -67,6 +72,8 @@ function aplicaciones(sql: string): Map<string, string[]> {
 describe('contrato base de tabla (PP-DEC-23)', () => {
   it('hay al menos un módulo con esquema que revisar', () => {
     expect(conEsquema.map((c) => c.modulo.slug)).toContain('crm')
+    // Un planeado con su archivo escrito también se revisa
+    expect(conEsquema.map((c) => c.modulo.slug)).toContain('productos')
   })
 
   it.each(conEsquema.map((c) => [c.modulo.slug, c] as const))('%s: toda tabla de negocio aplica el contrato o está exenta con motivo', (_s, c) => {

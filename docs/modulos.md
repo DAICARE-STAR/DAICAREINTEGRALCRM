@@ -16,7 +16,7 @@ Estado: `disponible` se puede activar con `tools/instalar/modulos.mjs --activar`
 | proyectos | Proyectos | planeado | /proyectos | — | — | archivos | — | app_proyectos, edit_projects, delete_projects | 20-proyectos.sql |
 | disenos | Diseños | planeado | /disenos | proyectos | — | — | — | app_disenos | — |
 | manuales | Manuales | planeado | /manuales | — | — | — | — | app_manuales | 13-manuales.sql |
-| productos | Productos | planeado | /productos | — | — | cambio | — | app_productos, manage_products | 22-catalogo.sql |
+| productos | Productos | planeado | /productos | — | — | — | — | app_productos, edit_productos | 22-catalogo.sql |
 | crm | CRM | disponible | /crm | — | — | crm | — | app_crm, edit_crm, exportar_crm, ver_salud, edit_salud | 21-crm.sql |
 | cotizador | Cotizador | planeado | /cotizador | productos | crm | — | — | app_cotizador | 23-cotizador.sql |
 | gerencia | Gerencia | planeado | /gerencia | proyectos | — | facturacion | — | app_gerencia, view_billing | 26-gerencia.sql |

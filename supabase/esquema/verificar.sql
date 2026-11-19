@@ -5,8 +5,10 @@
 -- instalación. Las comprobaciones que leen las filas de modulos_instalacion
 -- contra el registro src/lib/modulos.ts (slugs, límites, dependencias) las
 -- hace aplicar.mjs después de esta consulta (comprobarModulos, números 9 a
--- 11; las de aquí siguen con la 12 a la 18), porque una consulta suelta no
--- puede nombrar una tabla que quizá no existe todavía.
+-- 11; las de aquí siguen con la 12 a la 26), porque una consulta suelta no
+-- puede nombrar una tabla que quizá no existe todavía. Las de Productos (19
+-- a 26) salen OMITIDO si el módulo no está instalado y leen sus datos con
+-- query_to_xml y consultas fijas, como la 18.
 with
 tablas as (
   select c.oid, c.relname, c.relrowsecurity
@@ -222,6 +224,164 @@ maquina_estados as (
                                           where g.tgrelid = e.tabla and g.tgname = ''zy_estados_guardia''
                                             and not g.tgisinternal and g.tgenabled in (''O'', ''A''))',
                      false, false, '')) end) as x(tabla)
+),
+-- Productos (22-catalogo.sql): solo si está instalado
+hay_productos as (
+  select to_regclass('public.productos') is not null as existe
+),
+-- Una consulta fija sobre una tabla del módulo, leída con query_to_xml solo
+-- si el módulo está instalado (una consulta suelta no puede nombrarla)
+productos_datos as (
+  select
+    case when not (select existe from hay_productos) then '{}'::text[]
+         else array(select x::text from unnest(xpath('/table/row/t/text()', query_to_xml(
+           'select l.tabla::oid::text as t from public.productos_lineas l', false, false, ''))) as x) end as lineas,
+    case when not (select existe from hay_productos) then null
+         else (xpath('/table/row/n/text()', query_to_xml(
+           'select count(*) as n from public.productos_impuestos i where i.predeterminado and i.archivado_en is null',
+           false, false, '')))[1]::text::int end as predeterminadas,
+    case when not (select existe from hay_productos) then null
+         else (xpath('/table/row/n/text()', query_to_xml(
+           'select count(*) as n from public.productos_unidades u where u.clave = ''und'' and u.sistema and u.archivado_en is null',
+           false, false, '')))[1]::text::int end as und_sistema,
+    case when to_regclass('public.series') is null then null
+         else (xpath('/table/row/n/text()', query_to_xml(
+           'select count(*) as n from public.series s where s.clave = ''producto'' and s.modo = ''con_huecos'' and s.reinicio = ''nunca''',
+           false, false, '')))[1]::text::int end as serie,
+    case when not (select existe from hay_productos) then null
+         else (xpath('/table/row/n/text()', query_to_xml(
+           'select count(*) as n from public.productos p, public.instalacion i
+             where i.id = 1 and p.precio_lista_moneda is not null and p.precio_lista_moneda <> i.moneda_base',
+           false, false, '')))[1]::text::int end as otra_moneda
+),
+productos_funciones as (
+  select x.firma, p.oid, p.prosecdef, p.proconfig, p.prosrc, l.lanname
+  from unnest(array['public.productos_buscar(text,uuid,boolean,text,text,boolean,integer,integer)',
+                    'public.productos_importar(jsonb,boolean)', 'public.productos_factor(uuid,text)',
+                    'public.productos_puede_leer()', 'public.productos_impuesto_predeterminar(text)']) as x(firma)
+  left join pg_proc p on p.oid = to_regprocedure(x.firma)
+  left join pg_language l on l.oid = p.prolang
+),
+-- 19: funciones de la API sin security definer, con search_path y sin anon;
+-- productos_aplicar_linea solo del dueño
+productos_19 as (
+  select f.firma || ' falta' as motivo from productos_funciones f where f.oid is null
+  union all
+  select f.firma || ' es security definer' from productos_funciones f where f.prosecdef
+  union all
+  select f.firma || ' sin search_path' from productos_funciones f
+  where f.oid is not null and not exists (select 1 from unnest(f.proconfig) c where c like 'search_path=%')
+  union all
+  select 'productos_factor no es plpgsql' from productos_funciones f
+  where f.firma like 'public.productos_factor(%' and f.oid is not null and f.lanname <> 'plpgsql'
+  union all
+  select 'productos_importar no exige has_perm(''edit_productos'')' from productos_funciones f
+  where f.firma like 'public.productos_importar(%' and f.oid is not null and position('has_perm(''edit_productos'')' in f.prosrc) = 0
+  union all
+  select f.firma || ' ejecutable por anon' from productos_funciones f
+  where f.oid is not null and (select hay_anon from roles) and has_function_privilege('anon', f.oid, 'execute')
+  union all
+  select 'productos_aplicar_linea ejecutable por ' || r.rol
+  from unnest(array['anon', 'authenticated', 'service_role']) as r(rol)
+  where has_function_privilege(r.rol, to_regprocedure('public.productos_aplicar_linea(regclass,text,boolean)'), 'execute')
+),
+-- 20: historial y registro de líneas cerrados a la API; triggers de
+-- historial y auditoría; las dos definer sin EXECUTE para la API
+productos_20 as (
+  -- Privilegios de la tabla entera y por columna (column_privileges trae
+  -- también los de la tabla), una línea por tabla, privilegio y rol
+  select g.table_name || ': ' || lower(g.privilege_type) || ' para ' || g.grantee as motivo
+  from (select t.table_name, t.privilege_type, t.grantee from information_schema.role_table_grants t
+         where t.table_schema = 'public' and t.table_name in ('productos_cambios', 'productos_lineas')
+        union
+        select k.table_name, k.privilege_type, k.grantee from information_schema.column_privileges k
+         where k.table_schema = 'public' and k.table_name in ('productos_cambios', 'productos_lineas')) g
+  where g.grantee in ('anon', 'authenticated')
+    and (g.table_name = 'productos_lineas' or g.privilege_type not in ('SELECT', 'REFERENCES', 'TRIGGER'))
+  union all
+  select 'falta productos_registrar_cambio en ' || t.tabla
+  from unnest(array['productos', 'productos_conversiones', 'productos_unidades', 'productos_impuestos', 'productos_categorias']) as t(tabla)
+  where not exists (select 1 from pg_trigger g
+                    where g.tgrelid = to_regclass('public.' || t.tabla) and g.tgname = 'productos_registrar_cambio'
+                      and not g.tgisinternal and g.tgenabled <> 'D')
+  union all
+  select 'falta auditar_cambio en productos'
+  where not exists (select 1 from pg_trigger g
+                    where g.tgrelid = to_regclass('public.productos') and g.tgname = 'auditar_cambio' and g.tgenabled <> 'D')
+  union all
+  select x.firma || ' no es security definer o la ejecuta authenticated'
+  from unnest(array['public.productos_preparar()', 'public.productos_registrar_cambio()']) as x(firma)
+  left join pg_proc p on p.oid = to_regprocedure(x.firma)
+  where p.oid is null or not p.prosecdef or has_function_privilege('authenticated', p.oid, 'execute')
+),
+-- 21: catálogos con clave inmutable, una predeterminada activa y und del sistema
+productos_21 as (
+  select 'falta productos_clave_inmutable en ' || t.tabla as motivo
+  from unnest(array['productos_unidades', 'productos_impuestos']) as t(tabla)
+  where not exists (select 1 from pg_trigger g
+                    where g.tgrelid = to_regclass('public.' || t.tabla) and g.tgname = 'productos_clave_inmutable'
+                      and not g.tgisinternal and g.tgenabled <> 'D')
+  union all
+  select 'productos_impuestos_predeterminado falta o no es diferido'
+  where not exists (select 1 from pg_trigger g
+                    where g.tgrelid = to_regclass('public.productos_impuestos') and g.tgname = 'productos_impuestos_predeterminado'
+                      and g.tgconstraint <> 0 and g.tgdeferrable and g.tginitdeferred and g.tgenabled <> 'D')
+  union all
+  select (select predeterminadas from productos_datos)::text || ' clases predeterminadas activas'
+  where (select predeterminadas from productos_datos) is distinct from 1
+  union all
+  select 'falta und con sistema' where (select und_sistema from productos_datos) is distinct from 1
+  union all
+  -- column_privileges también trae lo que da un grant de toda la tabla
+  select distinct 'productos_unidades.' || g.column_name || ': ' || lower(g.privilege_type) || ' para ' || g.grantee
+  from information_schema.column_privileges g
+  where g.table_schema = 'public' and g.table_name = 'productos_unidades' and g.column_name in ('sistema', 'codigo_dian')
+    and g.grantee in ('anon', 'authenticated') and g.privilege_type not in ('SELECT', 'REFERENCES')
+),
+-- 22: llaves del catálogo y de las líneas registradas en on delete restrict
+productos_22 as (
+  select k.conrelid::regclass::text || '.' || k.conname as motivo
+  from pg_constraint k
+  where k.contype = 'f' and k.confdeltype <> 'r'
+    and ((k.conrelid = to_regclass('public.productos')
+          and k.confrelid in (to_regclass('public.productos_unidades'), to_regclass('public.productos_impuestos'),
+                              to_regclass('public.productos_categorias')))
+         or (k.conrelid = to_regclass('public.productos_conversiones') and k.confrelid = to_regclass('public.productos_unidades'))
+         or (k.conrelid = to_regclass('public.productos_categorias') and k.confrelid = to_regclass('public.productos_categorias'))
+         or (k.conrelid::text = any ((select lineas from productos_datos)::text[])
+             and k.confrelid in (to_regclass('public.productos'), to_regclass('public.productos_unidades'),
+                                 to_regclass('public.productos_impuestos'))))
+),
+-- 24: toda tabla con llave hacia productos(id), salvo las conversiones,
+-- registrada, con productos_linea_preparar activo y con índice sobre producto_id
+productos_24 as (
+  select r.tabla::regclass::text || case when not r.registrada then ' sin registrar en productos_lineas'
+                                         when not r.con_trigger then ' sin productos_linea_preparar'
+                                         else ' sin índice sobre producto_id' end as motivo
+  from (
+    select t.tabla,
+           t.tabla::text = any ((select lineas from productos_datos)::text[]) as registrada,
+           exists (select 1 from pg_trigger g where g.tgrelid = t.tabla and g.tgname = 'productos_linea_preparar'
+                     and not g.tgisinternal and g.tgenabled <> 'D') as con_trigger,
+           exists (select 1 from pg_index i join pg_attribute a on a.attrelid = i.indrelid and a.attnum = i.indkey[0]
+                    where i.indrelid = t.tabla and a.attname = 'producto_id') as con_indice
+    from (select k.conrelid as tabla from pg_constraint k
+          where k.contype = 'f' and k.confrelid = to_regclass('public.productos')
+            and k.conrelid is distinct from to_regclass('public.productos_conversiones')
+          union
+          select l::oid from unnest((select lineas from productos_datos)) as l) t
+  ) r
+  where not (r.registrada and r.con_trigger and r.con_indice)
+),
+-- 25: guardas de concurrencia en el código de los triggers
+productos_25 as (
+  select x.funcion || ' sin ' || x.guarda as motivo
+  from (values ('public.productos_categorias_validar()', 'pg_advisory_xact_lock('),
+               ('public.productos_conversiones_validar()', 'for share'),
+               ('public.productos_linea_preparar()', 'pg_advisory_xact_lock_shared('),
+               ('public.productos_preparar()', 'pg_advisory_xact_lock(')) as x(funcion, guarda)
+  left join pg_proc p on p.oid = to_regprocedure(x.funcion)
+  where p.oid is null or position(x.guarda in p.prosrc) = 0
 )
 select orden, comprobacion, estado, detalle from (
   select 1 as orden,
@@ -349,5 +509,71 @@ select orden, comprobacion, estado, detalle from (
     case when to_regclass('public.estados_entidades') is null or to_regprocedure('public.aplicar_transicion(text,uuid,text,text)') is null
            then 'falta 09c-estados.sql (npm run instalar)'
          else coalesce((select string_agg(motivo, ', ' order by motivo) from maquina_estados), '') end
+  union all
+  select 19,
+    'productos: funciones de la API sin security definer, con search_path y sin anon, y productos_aplicar_linea solo del dueño',
+    case when not (select existe from hay_productos) then 'OMITIDO'
+         when (select count(*) from productos_19) = 0 then 'OK'
+         else 'DIFIERE' end,
+    case when not (select existe from hay_productos) then 'Productos no está instalado (22-catalogo.sql)'
+         else coalesce((select string_agg(motivo, ', ' order by motivo) from productos_19), '') end
+  union all
+  select 20,
+    'productos: historial y registro de líneas cerrados a la API, con sus triggers y la auditoría del borrado',
+    case when not (select existe from hay_productos) then 'OMITIDO'
+         when (select count(*) from productos_20) = 0 then 'OK'
+         else 'DIFIERE' end,
+    case when not (select existe from hay_productos) then 'Productos no está instalado (22-catalogo.sql)'
+         else coalesce((select string_agg(motivo, ', ' order by motivo) from productos_20), '') end
+  union all
+  select 21,
+    'productos: unidades y clases con clave inmutable, una clase predeterminada y und del sistema',
+    case when not (select existe from hay_productos) then 'OMITIDO'
+         when (select count(*) from productos_21) = 0 then 'OK'
+         else 'DIFIERE' end,
+    case when not (select existe from hay_productos) then 'Productos no está instalado (22-catalogo.sql)'
+         else coalesce((select string_agg(motivo, ', ' order by motivo) from productos_21), '') end
+  union all
+  select 22,
+    'productos: llaves del catálogo y de las líneas con borrado restringido (restrict)',
+    case when not (select existe from hay_productos) then 'OMITIDO'
+         when (select count(*) from productos_22) = 0 then 'OK'
+         else 'DIFIERE' end,
+    case when not (select existe from hay_productos) then 'Productos no está instalado (22-catalogo.sql)'
+         else coalesce((select string_agg(motivo, ', ' order by motivo) from productos_22), '') end
+  union all
+  select 23,
+    'productos: serie producto con huecos y sin reinicio',
+    case when not (select existe from hay_productos) then 'OMITIDO'
+         when (select serie from productos_datos) = 1 and to_regclass('public.serie_producto') is not null then 'OK'
+         else 'DIFIERE' end,
+    case when not (select existe from hay_productos) then 'Productos no está instalado (22-catalogo.sql)'
+         when (select serie from productos_datos) = 1 and to_regclass('public.serie_producto') is not null then ''
+         else 'falta la serie producto, no es con huecos sin reinicio o no tiene su secuencia' end
+  union all
+  select 24,
+    'productos: tablas de líneas registradas, con productos_linea_preparar y con índice sobre producto_id',
+    case when not (select existe from hay_productos) then 'OMITIDO'
+         when (select count(*) from productos_24) = 0 then 'OK'
+         else 'DIFIERE' end,
+    case when not (select existe from hay_productos) then 'Productos no está instalado (22-catalogo.sql)'
+         else coalesce((select string_agg(motivo, ', ' order by motivo) from productos_24), '') end
+  union all
+  select 25,
+    'productos: bloqueos de categorías, conversiones, líneas y cambio de unidad base',
+    case when not (select existe from hay_productos) then 'OMITIDO'
+         when (select count(*) from productos_25) = 0 then 'OK'
+         else 'DIFIERE' end,
+    case when not (select existe from hay_productos) then 'Productos no está instalado (22-catalogo.sql)'
+         else coalesce((select string_agg(motivo, ', ' order by motivo) from productos_25), '') end
+  union all
+  select 26,
+    'productos: precios de lista en una moneda distinta de la base',
+    case when not (select existe from hay_productos) then 'OMITIDO'
+         when coalesce((select otra_moneda from productos_datos), 0) = 0 then 'OK'
+         else 'AVISO' end,
+    case when not (select existe from hay_productos) then 'Productos no está instalado (22-catalogo.sql)'
+         when coalesce((select otra_moneda from productos_datos), 0) = 0 then ''
+         else (select otra_moneda from productos_datos)::text || ' producto(s) con precio en otra moneda: no se proponen en Ventas' end
 ) v
 order by orden;

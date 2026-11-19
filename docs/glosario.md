@@ -19,3 +19,13 @@ El código, la interfaz y los documentos usan el término canónico. La columna 
 | Etapa | Momento del seguimiento de una cuenta, de la lista configurable de la instalación | estado del deal, pipeline stage |
 | Datos de salud | Historia de salud de una persona atendida: cifrada, con permiso propio, segundo factor y registro de accesos | historia clínica (no es una HC legal) |
 | Consentimiento | Autorización registrada de la persona para tratar sus datos (y los de salud) | aceptación |
+| Producto | Lo que la instalación compra, vende o presta: un bien o un servicio con código (`productos`) | artículo, ítem, SKU, referencia (en el código) |
+| Código | Identificador del producto, único también entre archivados y normalizado (mayúsculas, sin espacios) | referencia, SKU |
+| Categoría | Nodo del árbol en el que se clasifican los productos, hasta tres niveles | familia, grupo, línea |
+| Unidad base | La unidad menor en la que se cuenta el producto, a la que se refieren el precio de lista y todo factor | UOM, unidad de stock |
+| Unidad alterna | Otra unidad en la que se compra o vende el producto, con su factor | presentación, empaque (en el código) |
+| Factor de conversión | Cuántas unidades base hay en una unidad alterna; 1 o más, o el inverso de un entero | multiplicador, equivalencia (en el código) |
+| Clase de impuesto | Clave del catálogo que dice qué impuesto lleva el producto por defecto | tarifa (es un dato de la clase), IVA del producto |
+| Porcentaje (de la clase) | La tarifa de una clase de impuesto, copiada en cada línea al crearse | tarifa_pct |
+| Precio de lista | Precio general de venta del producto por unidad base, en la moneda base, sin IVA | precio base, PVP |
+| Línea | Fila de un documento o movimiento que cuenta un producto en una unidad, con sus copias congeladas | renglón, detalle (en el código) |

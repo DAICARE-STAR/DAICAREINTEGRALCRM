@@ -4,7 +4,9 @@ Formato: cada commit a `main` es un Paso `Mayor.Fase.Paso — descripción`. La 
 
 ## 0.7 — Productos, inventario y compras (2026-11-19)
 
-- 0.7.1 — Herramientas internas del proyecto.
+- 0.7.1 — Herramientas internas del proyecto. (de8b129)
+- 0.7.2 — Documentación interna del proyecto. (9e78c01)
+- 0.7.3 — Productos: la base del catálogo, todavía sin pantallas ni activación. Cada producto tiene código, nombre, descripción, tipo (bien o servicio), categoría, unidad base, clase de impuesto y precio de lista sin IVA en la moneda de la instalación, y se marca si se vende y si se compra. El código se escribe a mano o, si se deja vacío, lo pone la numeración automática (P-00001); se guarda en mayúsculas y sin espacios, y el de un producto archivado no se vuelve a usar. Categorías en árbol de hasta tres niveles, unidades con sus conversiones exactas («1 caja = 12 und»), clases de impuesto de Colombia (IVA general, reducido, exento y excluido) que edita solo un administrador, historial de cambios e importación por lotes con vista previa que no escribe nada. La unidad base de un producto no cambia mientras tenga unidades alternas, precio o movimientos. Quien ve un módulo que usa el catálogo lo consulta sin necesitar el módulo Productos.
 
 ## 0.2 — CRM nativo (2026-11-09)
 

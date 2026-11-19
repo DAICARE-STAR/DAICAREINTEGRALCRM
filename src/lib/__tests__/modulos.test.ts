@@ -21,7 +21,8 @@ import {
 
 const SLUGS = MODULOS.map((m) => m.slug)
 const ESQUEMA = fileURLToPath(new URL('../../../supabase/esquema/', import.meta.url))
-// Los traídos del portal de origen que esperan su archivo de esquema (PP-DEC-21)
+// Los traídos del portal de origen que esperan su archivo de esquema (PP-DEC-21).
+// Productos ya tiene el suyo (22-catalogo.sql) y sigue planeado hasta sus pantallas
 const SIN_ESQUEMA = ['calendario', 'chat', 'proyectos', 'disenos', 'manuales', 'productos', 'cotizador', 'gerencia', 'licitaciones', 'sitio-web']
 const ERP = ['inventario', 'compras', 'ventas', 'facturacion', 'cartera', 'contabilidad', 'rrhh']
 const KEBAB = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
@@ -50,6 +51,21 @@ describe('registro de módulos', () => {
     for (const m of MODULOS.filter((x) => x.estado === 'disponible' && x.sql)) {
       expect(existsSync(ESQUEMA + m.sql), `${m.slug}: falta supabase/esquema/${m.sql}`).toBe(true)
     }
+  })
+
+  it('productos declara sus permisos, su archivo y sus tablas, pero sigue planeado: no se activa ni se ve', () => {
+    const p = moduloPorSlug('productos')!
+    expect(p.estado).toBe('planeado')
+    expect(p.permisos.map((x) => x.clave)).toEqual(['app_productos', 'edit_productos'])
+    expect(p.sql).toBe('22-catalogo.sql')
+    expect(existsSync(ESQUEMA + p.sql)).toBe(true)
+    expect(p.tablas).toEqual([
+      'productos', 'productos_categorias', 'productos_unidades', 'productos_conversiones',
+      'productos_impuestos', 'productos_cambios', 'productos_lineas',
+    ])
+    expect(p.conectores).toEqual([])
+    expect(validarActivacion([], 'productos').errores).toEqual(['módulo planeado, todavía sin fase: productos'])
+    expect(estaActivo(['productos'], 'productos')).toBe(false)
   })
 
   it('las dependencias duras de un módulo activable también son activables', () => {

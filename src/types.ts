@@ -112,9 +112,9 @@ export const PERMISSIONS = [
     description: 'Crear, editar y eliminar los accesos a los portales de licitación',
   },
   {
-    key: 'manage_products',
-    label: 'Gestionar productos',
-    description: 'Crear, editar y archivar productos del catálogo (buscador del Cotizador)',
+    key: 'edit_productos',
+    label: 'Editar productos',
+    description: 'Crear, editar, archivar e importar productos, categorías y unidades del catálogo',
   },
   {
     key: 'edit_tender_offers',

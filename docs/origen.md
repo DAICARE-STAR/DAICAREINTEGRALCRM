@@ -58,7 +58,7 @@ Cada módulo se reescribe en su fase leyendo team-portal en el hash de ese momen
 
 | Módulo | Fase | Hash de team-portal | Fecha | Notas |
 |---|---|---|---|---|
-| (ninguno todavía) | | | | |
+| productos (esquema, 0.7.3) | 0.7 | de7ef68 | 2026-11-19 | Código nuevo, sin copiar texto: `supabase/esquema/22-catalogo.sql` según `docs/modulos/productos.md`. Ideas leídas en las migraciones 55 (catálogo buscable desde los documentos, historial por trigger, archivar en lugar de borrar) y 91 (pg_trgm en extensions con bloque 0 que aborta, búsqueda paginada con total y escape de comodines, familias con padre como árbol, historial con solo los campos cambiados) y en `public/apps/productos/importador.js` (código en mayúsculas sin espacios, «una celda vacía no cambia el valor guardado»). Descartado: marcas y su resolución, voltajes, moneda fija, estados descontinuado y reemplazado, atributos propios, lotes de importación, variantes y listas por marca, buckets públicos y lectura para todo miembro. Las pantallas llegan en otro paso |
 
 ## Divergencias de esquema
 
@@ -78,3 +78,10 @@ Nombres de tabla y columna que el producto cambia respecto de team-portal (por d
 | bucket marca | no existe (los logos de las marcas van en blog/marcas) | público, sin SELECT, sube solo un administrador | Logos de la instalación (instalacion.logos) |
 | portal_uso, acciones_resumen | día en America/Bogota | día en instalacion.zona_horaria (zona_instalacion()) | Una instalación por cliente, en su zona |
 | seguridad_resumen() | v2 (71) con leads_24h | v2 sin leads_24h ni portal_apps y portal_credentials en cambios_24h | site_leads y la bóveda no son del núcleo; la v3 (97) llega como archivo nuevo |
+| products | inglés, marca obligatoria, moneda de tres valores | `productos`, sin marca; código único también entre archivados, normalizado y con serie; precio de lista sin IVA como par por unidad base en la moneda base; vendible y comprable | Producto neutro de cualquier rubro (PP-DEC-24 y decisiones del usuario del 2026-11-19) |
+| familias | por marca, lectura libre | `productos_categorias`, sin marca, tres niveles, lectura con `productos_puede_leer()` | Sin marcas; lo leen solo Productos y los módulos que dependen del catálogo |
+| product_price_history y product_cambios | dos historiales | `productos_cambios`, uno solo, también de conversiones y catálogos | Un historial con antes y después basta |
+| product_lotes | lotes de importación | no viaja | La auditoría registra cada importación; el nombre queda libre para los lotes de inventario |
+| products.estado, activo | cuatro estados más booleano | `archivado_en` del contrato | Un producto está activo o archivado |
+| manage_products | un permiso para todo | `app_productos` y `edit_productos`; clases de impuesto solo administrador | Ver y editar por separado; una tarifa mal puesta pasa a las líneas |
+| unidades, impuestos y líneas | no existen | `productos_unidades`, `productos_impuestos`, `productos_lineas` y `productos_aplicar_linea` | Inventario, compras, ventas y facturación cuentan productos con unidad, factor y copias congeladas |

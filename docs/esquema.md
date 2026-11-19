@@ -1,6 +1,6 @@
 # Convenciones de esquema
 
-Reglas que debe cumplir toda tabla nueva de un módulo en `supabase/esquema`. Las funciones están en `00b-contrato-tabla.sql`; las vigilan `src/lib/__tests__/contrato-tabla.test.ts` (sin base de datos), las comprobaciones 15 y 16 de `verificar.sql` y la sección 16 de `supabase/pruebas/rls-simulacion.sql`. La numeración y los estados de los documentos están en `09b-numeracion.sql` y `09c-estados.sql`; los vigilan `src/lib/__tests__/numeracion-estados.test.ts`, las comprobaciones 17 y 18 y las secciones 17 y 18.
+Reglas que debe cumplir toda tabla nueva de un módulo en `supabase/esquema`. Las funciones están en `00b-contrato-tabla.sql`; las vigilan `src/lib/__tests__/contrato-tabla.test.ts` (sin base de datos), las comprobaciones 15 y 16 de `verificar.sql` y la sección 16 de `supabase/pruebas/rls-simulacion.sql`. La numeración y los estados de los documentos están en `09b-numeracion.sql` y `09c-estados.sql`; los vigilan `src/lib/__tests__/numeracion-estados.test.ts`, las comprobaciones 17 y 18 y las secciones 17 y 18. La unidad y el factor de las líneas que cuentan productos están en `22-catalogo.sql` (comprobaciones 19 a 26 y sección 19).
 
 ## Contrato base de tabla (PP-DEC-23)
 
@@ -20,8 +20,8 @@ Toda tabla de negocio de un módulo lleva estas columnas y el trigger `zz_contra
 - `creado_via` describe el canal; no es una garantía de seguridad: un miembro puede declarar `importacion`.
 - No se llama `origen`: en el CRM `origen` es el canal de captación de una cuenta.
 - El archivo del módulo, después de crear la tabla, llama a `select public.contrato_aplicar('public.<tabla>');`. La función añade las columnas que falten con su valor por defecto, comprueba el tipo de las que ya estaban y pone el trigger. Solo la ejecuta el dueño de la base (el instalador).
-- Una tabla puede omitir `created_by` (tiene su propia columna de autor) o `archivado_en` (no se archiva) con `contrato_aplicar('public.<tabla>', array['created_by'])`; el motivo se anota en `PARCIALES` de la prueba. Hoy: `crm_actividades` (autor en `autor_id`; una actividad se borra, no se archiva).
-- Exentas, con su motivo en `EXENTAS` de la prueba: historial, registros de acceso, configuración y datos que solo escriben funciones propias. Hoy: `crm_campos_def`, `crm_cambios`, `crm_vinculos_externos`, `crm_salud`, `crm_consentimientos` y `crm_accesos_salud`.
+- Una tabla puede omitir `created_by` (tiene su propia columna de autor) o `archivado_en` (no se archiva) con `contrato_aplicar('public.<tabla>', array['created_by'])`; el motivo se anota en `PARCIALES` de la prueba. Hoy: `crm_actividades` (autor en `autor_id`; una actividad se borra, no se archiva) y `productos_conversiones` (una conversión se quita, no se archiva).
+- Exentas, con su motivo en `EXENTAS` de la prueba: historial, registros de acceso, configuración y datos que solo escriben funciones propias. Hoy: `crm_campos_def`, `crm_cambios`, `crm_vinculos_externos`, `crm_salud`, `crm_consentimientos`, `crm_accesos_salud`, `productos_cambios` y `productos_lineas`.
 - Un historial por trigger no anota `updated_by` ni `creado_via` como campos cambiados.
 - Las tablas del núcleo (00 a 09) no entran en el contrato.
 
@@ -85,3 +85,28 @@ Los estados de un documento se declaran como datos (`09c-estados.sql`) y cambian
 - La guarda se dispara en todo `update`, no solo en los que nombran `estado`, y su nombre la pone después de los BEFORE de los módulos y justo antes de `zz_contrato_sellar`: ve el estado final de la fila aunque otro trigger lo haya cambiado.
 - La tabla registrada es una tabla simple: ni particionada ni partición. No admite altas sin sesión (anon): la guarda lee el catálogo con los permisos de quien escribe.
 - Las pantallas leen los tres catálogos para pintar el estado y los botones; la API no los escribe.
+
+## Unidad y factor en las líneas
+
+Toda tabla de Inventario, Compras, Ventas o Facturación que cuente un producto se crea en el archivo de su módulo y luego llama:
+
+```sql
+select public.productos_aplicar_linea('public.<tabla>', '<modulo>', <con_impuesto>);
+```
+
+La función (`22-catalogo.sql`, solo la ejecuta el dueño) añade lo que falte, comprueba el tipo de lo que ya estaba, pone las llaves `on delete restrict`, el índice `<tabla>_producto_idx` y el trigger `productos_linea_preparar`, y registra la tabla en `productos_lineas`:
+
+| Columna de la línea | Qué |
+|---|---|
+| `producto_id uuid not null` | Llave a `productos(id)`: un producto con líneas no se borra, se archiva |
+| `producto_codigo`, `producto_nombre` | Copia al crear la línea: el documento no cambia si se renombra el producto |
+| `unidad text not null` | Llave a `productos_unidades(clave)`; nula al insertar es la unidad base |
+| `factor numeric(18,6) not null` | Copia de `productos_factor` al crear la línea; corregir el catálogo después no la cambia |
+| `cantidad numeric(18,6) not null` | En la unidad de la línea |
+| `cantidad_base` | Generada: `round(cantidad * factor, 6)`, la que suman inventario y avance |
+| `impuesto`, `porcentaje_impuesto` | Solo con `con_impuesto`: la clase (nula al insertar, la del producto) y la copia de su porcentaje |
+
+- Lo que el cliente mande en las copias se ignora; en un cambio solo se recalcula lo que depende de lo que cambió.
+- El factor es 1 o más, o el inverso de un entero (`0.001` sí, `0.083333` no): la unidad base es la menor en la que se cuenta el producto y así todo factor guardado es exacto.
+- La unidad base de un producto no cambia si tiene conversiones, precio de lista o líneas en cualquier tabla registrada. Una línea nueva y un cambio de unidad base no se cruzan: el trigger de la línea toma un bloqueo compartido por producto y el cambio de unidad uno exclusivo (un `for share` no sirve aquí: exige la política de update de `productos`, que no tiene quien escribe una línea).
+- Una tabla con llave hacia `productos(id)` sin pasar por la función la detectan la comprobación 24 de `verificar.sql` y `esquema.test.ts`.
