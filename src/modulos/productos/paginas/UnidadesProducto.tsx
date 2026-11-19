@@ -15,23 +15,27 @@ import { nombreUnidad } from '../lib/vistas'
 export function UnidadesVista({
   producto,
   conversiones,
+  error,
   catalogos,
   puedeEditar,
   alNueva,
   alCambiar,
   alQuitar,
+  alReintentar,
 }: {
   producto: Producto
   conversiones: Conversion[] | null
+  error?: string | null
   catalogos: Catalogos
   puedeEditar: boolean
   alNueva: () => void
   alCambiar: (c: Conversion) => void
   alQuitar: (c: Conversion) => void
+  alReintentar?: () => void
 }) {
   return (
     <>
-      {puedeEditar && (
+      {puedeEditar && !error && (
         <div className="prod-acciones">
           <button type="button" className="btn-ghost" onClick={alNueva}>
             Añadir unidad alterna
@@ -40,6 +44,17 @@ export function UnidadesVista({
       )}
       {conversiones === null ? (
         <SkeletonLineas n={3} />
+      ) : error ? (
+        <EstadoVacio
+          causa={error}
+          accion={
+            alReintentar && (
+              <button type="button" className="btn-ghost" onClick={alReintentar}>
+                Reintentar
+              </button>
+            )
+          }
+        />
       ) : conversiones.length === 0 ? (
         <EstadoVacio causa={`Solo se cuenta en ${nombreUnidad(catalogos, producto.unidad_base).toLowerCase()}.`} />
       ) : (
@@ -151,15 +166,19 @@ function FormConversion({
 export default function UnidadesProducto({
   producto,
   conversiones,
+  error,
   catalogos,
   puedeEditar,
   alCambio,
+  alReintentar,
 }: {
   producto: Producto
   conversiones: Conversion[] | null
+  error: string | null
   catalogos: Catalogos
   puedeEditar: boolean
   alCambio: () => void
+  alReintentar: () => void
 }) {
   const avisar = useAvisos()
   const [editando, setEditando] = useState<Conversion | 'nueva' | null>(null)
@@ -180,11 +199,13 @@ export default function UnidadesProducto({
       <UnidadesVista
         producto={producto}
         conversiones={conversiones}
+        error={error}
         catalogos={catalogos}
         puedeEditar={puedeEditar}
         alNueva={() => setEditando('nueva')}
         alCambiar={setEditando}
         alQuitar={quitar}
+        alReintentar={alReintentar}
       />
       {editando && (
         <FormConversion

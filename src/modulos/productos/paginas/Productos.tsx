@@ -26,6 +26,12 @@ type VistaProps = {
   catalogos: Catalogos
   puedeEditar: boolean
   error?: string | null
+  // Sin catálogos no hay unidades ni impuestos para el alta, la importación ni la exportación
+  sinCatalogos?: boolean
+  errorCatalogos?: string | null
+  // Sin la moneda de la instalación el importador no puede validar los precios
+  sinMoneda?: boolean
+  alReintentarCatalogos?: () => void
   alBuscar: (q: string) => void
   alFiltrar: (id: keyof FiltrosProductos, valor: string) => void
   alLimpiar: () => void
@@ -47,15 +53,15 @@ export function ProductosVista(p: VistaProps) {
           Catálogos
         </Link>
         {p.puedeEditar && (
-          <button type="button" className="btn-ghost" onClick={p.alImportar}>
+          <button type="button" className="btn-ghost" disabled={p.sinCatalogos || p.sinMoneda} onClick={p.alImportar}>
             Importar
           </button>
         )}
-        <button type="button" className="btn-ghost" onClick={p.alExportar}>
+        <button type="button" className="btn-ghost" disabled={p.sinCatalogos} onClick={p.alExportar}>
           Exportar
         </button>
         {p.puedeEditar && (
-          <button type="button" className="btn-primary" onClick={p.alNuevo}>
+          <button type="button" className="btn-primary" disabled={p.sinCatalogos} onClick={p.alNuevo}>
             Nuevo producto
           </button>
         )}
@@ -73,7 +79,16 @@ export function ProductosVista(p: VistaProps) {
         alLimpiar={p.alLimpiar}
       />
 
-      {p.productos === null ? (
+      {p.errorCatalogos ? (
+        <EstadoVacio
+          causa={p.errorCatalogos}
+          accion={
+            <button type="button" className="btn-ghost" onClick={p.alReintentarCatalogos}>
+              Reintentar
+            </button>
+          }
+        />
+      ) : p.productos === null ? (
         <SkeletonFilas filas={6} columnas={6} />
       ) : p.productos.length === 0 ? (
         p.error ? (
@@ -99,7 +114,7 @@ export function ProductosVista(p: VistaProps) {
             causa="Todavía no hay productos."
             accion={
               p.puedeEditar ? (
-                <button type="button" className="btn-ghost" onClick={p.alNuevo}>
+                <button type="button" className="btn-ghost" disabled={p.sinCatalogos} onClick={p.alNuevo}>
                   Nuevo producto
                 </button>
               ) : undefined
@@ -183,8 +198,11 @@ export default function Productos() {
   const [error, setError] = useState<string | null>(null)
   const [dialogo, setDialogo] = useState<'nuevo' | 'importar' | 'exportar' | null>(null)
   const [recarga, setRecarga] = useState(0)
-  const { catalogos, moneda, recargar: recargarCatalogos } = useCatalogos()
+  const { catalogos, cargados, error: errorCatalogos, moneda, recargar: recargarCatalogos } = useCatalogos()
   const seq = useRef(0)
+  // Los filtros vigentes para el temporizador de la búsqueda, que no se rehace al cambiar un selector
+  const filtrosActuales = useRef(filtros)
+  filtrosActuales.current = filtros
   const puedeEditar = hasPerm('edit_productos')
 
   const cambiar = (f: FiltrosProductos) => setParams(aParametros(f), { replace: true })
@@ -192,7 +210,7 @@ export default function Productos() {
   // Búsqueda con espera de 200 ms antes de ir a la URL
   useEffect(() => {
     if (busqueda === filtros.q) return
-    const t = setTimeout(() => cambiar({ ...filtros, q: busqueda }), 200)
+    const t = setTimeout(() => cambiar({ ...filtrosActuales.current, q: busqueda }), 200)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busqueda])
@@ -219,12 +237,17 @@ export default function Productos() {
 
   function cargarMas() {
     const actuales = productos ?? []
+    // Si los filtros cambian antes de la respuesta, la página ya no es de esta lista
+    const n = seq.current
     buscarProductos(filtros, actuales.length, PAGINA).then(
       (r) => {
+        if (n !== seq.current) return
         setProductos([...actuales, ...r.filas])
         setTotal(r.total)
       },
-      (e) => avisar(traducirError(e), 'error'),
+      (e) => {
+        if (n === seq.current) avisar(traducirError(e), 'error')
+      },
     )
   }
 
@@ -238,6 +261,10 @@ export default function Productos() {
         catalogos={catalogos}
         puedeEditar={puedeEditar}
         error={error}
+        sinCatalogos={!cargados}
+        errorCatalogos={errorCatalogos}
+        sinMoneda={!moneda}
+        alReintentarCatalogos={() => void recargarCatalogos()}
         alBuscar={setBusqueda}
         alFiltrar={(id, v) => cambiar({ ...filtros, [id]: id === 'archivados' ? v === '1' : v })}
         alLimpiar={() => {
@@ -250,7 +277,7 @@ export default function Productos() {
         alExportar={() => setDialogo('exportar')}
         alCargarMas={cargarMas}
       />
-      {dialogo === 'nuevo' && puedeEditar && (
+      {dialogo === 'nuevo' && puedeEditar && cargados && (
         <FormProducto
           producto={null}
           catalogos={catalogos}
@@ -263,7 +290,8 @@ export default function Productos() {
           }}
         />
       )}
-      {dialogo === 'importar' && puedeEditar && (
+      {/* Importar toma los catálogos al abrirse: solo se monta con ellos y con la moneda ya leídos */}
+      {dialogo === 'importar' && puedeEditar && cargados && !!moneda && (
         <Importar
           catalogos={catalogos}
           moneda={moneda}
@@ -274,7 +302,7 @@ export default function Productos() {
           }}
         />
       )}
-      {dialogo === 'exportar' && (
+      {dialogo === 'exportar' && cargados && (
         <Exportar filtros={filtros} total={total} catalogos={catalogos} moneda={moneda} onClose={() => setDialogo(null)} />
       )}
     </>

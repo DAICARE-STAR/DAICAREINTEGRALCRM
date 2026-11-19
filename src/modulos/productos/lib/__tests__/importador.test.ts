@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { escribirCsv, leerCsv } from '../../../crm/lib/csv'
 import { exportarProductos, paginasCompletas, plantilla } from '../exportador'
 import { combinar, contar, filasReporte, leerBooleano, leerRespuesta, lotesParaEnviar, mapear, TOPE_FILAS, type FilaResultado } from '../importador'
 import type { Catalogos, Producto } from '../tipos'
@@ -151,9 +152,15 @@ describe('exportador', () => {
     const filas = exportarProductos([p], [{ producto_id: 'p1', unidad: 'g', factor: '0.001000' }, { producto_id: 'otro', unidad: 'caja', factor: 2 }], CAT)
     expect(filas[0]).toEqual(ENC)
     expect(filas[1]).toEqual(['AB-12', 'Llave', 'bien', 'sí', 'no', 'Herramientas / Manuales', 'kg', 'g=0,001', 'iva_general', '1250,5', 'COP', '', 'no'])
-    const r = mapear({ filas, catalogos: CAT, separador: ',', moneda: 'COP' })
-    expect(r.filas[0].errores).toEqual([])
-    expect(r.filas[0].datos).toMatchObject({ codigo: 'AB-12', precio_lista: '1250.5', unidad_base: 'kg', conversiones: [{ unidad: 'g', factor: '0.001' }] })
+    // Ida y vuelta por el archivo de verdad: BOM, separador ';', comillas y fórmulas neutralizadas
+    const otro: Producto = { ...p, id: 'p2', codigo: 'AB-13', descripcion: '-Corte; "fino"\ny pulido', precio_lista: null, precio_lista_moneda: null }
+    const leidas = leerCsv(escribirCsv(exportarProductos([p, otro], [{ producto_id: 'p1', unidad: 'g', factor: '0.001000' }, { producto_id: 'p1', unidad: 'caja', factor: 2 }], CAT)))
+    const r = mapear({ filas: leidas, catalogos: CAT, separador: ',', moneda: 'COP' })
+    expect(r.error).toBeNull()
+    expect(r.filas.map((f) => f.errores)).toEqual([[], []])
+    expect(r.filas[0].datos).toMatchObject({ codigo: 'AB-12', precio_lista: '1250.5', unidad_base: 'kg', conversiones: [{ unidad: 'caja', factor: '2' }, { unidad: 'g', factor: '0.001' }] })
+    expect(r.filas[1].datos.descripcion).toBe('-Corte; "fino"\ny pulido')
+    expect(r.filas[1].datos.precio_lista).toBeUndefined()
   })
 
   it('la plantilla lleva la fila de ejemplo que el importador omite', () => {
@@ -164,10 +171,13 @@ describe('exportador', () => {
     expect(r.filas).toEqual([])
   })
 
-  it('páginas completas: el total no cambia y llegan todas', () => {
-    expect(paginasCompletas([{ filas: [1, 2], total: 3 }, { filas: [3], total: 3 }])).toBe(true)
-    expect(paginasCompletas([{ filas: [1, 2], total: 3 }, { filas: [3], total: 4 }])).toBe(false)
-    expect(paginasCompletas([{ filas: [1, 2], total: 3 }])).toBe(false)
+  it('páginas completas: el total no cambia, llegan todas y ninguna se repite', () => {
+    const f = (...ids: string[]) => ids.map((id) => ({ id }))
+    expect(paginasCompletas([{ filas: f('1', '2'), total: 3 }, { filas: f('3'), total: 3 }])).toBe(true)
+    expect(paginasCompletas([{ filas: f('1', '2'), total: 3 }, { filas: f('3'), total: 4 }])).toBe(false)
+    expect(paginasCompletas([{ filas: f('1', '2'), total: 3 }])).toBe(false)
     expect(paginasCompletas([{ filas: [], total: 0 }])).toBe(true)
+    // Entre páginas se creó uno antes y se borró otro después: el total no cambia, pero una fila sale dos veces
+    expect(paginasCompletas([{ filas: f('1', '2'), total: 3 }, { filas: f('2'), total: 3 }])).toBe(false)
   })
 })

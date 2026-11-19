@@ -52,12 +52,13 @@ export function plantilla(catalogos: Catalogos, moneda: string): string[][] {
 
 /**
  * Comprueba que las páginas forman la lista entera: el total no cambió entre
- * páginas y llegaron tantas filas como dice. Si no, la lista cambió mientras
- * se exportaba.
+ * páginas, llegaron tantas filas como dice y ninguna se repite. Si no, la
+ * lista cambió mientras se exportaba.
  */
-export function paginasCompletas(paginas: { filas: unknown[]; total: number }[]): boolean {
+export function paginasCompletas(paginas: { filas: { id: string }[]; total: number }[]): boolean {
   if (paginas.length === 0) return true
   const total = paginas[0].total
   if (paginas.some((p) => p.total !== total)) return false
-  return paginas.reduce((n, p) => n + p.filas.length, 0) === total
+  const ids = new Set(paginas.flatMap((p) => p.filas.map((f) => f.id)))
+  return ids.size === total && paginas.reduce((n, p) => n + p.filas.length, 0) === total
 }

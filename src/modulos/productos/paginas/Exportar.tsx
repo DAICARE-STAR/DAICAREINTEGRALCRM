@@ -75,7 +75,7 @@ export default function Exportar({
         </p>
       )}
       <div className="form-actions">
-        <button type="button" className="btn-ghost" onClick={() => descargar('plantilla-productos.csv', escribirCsv(plantilla(catalogos, moneda)))}>
+        <button type="button" className="btn-ghost" disabled={!moneda} onClick={() => descargar('plantilla-productos.csv', escribirCsv(plantilla(catalogos, moneda)))}>
           Descargar plantilla
         </button>
         <button type="button" className="btn-ghost" onClick={onClose}>

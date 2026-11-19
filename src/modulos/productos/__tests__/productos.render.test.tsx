@@ -74,6 +74,20 @@ describe('Productos: lista (render estático)', () => {
     const error = renderEstatico(<ProductosVista {...props} total={0} productos={[]} error="No se pudo completar la operación." puedeEditar />)
     expect(error).toContain('Reintentar')
   })
+
+  it('sin catálogos: Nuevo producto, Importar y Exportar deshabilitados; su error en lugar de la lista', () => {
+    const html = renderEstatico(<ProductosVista {...props} productos={[producto]} puedeEditar sinCatalogos errorCatalogos="Sin conexión." />)
+    reglas(html)
+    expect(html).toMatch(/disabled=""[^>]*>Importar</)
+    expect(html).toMatch(/disabled=""[^>]*>Exportar</)
+    expect(html).toMatch(/disabled=""[^>]*>Nuevo producto</)
+    expect(html).toContain('Sin conexión.')
+    expect(html).toContain('Reintentar')
+    expect(html).not.toContain('prod-tabla')
+    const sinMoneda = renderEstatico(<ProductosVista {...props} productos={[producto]} puedeEditar sinMoneda />)
+    expect(sinMoneda).toMatch(/disabled=""[^>]*>Importar</)
+    expect(sinMoneda).not.toMatch(/disabled=""[^>]*>Exportar</)
+  })
 })
 
 describe('Productos: ficha (render estático)', () => {
@@ -110,6 +124,21 @@ describe('Productos: ficha (render estático)', () => {
     expect(lectura).not.toContain('Quitar')
   })
 
+  it('unidades con error de lectura: la causa y Reintentar, no «Solo se cuenta en» ni Añadir', () => {
+    const html = renderEstatico(
+      <UnidadesVista producto={producto} conversiones={[]} error="Sin conexión." catalogos={CAT} puedeEditar alNueva={nada} alCambiar={nada} alQuitar={nada} alReintentar={nada} />,
+    )
+    reglas(html, false)
+    expect(html).toContain('Sin conexión.')
+    expect(html).toContain('Reintentar')
+    expect(html).not.toContain('Solo se cuenta en')
+    expect(html).not.toContain('Añadir unidad alterna')
+  })
+
+  it('Editar deshabilitado mientras faltan los catálogos', () => {
+    expect(renderEstatico(<FichaProductoVista {...base} puedeEditar esAdmin={false} sinCatalogos />)).toMatch(/disabled=""[^>]*>Editar</)
+  })
+
   it('historial vacío y con cambios', () => {
     expect(renderEstatico(<HistorialVista lista={[]} catalogos={CAT} moneda="COP" personas={[]} />)).toContain('Sin cambios registrados.')
     const html = renderEstatico(
@@ -122,6 +151,24 @@ describe('Productos: ficha (render estático)', () => {
     )
     expect(html).toContain('Precio de lista: COP $ 10.000 → COP $ 12.000')
     expect(html).toContain('Persona de prueba')
+    expect(html).not.toContain('Cargar más')
+  })
+
+  it('historial con más cambios de los leídos y personas sin leer', () => {
+    const html = renderEstatico(
+      <HistorialVista
+        lista={[{ id: 1, entidad: 'producto', entidad_id: producto.id, operacion: 'insert', campos: [], antes: null, despues: null, autor_id: 'u1', created_at: '2026-11-19T15:00:00Z' }]}
+        catalogos={CAT}
+        moneda="COP"
+        personas={[]}
+        errorPersonas="Sin conexión."
+        hayMas
+        alCargarMas={nada}
+      />,
+    )
+    reglas(html, false)
+    expect(html).toContain('Cargar más')
+    expect(html).toContain('Sin conexión.')
   })
 })
 

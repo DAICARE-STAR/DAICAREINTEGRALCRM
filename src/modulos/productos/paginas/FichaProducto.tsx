@@ -43,38 +43,102 @@ export function DatosProducto({ producto: p, catalogos: c }: { producto: Product
   )
 }
 
-export function HistorialVista({ lista, catalogos, moneda, personas, error }: { lista: Cambio[] | null; catalogos: Catalogos; moneda: string | null; personas: Persona[]; error?: string | null }) {
+export function HistorialVista({
+  lista,
+  catalogos,
+  moneda,
+  personas,
+  error,
+  errorPersonas,
+  hayMas,
+  alCargarMas,
+}: {
+  lista: Cambio[] | null
+  catalogos: Catalogos
+  moneda: string | null
+  personas: Persona[]
+  error?: string | null
+  errorPersonas?: string | null
+  hayMas?: boolean
+  alCargarMas?: () => void
+}) {
   if (lista === null) return <SkeletonLineas n={4} />
   if (lista.length === 0) return <EstadoVacio causa={error ?? 'Sin cambios registrados.'} />
   return (
-    <ul className="prod-lista">
-      {lista.map((c) => (
-        <li key={c.id}>
-          {describirCambio(c, catalogos, moneda).map((l) => (
-            <div key={l}>{l}</div>
-          ))}
-          <div className="small muted">
-            {fmtFechaHora(c.created_at)} · {personas.find((x) => x.id === c.autor_id)?.nombre ?? '—'}
-          </div>
-        </li>
-      ))}
-    </ul>
+    <>
+      {(error || errorPersonas) && (
+        <p className="error" role="alert">
+          {error ?? errorPersonas}
+        </p>
+      )}
+      <ul className="prod-lista">
+        {lista.map((c) => (
+          <li key={c.id}>
+            {describirCambio(c, catalogos, moneda).map((l) => (
+              <div key={l}>{l}</div>
+            ))}
+            <div className="small muted">
+              {fmtFechaHora(c.created_at)} · {personas.find((x) => x.id === c.autor_id)?.nombre ?? '—'}
+            </div>
+          </li>
+        ))}
+      </ul>
+      {hayMas && alCargarMas && (
+        <div className="prod-mas">
+          <button type="button" className="btn-ghost" onClick={alCargarMas}>
+            Cargar más
+          </button>
+        </div>
+      )}
+    </>
   )
 }
 
+const PAGINA_HISTORIAL = 200
+
 function Historial({ producto, catalogos }: { producto: Producto; catalogos: Catalogos }) {
   const [lista, setLista] = useState<Cambio[] | null>(null)
+  const [hayMas, setHayMas] = useState(false)
   const [personas, setPersonas] = useState<Persona[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [errorPersonas, setErrorPersonas] = useState<string | null>(null)
+  const cargar = (limite: number) =>
+    leerHistorial(producto.id, limite).then(
+      (r) => {
+        setLista(r.lista)
+        setHayMas(r.hayMas)
+        setError(null)
+      },
+      (e) => {
+        setLista((l) => l ?? [])
+        setError(traducirError(e))
+      },
+    )
   useEffect(() => {
     setLista(null)
-    leerHistorial(producto.id).then(setLista, (e) => {
-      setLista([])
-      setError(traducirError(e))
-    })
-    leerPersonas().then(setPersonas, () => {})
+    setError(null)
+    void cargar(PAGINA_HISTORIAL)
+    leerPersonas().then(
+      (p) => {
+        setPersonas(p)
+        setErrorPersonas(null)
+      },
+      (e) => setErrorPersonas(traducirError(e)),
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [producto.id, producto.updated_at])
-  return <HistorialVista lista={lista} catalogos={catalogos} moneda={producto.precio_lista_moneda} personas={personas} error={error} />
+  return (
+    <HistorialVista
+      lista={lista}
+      catalogos={catalogos}
+      moneda={producto.precio_lista_moneda}
+      personas={personas}
+      error={error}
+      errorPersonas={errorPersonas}
+      hayMas={hayMas}
+      alCargarMas={() => void cargar((lista?.length ?? 0) + PAGINA_HISTORIAL)}
+    />
+  )
 }
 
 type VistaProps = {
@@ -83,6 +147,8 @@ type VistaProps = {
   activa: PestanaFicha
   puedeEditar: boolean
   esAdmin: boolean
+  // Sin catálogos el formulario no tiene unidades ni impuestos que ofrecer
+  sinCatalogos?: boolean
   alCambiar: (p: PestanaFicha) => void
   alEditar: () => void
   alArchivar: () => void
@@ -122,7 +188,7 @@ export function FichaProductoVista(p: VistaProps) {
         </Link>
         {p.puedeEditar && (
           <>
-            <button type="button" className="btn-ghost" onClick={p.alEditar}>
+            <button type="button" className="btn-ghost" disabled={p.sinCatalogos} onClick={p.alEditar}>
               Editar
             </button>
             <button type="button" className="btn-ghost" onClick={p.alArchivar}>
@@ -150,14 +216,28 @@ export default function FichaProducto() {
   const navigate = useNavigate()
   const [producto, setProducto] = useState<Producto | null>(null)
   const [conversiones, setConversiones] = useState<Conversion[] | null>(null)
+  const [errorConversiones, setErrorConversiones] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [activa, setActiva] = useState<PestanaFicha>('datos')
   const [editando, setEditando] = useState(false)
-  const { catalogos, moneda } = useCatalogos()
+  const { catalogos, cargados, error: errorCatalogos, moneda, recargar: recargarCatalogos } = useCatalogos()
   const esAdmin = !!profile?.roles.includes('admin')
   const puedeEditar = hasPerm('edit_productos')
 
-  const recargarConversiones = useCallback(() => leerConversiones([id]).then(setConversiones, () => setConversiones([])), [id])
+  const recargarConversiones = useCallback(
+    () =>
+      leerConversiones([id]).then(
+        (c) => {
+          setConversiones(c)
+          setErrorConversiones(null)
+        },
+        (e) => {
+          setConversiones([])
+          setErrorConversiones(traducirError(e))
+        },
+      ),
+    [id],
+  )
   const recargar = useCallback(() => leerProducto(id).then(setProducto, (e) => setError(traducirError(e))), [id])
 
   useEffect(() => {
@@ -192,15 +272,33 @@ export default function FichaProducto() {
   }
 
   let panel: ReactNode = null
-  if (producto) {
+  if (producto && !cargados) {
+    panel = errorCatalogos ? (
+      <EstadoVacio
+        causa={errorCatalogos}
+        accion={
+          <button type="button" className="btn-ghost" onClick={() => void recargarCatalogos()}>
+            Reintentar
+          </button>
+        }
+      />
+    ) : (
+      <SkeletonLineas n={6} />
+    )
+  } else if (producto) {
     if (activa === 'datos') panel = <DatosProducto producto={producto} catalogos={catalogos} />
     else if (activa === 'unidades')
       panel = (
         <UnidadesProducto
           producto={producto}
           conversiones={conversiones}
+          error={errorConversiones}
           catalogos={catalogos}
           puedeEditar={puedeEditar}
+          alReintentar={() => {
+            setConversiones(null)
+            void recargarConversiones()
+          }}
           alCambio={() => {
             void recargarConversiones()
             void recargar()
@@ -218,6 +316,7 @@ export default function FichaProducto() {
         activa={activa}
         puedeEditar={puedeEditar}
         esAdmin={esAdmin}
+        sinCatalogos={!cargados}
         alCambiar={setActiva}
         alEditar={() => setEditando(true)}
         alArchivar={archivar}

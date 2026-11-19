@@ -182,11 +182,22 @@ export async function borrarProducto(id: string): Promise<void> {
 
 // ---------- Conversiones ----------
 
+/** Por páginas de 1000: la API corta en silencio en max_rows (1000 en Supabase). */
 export async function leerConversiones(ids: string[]): Promise<Conversion[]> {
   if (ids.length === 0) return []
-  const { data, error } = await supabase.from('productos_conversiones').select('producto_id, unidad, factor').in('producto_id', ids)
-  if (error) throw error
-  return (data ?? []) as Conversion[]
+  const salida: Conversion[] = []
+  for (let desde = 0; ; desde += 1000) {
+    const { data, error } = await supabase
+      .from('productos_conversiones')
+      .select('producto_id, unidad, factor')
+      .in('producto_id', ids)
+      .order('producto_id')
+      .order('unidad')
+      .range(desde, desde + 999)
+    if (error) throw error
+    salida.push(...((data ?? []) as Conversion[]))
+    if (!data || data.length < 1000) return salida
+  }
 }
 
 export async function guardarConversion(nueva: boolean, c: { producto_id: string; unidad: string; factor: string }): Promise<void> {
@@ -206,16 +217,19 @@ export async function quitarConversion(productoId: string, unidad: string): Prom
 
 // ---------- Historial ----------
 
-export async function leerHistorial(productoId: string): Promise<Cambio[]> {
+/** Los `limite` cambios más recientes y si quedan más. */
+export async function leerHistorial(productoId: string, limite = 200): Promise<{ lista: Cambio[]; hayMas: boolean }> {
   const { data, error } = await supabase
     .from('productos_cambios')
     .select('id, entidad, entidad_id, operacion, campos, antes, despues, autor_id, created_at')
     .eq('entidad_id', productoId)
     .in('entidad', ['producto', 'conversion'])
     .order('created_at', { ascending: false })
-    .limit(200)
+    .order('id', { ascending: false })
+    .limit(limite + 1)
   if (error) throw error
-  return (data ?? []) as Cambio[]
+  const filas = (data ?? []) as Cambio[]
+  return { lista: filas.slice(0, limite), hayMas: filas.length > limite }
 }
 
 export type Persona = { id: string; nombre: string }
