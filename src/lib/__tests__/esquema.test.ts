@@ -837,6 +837,23 @@ describe('esquema: 22-catalogo', () => {
     expect(cuerpo('productos_categorias_validar')).toContain("pg_advisory_xact_lock(hashtext('public.productos_categorias'))")
   })
 
+  it('escribir exige leer; el alta sin permiso falla antes de la serie; código fijo en archivados y con líneas; sin truncate; nombre repetido por índice', () => {
+    for (const t of ['productos', 'productos_categorias', 'productos_unidades', 'productos_conversiones']) {
+      for (const accion of ['insert', 'update']) {
+        const p = new RegExp(`create policy ${t}_${accion} on public\\.${t}\\s+([^;]*);`).exec(sql)![1]
+        expect(p.match(/\(select public\.has_perm\('edit_productos'\)\) and \(select public\.productos_puede_leer\(\)\)/g)?.length, `${t} ${accion}`).toBe(accion === 'insert' ? 1 : 2)
+      }
+    }
+    const preparar = cuerpo('productos_preparar')
+    expect(preparar.indexOf("not (public.has_perm('edit_productos') and public.productos_puede_leer())")).toBeLessThan(preparar.indexOf("series_siguiente('producto')"))
+    expect(preparar).toContain("hint = 'productos_codigo_archivado'")
+    expect(preparar).toContain("hint = 'productos_codigo_en_uso'")
+    expect(preparar).toContain('join pg_catalog.pg_class k on k.oid = l.tabla::oid')
+    expect(sql).toMatch(/revoke truncate on table public\.productos, public\.productos_categorias, public\.productos_unidades, public\.productos_conversiones,\s+public\.productos_impuestos from service_role;/)
+    expect(sql).toContain('create index if not exists productos_nombre_normalizado_idx on public.productos (nombre_normalizado) where archivado_en is null;')
+    expect(cuerpo('productos_importar')).toContain('p.nombre_normalizado = ')
+  })
+
   it('verificar.sql trae las comprobaciones 19 a 26 de Productos, OMITIDO si no está instalado', () => {
     for (let n = 19; n <= 26; n++) expect(verificar, String(n)).toMatch(new RegExp(`select ${n},\\s+'productos: `))
     expect(verificar.match(/'Productos no está instalado \(22-catalogo\.sql\)'/g)?.length).toBe(8)
@@ -845,7 +862,7 @@ describe('esquema: 22-catalogo', () => {
 
   it('la sección 19 de rls-simulacion sale OMITIDO sin 22-catalogo.sql y trae los casos del diseño', () => {
     expect(s19).toContain('OMITIDO 19    productos · falta 22-catalogo.sql')
-    for (let n = 1; n <= 23; n++) expect(s19, `19.${n}`).toContain(`'19.${n}${n < 10 ? '  ' : ' '}`)
+    for (let n = 1; n <= 32; n++) expect(s19, `19.${n}`).toContain(`'19.${n}${n < 10 ? '  ' : ' '}`)
     expect(s19).toContain("perform public.productos_aplicar_linea('public.prueba_rls_lineas', 'inventario', true);")
     expect(s19).toContain('set constraints public.productos_impuestos_predeterminado immediate;')
     expect(s19.match(/set constraints public\.productos_impuestos_predeterminado deferred;/g)?.length).toBe(2)

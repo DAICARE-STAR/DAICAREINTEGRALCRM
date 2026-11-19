@@ -60,7 +60,10 @@
 --      precio o líneas, copias de las líneas, borrado de administrador,
 --      catálogos inmutables, clase predeterminada, árbol de categorías,
 --      historial, lectura desde inventario, módulo inactivo, importación
---      simulada y real, repetidos, topes del lote y anónimo
+--      simulada y real, repetidos, topes del lote y anónimo; sin lectura no
+--      lee ni escribe, sin edit_productos no cambia nada ni gasta la serie,
+--      código fijo en archivados y con líneas, línea que cambia de producto,
+--      registro de líneas huérfano y unidad base o clase archivadas
 -- Las secciones 8 a 11 salen OMITIDO si falta su archivo de 05 a 09; la 12
 -- y la 13, si falta 21-crm.sql; la 14, si falta 01b-ultimo-administrador.sql;
 -- la 15, si falta 21c-crm-exportar.sql; la 16, si falta 00b-contrato-tabla.sql
@@ -2137,6 +2140,12 @@ declare
   v_cat_b uuid;
   v_cat_x uuid;
   v_cat_x1 uuid;
+  v_cat_x2 uuid;
+  v_cat_arch uuid;
+  v_arch uuid;
+  v_libre uuid;
+  v_pb uuid;
+  v_pc uuid;
 begin
   if current_setting('rls.txid', true) is distinct from txid_current()::text then
     raise exception 'rls-simulacion: correr el archivo entero de una vez (BEGIN … ROLLBACK), no una sección suelta';
@@ -2299,10 +2308,19 @@ begin
     v := v || ' / ' || v_n || ' filas';
   exception when others then v := v || ' / ' || sqlstate;
   end;
+  -- Cambiar solo el precio lo deja en la moneda base nueva
+  begin
+    update public.productos set precio_lista = 20 where id = v_p6;
+    get diagnostics v_n = row_count;
+    v := v || ' / ' || v_n || ' filas';
+  exception when others then get stacked diagnostics w = pg_exception_hint; v := v || ' / ' || sqlstate || ' ' || w;
+  end;
   reset role;
   perform set_config('request.jwt.claims', '', true);
+  select count(*) into v_n from public.productos p where p.id = v_p6 and p.precio_lista = 20 and p.precio_lista_moneda = v_otra_moneda;
+  v := v || ' / ' || v_n;
   update public.instalacion set moneda_base = v_moneda where id = 1;
-  r := r || E'\n' || case when v = '23514 / 23514 / 23514 / 1 filas' then 'OK      ' else 'FALLA   ' end || '19.6  precio negativo, otra moneda, moneda sin precio, renombrar con la base cambiada → 23514 ×3 / 1 filas · ' || v;
+  r := r || E'\n' || case when v = '23514 / 23514 / 23514 / 1 filas / 1 filas / 1' then 'OK      ' else 'FALLA   ' end || '19.6  precio negativo, otra moneda, moneda sin precio, renombrar y cambiar el precio con la base cambiada → 23514 ×3 / 1 filas / 1 filas / 1 en la base nueva · ' || v;
 
   -- 19.7 Conversiones: factor 0, la unidad base, factor inexacto y 0.001
   perform set_config('request.jwt.claims', v_jm, true);
@@ -2518,7 +2536,7 @@ begin
   insert into public.productos_categorias (nombre, padre_id) values ('Prueba RLS B', v_cat_a) returning id into v_cat_b;
   insert into public.productos_categorias (nombre) values ('Prueba RLS X') returning id into v_cat_x;
   insert into public.productos_categorias (nombre, padre_id) values ('Prueba RLS X1', v_cat_x) returning id into v_cat_x1;
-  insert into public.productos_categorias (nombre, padre_id) values ('Prueba RLS X2', v_cat_x1);
+  insert into public.productos_categorias (nombre, padre_id) values ('Prueba RLS X2', v_cat_x1) returning id into v_cat_x2;
   v := '';
   begin
     update public.productos_categorias set padre_id = v_cat_b where id = v_cat_a;
@@ -2769,6 +2787,254 @@ begin
                             or has_function_privilege('anon', 'public.productos_impuesto_predeterminar(text)', 'execute')
                           then 'ejecuta' else 'no ejecuta' end;
   r := r || E'\n' || case when v = '42501 / no ejecuta' then 'OK      ' else 'FALLA   ' end || '19.22 anon lee productos y ejecuta buscar, importar, factor y predeterminar → 42501 / no ejecuta · ' || v;
+
+  -- 19.24 Sin app_productos ni un módulo dependiente, con el módulo activo y
+  -- filas en las cinco tablas: no lee nada del catálogo
+  perform set_config('request.jwt.claims', '', true);
+  delete from public.user_roles where user_id = v_miembro and role like 'prueba-rls-prod-%';
+  select (exists (select 1 from public.productos))::int + (exists (select 1 from public.productos_categorias))::int
+       + (exists (select 1 from public.productos_unidades))::int + (exists (select 1 from public.productos_conversiones))::int
+       + (exists (select 1 from public.productos_impuestos))::int into v_k;
+  perform set_config('request.jwt.claims', v_jm, true);
+  if public.productos_puede_leer() then
+    r := r || E'\nOMITIDO 19.24 miembro sin lectura · la cuenta miembro ya lee el catálogo por un rol de la instalación';
+  else
+    set local role authenticated;
+    begin
+      select (select count(*) from public.productos) || ' / ' || (select count(*) from public.productos_categorias) || ' / '
+          || (select count(*) from public.productos_unidades) || ' / ' || (select count(*) from public.productos_conversiones) || ' / '
+          || (select count(*) from public.productos_impuestos) into v;
+    exception when others then v := sqlstate;
+    end;
+    reset role;
+    r := r || E'\n' || case when v = '0 / 0 / 0 / 0 / 0' and v_k = 5 then 'OK      ' else 'FALLA   ' end || '19.24 miembro sin lectura lee productos, categorías, unidades, conversiones y clases → 0 ×5 · ' || v || ' (tablas con filas: ' || v_k || ')';
+  end if;
+
+  -- 19.25 Con solo app_productos: no cambia ni borra productos, categorías,
+  -- unidades ni conversiones, y no pone una conversión
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.user_roles (user_id, role) values (v_miembro, 'prueba-rls-prod-ver');
+  perform set_config('request.jwt.claims', v_jm, true);
+  if public.has_perm('edit_productos') then
+    r := r || E'\nOMITIDO 19.25 miembro sin edit_productos · la cuenta miembro ya lo tiene por un rol de la instalación';
+  else
+    set local role authenticated;
+    v := '';
+    foreach w in array array[
+      format('update public.productos set nombre = nombre where id = %L', v_p5),
+      format('delete from public.productos where id = %L', v_p8b),
+      format('update public.productos_categorias set nombre = nombre where id = %L', v_cat_a),
+      format('delete from public.productos_categorias where id = %L', v_cat_b),
+      'update public.productos_unidades set nombre = nombre where clave = ''prueba_rls_fina''',
+      'delete from public.productos_unidades where clave = ''prueba_rls_otra''',
+      format('update public.productos_conversiones set factor = factor where producto_id = %L', v_p7),
+      format('delete from public.productos_conversiones where producto_id = %L', v_p9)] loop
+      begin
+        execute w;
+        get diagnostics v_n = row_count;
+        v := v || v_n || ' / ';
+      exception when others then v := v || sqlstate || ' / ';
+      end;
+    end loop;
+    begin
+      insert into public.productos_conversiones (producto_id, unidad, factor) values (v_p8b, 'prueba_rls_fina', 2);
+      v := v || 'entró';
+    exception when others then v := v || case when sqlstate in ('42501', '23503') then 'rechazó' else sqlstate end;
+    end;
+    reset role;
+    r := r || E'\n' || case when v = '0 / 0 / 0 / 0 / 0 / 0 / 0 / 0 / rechazó' then 'OK      ' else 'FALLA   ' end || '19.25 miembro con solo app_productos cambia y borra productos, categorías, unidades y conversiones, y pone una conversión → 0 ×8 / rechazó · ' || v;
+  end if;
+
+  -- 19.26 Con edit_productos: no cambia ni borra una clase de impuesto
+  perform set_config('request.jwt.claims', '', true);
+  insert into public.user_roles (user_id, role) values (v_miembro, 'prueba-rls-prod-edit');
+  perform set_config('request.jwt.claims', v_jm, true);
+  set local role authenticated;
+  begin
+    update public.productos_impuestos set nombre = nombre where clave = 'prueba_rls_iva';
+    get diagnostics v_n = row_count;
+    v := v_n || ' filas';
+  exception when others then v := sqlstate;
+  end;
+  begin
+    delete from public.productos_impuestos where clave = 'iva_exento';
+    get diagnostics v_n = row_count;
+    v := v || ' / ' || v_n || ' filas';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  reset role;
+  r := r || E'\n' || case when v = '0 filas / 0 filas' then 'OK      ' else 'FALLA   ' end || '19.26 miembro con edit_productos cambia y borra una clase de impuesto → 0 filas / 0 filas · ' || v;
+
+  -- 19.27 Con solo edit_productos, sin lectura: no escribe a ciegas (una
+  -- categoría bajo una de nivel 3 o bajo una archivada, un producto) ni
+  -- importa
+  perform set_config('request.jwt.claims', '', true);
+  delete from public.user_roles where user_id = v_miembro and role like 'prueba-rls-prod-%';
+  insert into public.roles (name, permissions) values ('prueba-rls-prod-solo-edit', array['edit_productos']);
+  insert into public.user_roles (user_id, role) values (v_miembro, 'prueba-rls-prod-solo-edit');
+  insert into public.productos_categorias (nombre, archivado_en) values ('Prueba RLS archivada', now()) returning id into v_cat_arch;
+  perform set_config('request.jwt.claims', v_jm, true);
+  if public.productos_puede_leer() then
+    r := r || E'\nOMITIDO 19.27 miembro con solo edit_productos · la cuenta miembro ya lee el catálogo por un rol de la instalación';
+  else
+    set local role authenticated;
+    begin
+      insert into public.productos_categorias (nombre, padre_id) values ('Prueba RLS nivel 4', v_cat_x2);
+      v := 'entró';
+    exception when others then v := sqlstate;
+    end;
+    begin
+      insert into public.productos_categorias (nombre, padre_id) values ('Prueba RLS bajo archivada', v_cat_arch);
+      v := v || ' / entró';
+    exception when others then v := v || ' / ' || sqlstate;
+    end;
+    begin
+      insert into public.productos (codigo, nombre) values ('PRUEBA-RLS-27', 'Prueba RLS a ciegas');
+      v := v || ' / entró';
+    exception when others then v := v || ' / ' || sqlstate;
+    end;
+    begin
+      perform public.productos_importar('[]'::jsonb, true);
+      v := v || ' / importó';
+    exception when others then v := v || ' / ' || sqlstate;
+    end;
+    reset role;
+    perform set_config('request.jwt.claims', '', true);
+    select count(*) into v_n from public.productos_categorias c where c.nombre in ('Prueba RLS nivel 4', 'Prueba RLS bajo archivada');
+    v := v || ' / ' || v_n || ' escritas';
+    r := r || E'\n' || case when v = '42501 / 42501 / 42501 / 42501 / 0 escritas' then 'OK      ' else 'FALLA   ' end || '19.27 miembro con solo edit_productos crea categorías bajo el nivel 3 y bajo una archivada, un producto e importa → 42501 ×4 / 0 escritas · ' || v;
+  end if;
+
+  -- 19.28 Un alta rechazada no gasta un número de la serie: sin
+  -- edit_productos y con el módulo inactivo
+  perform set_config('request.jwt.claims', '', true);
+  delete from public.user_roles where user_id = v_miembro and role like 'prueba-rls-prod-%';
+  insert into public.user_roles (user_id, role) values (v_miembro, 'prueba-rls-prod-ver');
+  select last_value || '/' || is_called into v_serie from public.serie_producto;
+  perform set_config('request.jwt.claims', v_jm, true);
+  if public.has_perm('edit_productos') then
+    r := r || E'\nOMITIDO 19.28 alta rechazada y serie · la cuenta miembro ya tiene edit_productos por un rol de la instalación';
+  else
+    set local role authenticated;
+    begin
+      insert into public.productos (nombre) values ('Prueba RLS sin permiso');
+      v := 'entró';
+    exception when others then v := sqlstate;
+    end;
+    reset role;
+    perform set_config('request.jwt.claims', '', true);
+    insert into public.user_roles (user_id, role) values (v_miembro, 'prueba-rls-prod-edit');
+    update public.modulos_instalacion set activo = false where slug = 'productos';
+    perform set_config('request.jwt.claims', v_jm, true);
+    set local role authenticated;
+    begin
+      insert into public.productos (nombre) values ('Prueba RLS inactivo sin código');
+      v := v || ' / entró';
+    exception when others then v := v || ' / ' || sqlstate;
+    end;
+    reset role;
+    perform set_config('request.jwt.claims', '', true);
+    update public.modulos_instalacion set activo = true where slug = 'productos';
+    select v || ' / ' || case when last_value || '/' || is_called = v_serie then 'serie igual' else 'serie avanzó' end
+      into v from public.serie_producto;
+    r := r || E'\n' || case when v = '42501 / 42501 / serie igual' then 'OK      ' else 'FALLA   ' end || '19.28 alta sin código sin edit_productos y con el módulo inactivo → 42501 / 42501 / serie igual · ' || v;
+  end if;
+  perform set_config('request.jwt.claims', '', true);
+  delete from public.user_roles where user_id = v_miembro and role like 'prueba-rls-prod-%';
+  insert into public.user_roles (user_id, role) values (v_miembro, 'prueba-rls-prod-edit');
+
+  -- 19.29 El código no cambia en un producto archivado ni en uno con líneas
+  -- (no queda libre para otro); en uno libre sí, y uno igual tras normalizar
+  -- no es un cambio
+  perform set_config('request.jwt.claims', v_jm, true);
+  set local role authenticated;
+  insert into public.productos (codigo, nombre, archivado_en) values ('PRUEBA-RLS-ARCH', 'Prueba RLS archivado', now()) returning id into v_arch;
+  insert into public.productos (codigo, nombre) values ('PRUEBA-RLS-LIBRE', 'Prueba RLS libre de líneas') returning id into v_libre;
+  v := '';
+  foreach w in array array[v_arch::text, v_p8a::text] loop
+    begin
+      update public.productos set codigo = 'PRUEBA-RLS-OTRO' where id = w::uuid;
+      v := v || 'cambió / ';
+    exception when others then get stacked diagnostics v_cod = pg_exception_hint; v := v || sqlstate || ' ' || v_cod || ' / ';
+    end;
+  end loop;
+  begin
+    update public.productos set codigo = ' prueba-rls-arch ', nombre = 'Prueba RLS archivado 2' where id = v_arch;
+    get diagnostics v_n = row_count;
+    v := v || v_n || ' filas';
+  exception when others then v := v || sqlstate;
+  end;
+  begin
+    update public.productos set codigo = 'prueba-rls-libre 2' where id = v_libre;
+    get diagnostics v_n = row_count;
+    v := v || ' / ' || v_n || ' filas';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  begin
+    insert into public.productos (codigo, nombre) values ('PRUEBA-RLS-ARCH', 'Prueba RLS reuso');
+    v := v || ' / entró';
+  exception when others then v := v || ' / ' || sqlstate;
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  select count(*) into v_n from public.productos p where p.id = v_libre and p.codigo = 'PRUEBA-RLS-LIBRE2';
+  v := v || ' / ' || v_n;
+  r := r || E'\n' || case when v = '23514 productos_codigo_archivado / 23514 productos_codigo_en_uso / 1 filas / 1 filas / 23505 / 1' then 'OK      ' else 'FALLA   ' end || '19.29 cambiar el código de un archivado, de uno con líneas, igual tras normalizar y de uno libre; reusar el archivado → 23514 archivado / 23514 en_uso / 1 filas / 1 filas / 23505 / 1 · ' || v;
+
+  -- 19.30 Una línea que cambia de producto toma la unidad base, la clase y
+  -- el porcentaje del producto nuevo
+  insert into public.productos (codigo, nombre, unidad_base, impuesto)
+  values ('PRUEBA-RLS-30', 'Prueba RLS otro producto', 'prueba_rls_fina', 'prueba_rls_iva') returning id into v_pb;
+  insert into public.prueba_rls_lineas (producto_id, cantidad) values (v_p5, 1) returning id into v_linea;
+  begin
+    update public.prueba_rls_lineas set producto_id = v_pb where id = v_linea;
+    v := 'cambió';
+  exception when others then get stacked diagnostics w = pg_exception_hint; v := sqlstate || ' ' || w;
+  end;
+  select count(*) into v_n from public.prueba_rls_lineas l
+   where l.id = v_linea and l.producto_codigo = 'PRUEBA-RLS-30' and l.unidad = 'prueba_rls_fina' and l.factor = 1
+     and l.impuesto = 'prueba_rls_iva' and l.porcentaje_impuesto = 7;
+  r := r || E'\n' || case when v = 'cambió' and v_n = 1 then 'OK      ' else 'FALLA   ' end || '19.30 línea que cambia a un producto con otra unidad base y otra clase → cambió / 1 con las del producto nuevo · ' || v || ' / ' || v_n;
+
+  -- 19.31 Una tabla de líneas registrada y luego borrada no bloquea el cambio
+  -- de unidad base de un producto libre
+  create table public.prueba_rls_lineas_borrada (id uuid primary key default gen_random_uuid());
+  perform public.productos_aplicar_linea('public.prueba_rls_lineas_borrada', 'inventario', false);
+  drop table public.prueba_rls_lineas_borrada;
+  perform set_config('request.jwt.claims', v_jm, true);
+  set local role authenticated;
+  begin
+    update public.productos set unidad_base = 'prueba_rls_fina' where id = v_libre;
+    get diagnostics v_n = row_count;
+    v := v_n || ' filas';
+  exception when others then v := sqlstate;
+  end;
+  reset role;
+  perform set_config('request.jwt.claims', '', true);
+  r := r || E'\n' || case when v = '1 filas' then 'OK      ' else 'FALLA   ' end || '19.31 cambiar la unidad base con una tabla de líneas registrada y borrada → 1 filas · ' || v;
+
+  -- 19.32 Un producto cuya unidad base y clase se archivaron sigue entrando
+  -- en líneas nuevas con ellas; otra unidad archivada no
+  insert into public.productos_unidades (clave, nombre) values ('prueba_rls_arch', 'Prueba RLS archivable');
+  insert into public.productos_impuestos (clave, nombre, tipo, tratamiento, porcentaje) values ('prueba_rls_arch', 'Prueba RLS clase archivable', 'iva', 'gravado', 3);
+  insert into public.productos (codigo, nombre, unidad_base, impuesto)
+  values ('PRUEBA-RLS-32', 'Prueba RLS base archivada', 'prueba_rls_arch', 'prueba_rls_arch') returning id into v_pc;
+  update public.productos_unidades set archivado_en = now() where clave = 'prueba_rls_arch';
+  update public.productos_impuestos set archivado_en = now() where clave = 'prueba_rls_arch';
+  begin
+    insert into public.prueba_rls_lineas (producto_id, cantidad) values (v_pc, 2) returning id into v_linea;
+    v := 'entró';
+  exception when others then get stacked diagnostics w = pg_exception_hint; v := sqlstate || ' ' || w;
+  end;
+  select count(*) into v_n from public.prueba_rls_lineas l
+   where l.id = v_linea and l.producto_id = v_pc and l.unidad = 'prueba_rls_arch' and l.factor = 1
+     and l.impuesto = 'prueba_rls_arch' and l.porcentaje_impuesto = 3;
+  begin
+    insert into public.prueba_rls_lineas (producto_id, unidad, cantidad) values (v_p9, 'prueba_rls_arch', 1);
+    v := v || ' / ' || v_n || ' / entró';
+  exception when others then get stacked diagnostics w = pg_exception_hint; v := v || ' / ' || v_n || ' / ' || sqlstate || ' ' || w;
+  end;
+  r := r || E'\n' || case when v = 'entró / 1 / 23514 productos_unidad_archivada' then 'OK      ' else 'FALLA   ' end || '19.32 línea de un producto con su unidad base y su clase archivadas; otra unidad archivada → entró / 1 / 23514 productos_unidad_archivada · ' || v;
 
   perform set_config('request.jwt.claims', '', true);
   perform set_config('rls.res', current_setting('rls.res') || r, true);

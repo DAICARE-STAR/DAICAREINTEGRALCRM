@@ -106,7 +106,7 @@ La función (`22-catalogo.sql`, solo la ejecuta el dueño) añade lo que falte, 
 | `cantidad_base` | Generada: `round(cantidad * factor, 6)`, la que suman inventario y avance |
 | `impuesto`, `porcentaje_impuesto` | Solo con `con_impuesto`: la clase (nula al insertar, la del producto) y la copia de su porcentaje |
 
-- Lo que el cliente mande en las copias se ignora; en un cambio solo se recalcula lo que depende de lo que cambió.
+- Lo que el cliente mande en las copias se ignora; en un cambio solo se recalcula lo que depende de lo que cambió. Si cambia el producto, la unidad y la clase que no cambian en el mismo `update` se toman del producto nuevo. La unidad base y la clase del propio producto valen aunque estén archivadas.
 - El factor es 1 o más, o el inverso de un entero (`0.001` sí, `0.083333` no): la unidad base es la menor en la que se cuenta el producto y así todo factor guardado es exacto.
-- La unidad base de un producto no cambia si tiene conversiones, precio de lista o líneas en cualquier tabla registrada. Una línea nueva y un cambio de unidad base no se cruzan: el trigger de la línea toma un bloqueo compartido por producto y el cambio de unidad uno exclusivo (un `for share` no sirve aquí: exige la política de update de `productos`, que no tiene quien escribe una línea).
+- La unidad base de un producto no cambia si tiene conversiones, precio de lista o líneas en cualquier tabla registrada; su código tampoco cambia con líneas. Una línea nueva y un cambio de unidad base o de código no se cruzan: el trigger de la línea toma un bloqueo compartido por producto y el cambio de unidad uno exclusivo (un `for share` no sirve aquí: exige la política de update de `productos`, que no tiene quien escribe una línea).
 - Una tabla con llave hacia `productos(id)` sin pasar por la función la detectan la comprobación 24 de `verificar.sql` y `esquema.test.ts`.

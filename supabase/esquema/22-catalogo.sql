@@ -164,6 +164,10 @@ create table if not exists public.productos (
   id uuid primary key default gen_random_uuid(),
   codigo text not null constraint productos_codigo_check check (codigo ~ '^[A-Z0-9][A-Z0-9._/-]{0,39}$'),
   nombre text not null constraint productos_nombre_check check (char_length(btrim(nombre)) between 1 and 200),
+  -- El nombre con que la importación busca un repetido. Columna y no índice
+  -- de expresión: con la RLS, lower y regexp_replace no son leakproof y el
+  -- planificador no usaría ese índice (un recorrido del catálogo por fila)
+  nombre_normalizado text generated always as (lower(regexp_replace(btrim(nombre), '[[:space:]]+', ' ', 'g'))) stored,
   descripcion text constraint productos_descripcion_check check (descripcion is null or char_length(descripcion) <= 4000),
   tipo text not null default 'bien' constraint productos_tipo_check check (tipo in ('bien', 'servicio')),
   vendible boolean not null default true,
@@ -186,6 +190,7 @@ create index if not exists productos_categoria_idx on public.productos (categori
 create index if not exists productos_unidad_idx on public.productos (unidad_base);
 create index if not exists productos_impuesto_idx on public.productos (impuesto);
 create index if not exists productos_activos_nombre_idx on public.productos (nombre, id) where archivado_en is null;
+create index if not exists productos_nombre_normalizado_idx on public.productos (nombre_normalizado) where archivado_en is null;
 
 -- Conversiones: cuántas unidades base hay en una unidad alterna (1 caja =
 -- 12 und es factor 12). Un factor menor que 1 solo si es el inverso de un
@@ -283,8 +288,8 @@ grant execute on function public.productos_factor(uuid, text) to authenticated;
 -- número a series_siguiente (solo service role y definer, PP-DEC-25) y
 -- mira las líneas de otros módulos sin la RLS de quien edita. No confía en
 -- nada del cliente: lee la propia fila, instalacion, los catálogos, el
--- registro de líneas y la serie. El cambio de unidad base toma un bloqueo
--- exclusivo por producto que choca con el compartido de
+-- registro de líneas y la serie. El cambio de código o de unidad base toma
+-- un bloqueo exclusivo por producto que choca con el compartido de
 -- productos_linea_preparar: una línea nueva y el cambio no se cruzan.
 create or replace function public.productos_preparar()
 returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
@@ -293,13 +298,22 @@ declare
   v_intento bigint := 0;
   v_tope bigint;
   v_moneda text;
-  v_en_uso boolean;
+  v_cambia_codigo boolean := false;
+  v_en_uso boolean := false;
   t record;
 begin
+  -- 0) Con sesión, lo mismo que piden las políticas (editar y leer el
+  -- catálogo, con el módulo activo). Un BEFORE corre antes del with check:
+  -- sin esto, quien no puede escribir gastaría números de la serie y leería
+  -- las pistas de los pasos siguientes. Sin sesión (instalador, service
+  -- role) pasa
+  if auth.uid() is not null and not (public.has_perm('edit_productos') and public.productos_puede_leer()) then
+    raise exception 'productos: no tienes permiso para editar productos' using errcode = '42501', hint = 'productos_sin_permiso';
+  end if;
+
   -- 1) Código: sin espacios y en mayúsculas. Vacío en el alta: de la serie,
   -- normalizado y validado como uno manual; si ya existe, el siguiente
   if tg_op = 'INSERT' and nullif(regexp_replace(coalesce(new.codigo, ''), '[[:space:]]', '', 'g'), '') is null then
-    select count(*) + 1 into v_tope from public.productos;
     loop
       v_intento := v_intento + 1;
       v_codigo := upper(regexp_replace(public.series_siguiente('producto'), '[[:space:]]', '', 'g'));
@@ -308,13 +322,28 @@ begin
           using errcode = '23514', hint = 'productos_codigo_serie';
       end if;
       exit when not exists (select 1 from public.productos p where p.codigo = v_codigo);
+      -- El tope solo tras la primera colisión: el count(*) recorre el catálogo
+      if v_tope is null then
+        select count(*) + 1 into v_tope from public.productos;
+      end if;
       if v_intento >= v_tope then
         raise exception 'productos: la serie producto no dio un código libre' using errcode = '23505', hint = 'productos_codigo_serie';
       end if;
     end loop;
     new.codigo := v_codigo;
-  elsif tg_op = 'INSERT' or new.codigo is distinct from old.codigo then
+  elsif tg_op = 'INSERT' then
     new.codigo := upper(regexp_replace(new.codigo, '[[:space:]]', '', 'g'));
+  elsif new.codigo is distinct from old.codigo then
+    new.codigo := upper(regexp_replace(new.codigo, '[[:space:]]', '', 'g'));
+    -- Decisión 9.3: el código de un archivado no se libera renombrándolo;
+    -- el de uno con líneas tampoco (paso 4): los documentos lo nombran
+    if new.codigo is distinct from old.codigo then
+      if old.archivado_en is not null or new.archivado_en is not null then
+        raise exception 'productos: el código de un producto archivado no cambia'
+          using errcode = '23514', hint = 'productos_codigo_archivado';
+      end if;
+      v_cambia_codigo := true;
+    end if;
   end if;
 
   -- 2) Impuesto: en el alta, la clase predeterminada si llega nula. En un
@@ -328,9 +357,9 @@ begin
     end if;
   end if;
 
-  -- 3) Moneda: solo si cambian precio o moneda. Con precio y sin moneda,
-  -- la base; otra moneda falla; quitar el precio quita la moneda. Una
-  -- moneda sin precio la rechaza el check de pareja
+  -- 3) Moneda: solo si cambian precio o moneda. Con precio y sin moneda (o
+  -- con la que ya tenía), la base; otra moneda falla; quitar el precio quita
+  -- la moneda. Una moneda sin precio la rechaza el check de pareja
   if tg_op = 'INSERT' or new.precio_lista is distinct from old.precio_lista
      or new.precio_lista_moneda is distinct from old.precio_lista_moneda then
     if new.precio_lista is null then
@@ -339,7 +368,8 @@ begin
       end if;
     else
       select i.moneda_base into v_moneda from public.instalacion i where i.id = 1;
-      if new.precio_lista_moneda is null then
+      if new.precio_lista_moneda is null
+         or (tg_op = 'UPDATE' and new.precio_lista_moneda is not distinct from old.precio_lista_moneda) then
         new.precio_lista_moneda := v_moneda;
       elsif new.precio_lista_moneda is distinct from v_moneda then
         raise exception 'productos: el precio de lista va en la moneda base de la instalación'
@@ -348,25 +378,33 @@ begin
     end if;
   end if;
 
-  -- 4) Unidad base: no cambia con conversiones, con precio (es por la unidad
-  -- anterior) ni con líneas en cualquier tabla registrada
-  if tg_op = 'UPDATE' and new.unidad_base is distinct from old.unidad_base then
+  -- 4) Código y unidad base: ninguno cambia con líneas en cualquier tabla
+  -- registrada; la unidad base tampoco con conversiones ni con precio (es
+  -- por la unidad anterior). Solo se miran los registros cuya tabla existe:
+  -- un regclass no crea dependencia y el de una tabla borrada queda colgado
+  if tg_op = 'UPDATE' and (v_cambia_codigo or new.unidad_base is distinct from old.unidad_base) then
     perform pg_advisory_xact_lock(hashtext('public.productos'), hashtext(new.id::text));
-    if exists (select 1 from public.productos_conversiones c where c.producto_id = new.id) then
-      raise exception 'productos: la unidad base no cambia mientras el producto tenga unidades alternas'
-        using errcode = '23514', hint = 'productos_unidad_con_conversiones';
-    end if;
-    if new.precio_lista is not null then
-      raise exception 'productos: la unidad base no cambia con precio de lista; quita el precio, cambia la unidad y vuelve a ponerlo'
-        using errcode = '23514', hint = 'productos_unidad_con_precio';
-    end if;
-    for t in select l.tabla from public.productos_lineas l loop
-      execute format('select exists (select 1 from %s x where x.producto_id = $1)', t.tabla) into v_en_uso using new.id;
-      if v_en_uso then
-        raise exception 'productos: la unidad base no cambia con el producto en uso en documentos o movimientos'
-          using errcode = '23514', hint = 'productos_unidad_en_uso';
+    if new.unidad_base is distinct from old.unidad_base then
+      if exists (select 1 from public.productos_conversiones c where c.producto_id = new.id) then
+        raise exception 'productos: la unidad base no cambia mientras el producto tenga unidades alternas'
+          using errcode = '23514', hint = 'productos_unidad_con_conversiones';
       end if;
+      if new.precio_lista is not null then
+        raise exception 'productos: la unidad base no cambia con precio de lista; quita el precio, cambia la unidad y vuelve a ponerlo'
+          using errcode = '23514', hint = 'productos_unidad_con_precio';
+      end if;
+    end if;
+    for t in select l.tabla from public.productos_lineas l join pg_catalog.pg_class k on k.oid = l.tabla::oid loop
+      execute format('select exists (select 1 from %s x where x.producto_id = $1)', t.tabla) into v_en_uso using new.id;
+      exit when v_en_uso;
     end loop;
+    if v_en_uso and v_cambia_codigo then
+      raise exception 'productos: el código no cambia con el producto en uso en documentos o movimientos'
+        using errcode = '23514', hint = 'productos_codigo_en_uso';
+    elsif v_en_uso then
+      raise exception 'productos: la unidad base no cambia con el producto en uso en documentos o movimientos'
+        using errcode = '23514', hint = 'productos_unidad_en_uso';
+    end if;
   end if;
 
   -- 5) Referencias archivadas: en el alta o si cambian. Un producto viejo
@@ -390,7 +428,7 @@ $$;
 revoke execute on function public.productos_preparar() from public, anon, authenticated;
 
 -- Historial: en un cambio, solo los campos que cambian, sin updated_at,
--- updated_by ni creado_via; cada lado recortado a 2 KB; una conversión
+-- updated_by, creado_via ni nombre_normalizado (lo deriva nombre); cada lado recortado a 2 KB; una conversión
 -- lleva siempre su unidad. El borrado deja la fila completa en antes (el
 -- catálogo no tiene datos de personas). security definer: la API no tiene
 -- insert sobre productos_cambios.
@@ -406,8 +444,8 @@ begin
   v_entidad := case tg_table_name when 'productos' then 'producto' when 'productos_conversiones' then 'conversion'
                                   when 'productos_unidades' then 'unidad' when 'productos_impuestos' then 'impuesto'
                                   else 'categoria' end;
-  if tg_op in ('UPDATE', 'DELETE') then v_antes := to_jsonb(old) - 'updated_at' - 'updated_by' - 'creado_via'; end if;
-  if tg_op in ('INSERT', 'UPDATE') then v_despues := to_jsonb(new) - 'updated_at' - 'updated_by' - 'creado_via'; end if;
+  if tg_op in ('UPDATE', 'DELETE') then v_antes := to_jsonb(old) - 'updated_at' - 'updated_by' - 'creado_via' - 'nombre_normalizado'; end if;
+  if tg_op in ('INSERT', 'UPDATE') then v_despues := to_jsonb(new) - 'updated_at' - 'updated_by' - 'creado_via' - 'nombre_normalizado'; end if;
   v_entidad_id := coalesce(v_despues, v_antes) ->> case v_entidad when 'conversion' then 'producto_id'
                                                                   when 'unidad' then 'clave' when 'impuesto' then 'clave' else 'id' end;
 
@@ -610,9 +648,17 @@ begin
     new.producto_nombre := old.producto_nombre;
   end if;
 
+  -- Si cambia el producto y la unidad o la clase no cambian en el mismo
+  -- update (traen la de la fila), se toman las del producto nuevo. La unidad
+  -- base y la clase del propio producto valen aunque se hayan archivado: el
+  -- producto las conserva; otra archivada no se ofrece
   if v_cambia_unidad then
+    if tg_op = 'UPDATE' and v_cambia_producto and new.unidad is not distinct from old.unidad then
+      new.unidad := null;
+    end if;
     new.unidad := coalesce(new.unidad, p.unidad_base);
-    if exists (select 1 from public.productos_unidades u where u.clave = new.unidad and u.archivado_en is not null) then
+    if new.unidad is distinct from p.unidad_base
+       and exists (select 1 from public.productos_unidades u where u.clave = new.unidad and u.archivado_en is not null) then
       raise exception 'productos: la unidad está archivada' using errcode = '23514', hint = 'productos_unidad_archivada';
     end if;
     new.factor := public.productos_factor(new.producto_id, new.unidad);
@@ -622,13 +668,16 @@ begin
 
   if v_con_impuesto then
     if v_cambia_producto or new.impuesto is null or new.impuesto is distinct from old.impuesto then
+      if tg_op = 'UPDATE' and v_cambia_producto and new.impuesto is not distinct from old.impuesto then
+        new.impuesto := null;
+      end if;
       new.impuesto := coalesce(new.impuesto, p.impuesto);
       select i.porcentaje, i.archivado_en into v_porcentaje, v_archivado
         from public.productos_impuestos i where i.clave = new.impuesto;
       if not found then
         raise exception 'productos: la clase de impuesto no existe' using errcode = '23503', hint = 'productos_impuesto_no_existe';
       end if;
-      if v_archivado is not null then
+      if v_archivado is not null and new.impuesto is distinct from p.impuesto then
         raise exception 'productos: la clase de impuesto está archivada' using errcode = '23514', hint = 'productos_impuesto_archivado';
       end if;
       new.porcentaje_impuesto := v_porcentaje;
@@ -770,7 +819,8 @@ declare
   v_pista text;
   v_estado text;
 begin
-  if not public.has_perm('edit_productos') then
+  -- Editar y leer: sin lectura no vería los productos con los que empareja
+  if not (public.has_perm('edit_productos') and public.productos_puede_leer()) then
     raise exception 'productos: no tienes permiso para importar' using errcode = '42501', hint = 'productos_importar';
   end if;
   if p_filas is null or jsonb_typeof(p_filas) <> 'array' or jsonb_array_length(p_filas) > 500 then
@@ -814,13 +864,17 @@ begin
           v_prod := null;
           if v_cod is not null then
             select * into v_prod from public.productos p where p.codigo = v_cod;
-          elsif v_nombre is not null
-                and exists (select 1 from public.productos p
-                             where p.archivado_en is null
-                               and lower(regexp_replace(btrim(p.nombre), '[[:space:]]+', ' ', 'g'))
-                                   = lower(regexp_replace(v_nombre, '[[:space:]]+', ' ', 'g'))) then
-            raise exception 'productos: ya existe un producto con ese nombre; pon su código'
-              using errcode = '23505', hint = 'productos_importar_nombre';
+          elsif v_nombre is not null then
+            -- Dos importaciones a la vez con el mismo nombre sin código: la
+            -- segunda espera a que termine la primera y ve su fila
+            perform pg_advisory_xact_lock(hashtext('productos.nombre'),
+                                          hashtext(lower(regexp_replace(v_nombre, '[[:space:]]+', ' ', 'g'))));
+            if exists (select 1 from public.productos p
+                        where p.archivado_en is null
+                          and p.nombre_normalizado = lower(regexp_replace(v_nombre, '[[:space:]]+', ' ', 'g'))) then
+              raise exception 'productos: ya existe un producto con ese nombre; pon su código'
+                using errcode = '23505', hint = 'productos_importar_nombre';
+            end if;
           end if;
 
           if v_prod.id is null then
@@ -1068,22 +1122,29 @@ grant select on table public.productos_cambios to authenticated;
 -- productos_lineas: nada para la API
 grant all on table public.productos, public.productos_categorias, public.productos_unidades, public.productos_conversiones,
                    public.productos_impuestos to service_role;
+-- Sin truncate: no dispara los triggers de fila (historial, auditoría, und,
+-- una sola predeterminada), como el historial y la auditoría
+revoke truncate on table public.productos, public.productos_categorias, public.productos_unidades, public.productos_conversiones,
+                         public.productos_impuestos from service_role;
 grant select on table public.productos_cambios, public.productos_lineas to service_role;
 
 -- Productos y categorías: leer con productos_puede_leer, escribir con
--- edit_productos, borrar solo un administrador (las llaves restrict frenan
--- lo que está en uso; lo normal es archivar)
+-- edit_productos y lectura (los triggers invoker validan con lo que ve quien
+-- escribe: sin lectura no verían el árbol ni el catálogo), borrar solo un
+-- administrador (las llaves restrict frenan lo que está en uso; lo normal es
+-- archivar)
 drop policy if exists productos_select on public.productos;
 create policy productos_select on public.productos
   for select to authenticated using ((select public.productos_puede_leer()));
 drop policy if exists productos_insert on public.productos;
 create policy productos_insert on public.productos
-  for insert to authenticated with check ((select public.has_perm('edit_productos')));
+  for insert to authenticated
+  with check ((select public.has_perm('edit_productos')) and (select public.productos_puede_leer()));
 drop policy if exists productos_update on public.productos;
 create policy productos_update on public.productos
   for update to authenticated
-  using ((select public.has_perm('edit_productos')))
-  with check ((select public.has_perm('edit_productos')));
+  using ((select public.has_perm('edit_productos')) and (select public.productos_puede_leer()))
+  with check ((select public.has_perm('edit_productos')) and (select public.productos_puede_leer()));
 drop policy if exists productos_delete on public.productos;
 create policy productos_delete on public.productos
   for delete to authenticated using ((select public.is_admin()));
@@ -1093,12 +1154,13 @@ create policy productos_categorias_select on public.productos_categorias
   for select to authenticated using ((select public.productos_puede_leer()));
 drop policy if exists productos_categorias_insert on public.productos_categorias;
 create policy productos_categorias_insert on public.productos_categorias
-  for insert to authenticated with check ((select public.has_perm('edit_productos')));
+  for insert to authenticated
+  with check ((select public.has_perm('edit_productos')) and (select public.productos_puede_leer()));
 drop policy if exists productos_categorias_update on public.productos_categorias;
 create policy productos_categorias_update on public.productos_categorias
   for update to authenticated
-  using ((select public.has_perm('edit_productos')))
-  with check ((select public.has_perm('edit_productos')));
+  using ((select public.has_perm('edit_productos')) and (select public.productos_puede_leer()))
+  with check ((select public.has_perm('edit_productos')) and (select public.productos_puede_leer()));
 drop policy if exists productos_categorias_delete on public.productos_categorias;
 create policy productos_categorias_delete on public.productos_categorias
   for delete to authenticated using ((select public.is_admin()));
@@ -1109,12 +1171,13 @@ create policy productos_unidades_select on public.productos_unidades
   for select to authenticated using ((select public.productos_puede_leer()));
 drop policy if exists productos_unidades_insert on public.productos_unidades;
 create policy productos_unidades_insert on public.productos_unidades
-  for insert to authenticated with check ((select public.has_perm('edit_productos')));
+  for insert to authenticated
+  with check ((select public.has_perm('edit_productos')) and (select public.productos_puede_leer()));
 drop policy if exists productos_unidades_update on public.productos_unidades;
 create policy productos_unidades_update on public.productos_unidades
   for update to authenticated
-  using ((select public.has_perm('edit_productos')))
-  with check ((select public.has_perm('edit_productos')));
+  using ((select public.has_perm('edit_productos')) and (select public.productos_puede_leer()))
+  with check ((select public.has_perm('edit_productos')) and (select public.productos_puede_leer()));
 drop policy if exists productos_unidades_delete on public.productos_unidades;
 create policy productos_unidades_delete on public.productos_unidades
   for delete to authenticated using ((select public.is_admin()));
@@ -1125,12 +1188,13 @@ create policy productos_conversiones_select on public.productos_conversiones
   for select to authenticated using ((select public.productos_puede_leer()));
 drop policy if exists productos_conversiones_insert on public.productos_conversiones;
 create policy productos_conversiones_insert on public.productos_conversiones
-  for insert to authenticated with check ((select public.has_perm('edit_productos')));
+  for insert to authenticated
+  with check ((select public.has_perm('edit_productos')) and (select public.productos_puede_leer()));
 drop policy if exists productos_conversiones_update on public.productos_conversiones;
 create policy productos_conversiones_update on public.productos_conversiones
   for update to authenticated
-  using ((select public.has_perm('edit_productos')))
-  with check ((select public.has_perm('edit_productos')));
+  using ((select public.has_perm('edit_productos')) and (select public.productos_puede_leer()))
+  with check ((select public.has_perm('edit_productos')) and (select public.productos_puede_leer()));
 drop policy if exists productos_conversiones_delete on public.productos_conversiones;
 create policy productos_conversiones_delete on public.productos_conversiones
   for delete to authenticated using ((select public.has_perm('edit_productos')));
@@ -1265,6 +1329,14 @@ begin
      or has_table_privilege('anon', 'public.productos', 'select') then
     raise exception '22-catalogo: la API escribe sistema, codigo_dian o la clave de productos_unidades, o anon lee productos';
   end if;
+  select string_agg(x, ', ') into v
+    from unnest(array['productos', 'productos_categorias', 'productos_unidades', 'productos_conversiones', 'productos_impuestos']) x
+   where has_table_privilege('service_role', 'public.' || x, 'truncate')
+      or has_table_privilege('authenticated', 'public.' || x, 'truncate')
+      or has_table_privilege('anon', 'public.' || x, 'truncate');
+  if v is not null then
+    raise exception '22-catalogo: truncate permitido sobre %', v;
+  end if;
 
   -- 19) Funciones de la API: security invoker, con search_path y sin anon
   select string_agg(f, ', ') into v
@@ -1383,8 +1455,10 @@ begin
      or position('pg_advisory_xact_lock_shared(' in (select p.prosrc from pg_catalog.pg_proc p
                                                      where p.oid = 'public.productos_linea_preparar()'::regprocedure)) = 0
      or position('pg_advisory_xact_lock(' in (select p.prosrc from pg_catalog.pg_proc p
-                                              where p.oid = 'public.productos_preparar()'::regprocedure)) = 0 then
-    raise exception '22-catalogo: faltan los bloqueos de categorías, conversiones, líneas o del cambio de unidad base';
+                                              where p.oid = 'public.productos_preparar()'::regprocedure)) = 0
+     or position('pg_advisory_xact_lock(' in (select p.prosrc from pg_catalog.pg_proc p
+                                              where p.oid = 'public.productos_importar(jsonb,boolean)'::regprocedure)) = 0 then
+    raise exception '22-catalogo: faltan los bloqueos de categorías, conversiones, líneas, del cambio de código o unidad base o de la importación';
   end if;
 
   if not exists (select 1 from pg_catalog.pg_extension e join pg_catalog.pg_namespace n on n.oid = e.extnamespace
