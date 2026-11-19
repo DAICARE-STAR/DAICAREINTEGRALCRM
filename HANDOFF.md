@@ -55,3 +55,14 @@ Lectura masiva y verificación: Sonnet. Síntesis, implementación y revisión: 
 2. Confirmar que el usuario rotó la clave y corrigió las variables; revisar login con testadmin.
 3. Lanzar el lote 2 (CRM) en una rama de pruebas nueva con worktree propio (no reutilizar nombres viejos).
 4. Pendientes del usuario: nombre corto de la app, decisiones D-2, D-3, D-14, D-15 y D-19, llevar el lote 1 a DAI CARE (esquema antes que frontend), comprobar el deploy de app.daicareintegral.com y Editar perfil en su Chrome.
+
+## Fase 0.7 (abierta el 2026-11-19)
+
+Plan aprobado: Productos, luego Inventario, luego Terceros y Compras. Rama `pruebas/fase-0.7` en el worktree `personal/wt/bash-pruebas` (node_modules es un junction: desmontarlo antes de quitar el worktree). Método por módulo: diseño con crítica de dos lentes, decisiones de negocio con el usuario, esquema ensayado con `tools/instalar/ensayar.mjs --simular <slug>` (transacción que se deshace), revisión por dos lentes y corrección, aplicación real por la directora, pantallas, revisión y corrección.
+
+- **Productos, hecho en la rama** (0.7.1 a 0.7.4b, e9fab41): diseño en `docs/modulos/productos.md`; `22-catalogo.sql` con siete tablas (productos, unidades, conversiones, categorías, clases de impuesto, historial, registro de líneas), `productos_buscar`, `productos_importar` y `productos_aplicar_linea` (la usarán las líneas de los documentos de Inventario, Compras y Ventas para congelar unidad, factor e impuesto); módulo `disponible` con lista, ficha, catálogos e importador en `src/modulos/productos/`. Decisiones del usuario: código manual o automático (P-00001), precio de lista sin IVA, una clase de impuesto por producto, marcas se vende y se compra. Fijadas por defecto y avisadas: el código de un archivado no se cambia ni se reutiliza mientras exista; un producto conserva su unidad base y su clase aunque se archiven; la autoría es visible para los módulos lectores; clases de impuesto solo de Colombia.
+- **Base de pruebas**: 20 archivos, `--verificar` en OK, simulación 163 OK, 0 FALLA, 0 OMITIDO, módulo productos activo.
+- **Sin comprobar**: ninguna pantalla de Productos se ha visto en un navegador (hace falta sesión con una cuenta de prueba; la contraseña la escribe el usuario). Pendiente de la revisión: un precio de más de 15 cifras significativas puede perder precisión en el cliente; la exportación pagina por desplazamiento.
+- **Demo de Netlify**: 0.2.28 subido el 2026-11-19; el sitio quedó con «Team protection» (responde 401), así que no se pudo verificar el bundle. La rotación de la clave secreta sigue siendo del usuario.
+- **Siguiente**: integrar la rama en main con el visto bueno del usuario; Inventario (`24-inventario.sql`) tras el reinicio semanal del 2026-11-21; después Terceros (tabla propia fuera del CRM, decisión por defecto) y Compras.
+- Consumo el 2026-11-19: Productos completo unos 2,9 M de tokens; semanal en 80 % antes de las pantallas.
