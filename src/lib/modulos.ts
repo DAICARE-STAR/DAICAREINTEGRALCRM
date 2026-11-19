@@ -222,15 +222,14 @@ export const MODULOS: readonly Modulo[] = [
     limites: {},
   },
   {
-    // Catálogo (fase 0.7, docs/modulos/productos.md). Su esquema ya está en
-    // 22-catalogo.sql, pero sigue planeado hasta que existan sus pantallas:
-    // modulos.mjs --activar no lo activa y nadie lo ve. Solo
-    // ensayar.mjs --simular lo deja activo, dentro del ensayo que se deshace.
+    // Catálogo (fase 0.7, docs/modulos/productos.md): esquema en
+    // 22-catalogo.sql y pantallas en src/modulos/productos/. Lo leen también
+    // los módulos que dependen de él (productos_puede_leer).
     slug: 'productos',
     nombre: 'Productos',
     icono: 'productos',
     ruta: '/productos',
-    estado: 'planeado',
+    estado: 'disponible',
     permisos: [
       { clave: 'app_productos', etiqueta: 'Ver Productos' },
       { clave: 'edit_productos', etiqueta: 'Editar productos, categorías y unidades' },

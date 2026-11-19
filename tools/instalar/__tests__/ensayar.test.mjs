@@ -92,9 +92,12 @@ describe('ensayar.mjs: opciones', () => {
     expect(validarSimulados(['nucleo'], carpeta).errores[0]).toMatch(/núcleo/)
     expect(validarSimulados(['calendario'], carpeta).errores[0]).toMatch(/falta supabase\/esquema\/10-calendario\.sql/)
     expect(validarSimulados(['inventario'], carpeta).errores[0]).toMatch(/planeado sin archivo/)
-    const productos = validarSimulados(['productos'], carpeta)
-    expect(productos.errores).toEqual([])
-    expect(productos.avisos[0]).toMatch(/productos está planeado/)
+    // Productos ya es disponible; cotizador sigue planeado: con su archivo en la carpeta, se simula con aviso
+    expect(validarSimulados(['productos'], carpeta)).toEqual({ errores: [], avisos: [] })
+    writeFileSync(join(carpeta, '23-cotizador.sql'), 'select 23;\n')
+    const cotizador = validarSimulados(['cotizador'], carpeta)
+    expect(cotizador.errores).toEqual([])
+    expect(cotizador.avisos[0]).toMatch(/cotizador está planeado/)
     expect(validarSimulados(['crm'], carpeta)).toEqual({ errores: [], avisos: [] })
   })
 
@@ -135,7 +138,7 @@ describe('ensayar.mjs: contra un cliente falso', () => {
     expect(r.orden).not.toContain('COMMIT')
     expect(r.cliente.ejecutadas.some((e) => /insert into instalador\.esquema_aplicado/i.test(e.texto))).toBe(false)
     expect(r.cliente.ejecutadas.find((e) => e.texto === INSERT_MODULO).params).toEqual(['productos', '{}'])
-    expect(r.salida).toContain('AVISO productos está planeado: solo queda activo dentro del ensayo, que se deshace')
+    expect(r.texto).not.toMatch(/está planeado/)
     expect(r.salida).toContain('rls-simulacion (se deshace todo): 3 OK · 0 FALLA · 0 OMITIDO')
   })
 

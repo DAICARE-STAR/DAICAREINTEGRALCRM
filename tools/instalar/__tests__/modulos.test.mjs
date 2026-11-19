@@ -100,12 +100,12 @@ describe('modulos.mjs: activar', () => {
   it('con dependencias duras inactivas sale con 1 e informa el orden de activación, marcando los planeados', async () => {
     const r = await correr(['--activar', 'facturacion'])
     expect(r.codigo).toBe(1)
-    expect(r.errores).toContain('AVISO orden de activación: productos (planeado), crm, facturacion (planeado)')
+    expect(r.errores).toContain('AVISO orden de activación: productos, crm, facturacion (planeado)')
     expect(r.escritas(INSERT_MODULO)).toEqual([])
     expect(r.escritas(ACTIVAR_MODULO)).toEqual([])
     // Las activas no figuran; inventario y compras (blandas) nunca
     const conCrm = await correr(['--activar', 'facturacion'], { filas: [fila('nucleo'), fila('crm')] })
-    expect(conCrm.errores).toContain('AVISO orden de activación: productos (planeado), facturacion (planeado)')
+    expect(conCrm.errores).toContain('AVISO orden de activación: productos, facturacion (planeado)')
     expect(conCrm.texto).not.toMatch(/inventario|compras/)
     // Sin dependencias que falten no hay orden que informar
     const sinDeps = await correr(['--activar', 'contabilidad'])

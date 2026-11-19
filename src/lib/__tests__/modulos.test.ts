@@ -21,9 +21,8 @@ import {
 
 const SLUGS = MODULOS.map((m) => m.slug)
 const ESQUEMA = fileURLToPath(new URL('../../../supabase/esquema/', import.meta.url))
-// Los traídos del portal de origen que esperan su archivo de esquema (PP-DEC-21).
-// Productos ya tiene el suyo (22-catalogo.sql) y sigue planeado hasta sus pantallas
-const SIN_ESQUEMA = ['calendario', 'chat', 'proyectos', 'disenos', 'manuales', 'productos', 'cotizador', 'gerencia', 'licitaciones', 'sitio-web']
+// Los traídos del portal de origen que esperan su archivo de esquema (PP-DEC-21)
+const SIN_ESQUEMA = ['calendario', 'chat', 'proyectos', 'disenos', 'manuales', 'cotizador', 'gerencia', 'licitaciones', 'sitio-web']
 const ERP = ['inventario', 'compras', 'ventas', 'facturacion', 'cartera', 'contabilidad', 'rrhh']
 const KEBAB = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
 // verbo_objeto (manage_members, edit_crm) o app_<slug>
@@ -37,12 +36,12 @@ describe('registro de módulos', () => {
     for (const s of SLUGS) expect(s).toMatch(KEBAB)
   })
 
-  it('trae el núcleo, disponible y sin dependencias; 4 activables y planeados los 10 sin esquema y los 7 ERP', () => {
+  it('trae el núcleo, disponible y sin dependencias; 5 activables y planeados los 9 sin esquema y los 7 ERP', () => {
     const nucleo = moduloPorSlug(NUCLEO)
     expect(nucleo).toBeDefined()
     expect(nucleo?.estado).toBe('disponible')
     expect(nucleo?.depende).toEqual([])
-    expect(MODULOS.filter((m) => m.estado === 'disponible').map((m) => m.slug)).toEqual(['nucleo', 'ia', 'correo', 'crm'])
+    expect(MODULOS.filter((m) => m.estado === 'disponible').map((m) => m.slug)).toEqual(['nucleo', 'ia', 'correo', 'productos', 'crm'])
     expect(MODULOS.filter((m) => m.estado === 'planeado').map((m) => m.slug)).toEqual([...SIN_ESQUEMA, ...ERP])
   })
 
@@ -53,9 +52,9 @@ describe('registro de módulos', () => {
     }
   })
 
-  it('productos declara sus permisos, su archivo y sus tablas, pero sigue planeado: no se activa ni se ve', () => {
+  it('productos declara sus permisos, su archivo y sus tablas, y se activa sin dependencias', () => {
     const p = moduloPorSlug('productos')!
-    expect(p.estado).toBe('planeado')
+    expect(p.estado).toBe('disponible')
     expect(p.permisos.map((x) => x.clave)).toEqual(['app_productos', 'edit_productos'])
     expect(p.sql).toBe('22-catalogo.sql')
     expect(existsSync(ESQUEMA + p.sql)).toBe(true)
@@ -64,8 +63,10 @@ describe('registro de módulos', () => {
       'productos_impuestos', 'productos_cambios', 'productos_lineas',
     ])
     expect(p.conectores).toEqual([])
-    expect(validarActivacion([], 'productos').errores).toEqual(['módulo planeado, todavía sin fase: productos'])
-    expect(estaActivo(['productos'], 'productos')).toBe(false)
+    expect(p.depende).toEqual([])
+    expect(validarActivacion([], 'productos')).toMatchObject({ ok: true, errores: [] })
+    expect(estaActivo(['productos'], 'productos')).toBe(true)
+    expect(estaActivo([], 'productos')).toBe(false)
   })
 
   it('las dependencias duras de un módulo activable también son activables', () => {

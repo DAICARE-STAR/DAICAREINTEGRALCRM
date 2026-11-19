@@ -60,7 +60,7 @@ describe('rutas de los módulos', () => {
     const otros = grupos.find((g) => g.label === 'Otros')?.keys ?? []
     expect(otros).not.toContain('edit_tender_offers')
     expect(otros).not.toContain('delete_tender_offers')
-    // edit_productos es de Productos, planeado: tampoco cae en «Otros»
+    // edit_productos es de Productos, que no figura activo: tampoco cae en «Otros»
     expect(otros).not.toContain('edit_productos')
     expect(PERMISSIONS.map((p) => p.key)).not.toContain('manage_products')
     const nucleo = grupos.find((g) => g.label === 'Núcleo')?.keys ?? []
