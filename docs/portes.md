@@ -34,3 +34,7 @@ Cada commit que salga se anota en la tabla como «portado (hash del commit del p
 | 2026-11-07 | c70a6aa (1.12.8) | Escáner de secretos en hooks y CI, guardarraíl para PowerShell, .env.example clasificado | escáner y .env.example clasificado desde 0.1.2; guardarraíl con matcher Bash y PowerShell desde 0.1.11; paso del escáner en la CI en 0.1.19. Los hooks de git (.githooks) no se portan: el producto no los tiene todavía |
 | 2026-11-07 | 52b30d4, 0cc9e4b, b8474e3 (1.12.14 a 1.12.16) | CSP estricta de las apps estáticas y delegación por data-accion | no aplica: el producto no tiene apps estáticas ni CSP de /apps |
 | 2026-11-07 | b633266, 1a3e0ed (migraciones 91 a 93) | Catálogo, variantes, listas de precio y documentos de producto | no aplica todavía: llegan con el módulo productos (M-1) |
+
+## Portes hacia el portal de origen
+
+La evaluación del 2026-11-19 de qué mejoras de este repo necesita el portal está en `docs/portes-al-origen.md`. La implementa la sesión del portal con sus propios pasos.
