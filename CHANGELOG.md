@@ -2,6 +2,10 @@
 
 Formato: cada commit a `main` es un Paso `Mayor.Fase.Paso — descripción`. La fase en curso va arriba. Al cerrar una fase se etiqueta `vMayor.Fase` con `git push --follow-tags`. Las migraciones se citan como «(migración N)». La viñeta se escribe antes del push, con el hash.
 
+## 0.7 — Productos, inventario y compras (2026-11-19)
+
+- 0.7.1 — Herramientas internas del proyecto.
+
 ## 0.2 — CRM nativo (2026-11-09)
 
 - 0.2.1 — Módulos: el registro cambia `directorio` (adaptador de HubSpot sin tablas ni código) por `crm`, el CRM nativo con tablas propias en 21-crm.sql y permisos `app_crm`, `edit_crm`, `ver_salud` y `edit_salud`; los dos de salud entran en la lista solo-admin (shell, funciones y 01-seguridad.sql, ahora catorce claves). Cotizador y Ventas integran `crm`. Fuera la búsqueda de HubSpot de src/lib/search.ts, que no tenía conector. Decisiones PP-DEC-18 y PP-DEC-19 y términos del CRM en el glosario. (076e2c3)
