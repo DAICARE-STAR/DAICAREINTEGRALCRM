@@ -62,7 +62,7 @@ export function ProductosVista(p: VistaProps) {
   )
   return (
     <div className="page page-productos">
-      <CabeceraPagina titulo="Productos">
+      <CabeceraPagina titulo="Inventario">
         <Link to="/productos/catalogos" className="btn-ghost">
           Catálogos
         </Link>

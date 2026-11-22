@@ -33,7 +33,7 @@ export function ImpuestosVista({
 }) {
   return (
     <section>
-      <CabeceraAdmin titulo="Productos: clases de impuesto">
+      <CabeceraAdmin titulo="Inventario: clases de impuesto">
         <button type="button" className="btn-primary" onClick={alNueva}>
           Nueva clase
         </button>

@@ -14,14 +14,14 @@ const shell: ModuloShell = {
   Rutas,
   busquedas: [
     {
-      grupo: 'Productos',
+      grupo: 'Inventario',
       buscar: async (termino) => {
         const { filas } = await buscarProductos({ ...FILTROS_VACIOS, q: termino }, 0, 5)
         return filas.map((p) => ({ key: p.id, title: p.nombre, meta: p.codigo, to: `/productos/${p.id}` }))
       },
     },
   ],
-  pestanasAdmin: [{ id: 'productos', label: 'Productos', grupo: 'Módulos', acceso: 'admin', Componente: ImpuestosProductos }],
+  pestanasAdmin: [{ id: 'productos', label: 'Inventario', grupo: 'Módulos', acceso: 'admin', Componente: ImpuestosProductos }],
 }
 
 export default shell

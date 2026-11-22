@@ -16,13 +16,13 @@ Estado: `disponible` se puede activar con `tools/instalar/modulos.mjs --activar`
 | proyectos | Proyectos | planeado | /proyectos | — | — | archivos | — | app_proyectos, edit_projects, delete_projects | 20-proyectos.sql |
 | disenos | Diseños | planeado | /disenos | proyectos | — | — | — | app_disenos | — |
 | manuales | Manuales | planeado | /manuales | — | — | — | — | app_manuales | 13-manuales.sql |
-| productos | Productos | disponible | /productos | — | — | — | — | app_productos, edit_productos | 22-catalogo.sql |
+| productos | Inventario | disponible | /productos | — | — | — | — | app_productos, edit_productos | 22-catalogo.sql |
 | crm | CRM | disponible | /crm | — | — | crm | — | app_crm, edit_crm, exportar_crm, ver_salud, edit_salud | 21-crm.sql |
 | cotizador | Cotizador | planeado | /cotizador | productos | crm | — | — | app_cotizador | 23-cotizador.sql |
 | gerencia | Gerencia | planeado | /gerencia | proyectos | — | facturacion | — | app_gerencia, view_billing | 26-gerencia.sql |
 | licitaciones | Licitaciones | planeado | /licitaciones | — | proyectos | licitaciones | fuentes | app_licitaciones, edit_tender_offers, delete_tender_offers | 27-licitaciones.sql |
 | sitio-web | Sitio web | planeado | /sitio-web | — | — | — | — | app_sitio-web, manage_blog, manage_projects, manage_brands, manage_notice, manage_leads, view_analytics | 28-sitio-web.sql |
-| inventario | Inventario | planeado | /inventario | productos | compras, ventas | — | — | app_inventario | — |
+| inventario | Existencias | planeado | /inventario | productos | compras, ventas | — | — | app_inventario | — |
 | compras | Compras | planeado | /compras | productos, crm | inventario | — | — | app_compras | — |
 | ventas | Ventas | planeado | /ventas | productos, crm | cotizador, inventario | — | — | app_ventas | — |
 | facturacion | Facturación | planeado | /facturacion | productos, crm | ventas, compras | facturacion | — | app_facturacion | — |

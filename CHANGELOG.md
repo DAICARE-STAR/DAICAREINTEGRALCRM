@@ -13,7 +13,8 @@ Formato: cada commit a `main` es un Paso `Mayor.Fase.Paso — descripción`. La 
 - 0.7.5 — Documentación interna del proyecto. (025abbd)
 - 0.7.6 — Productos: mientras se carga la lista, el marcador de carga ocupa el lugar de la tabla en el computador y el de las tarjetas en el celular. Abrir un producto que no existe muestra «Ese producto no existe.» con un botón para volver a la lista, en lugar de un aviso de dato no válido. Incluye una herramienta interna del proyecto. (1289313)
 - 0.7.7 — Interfaz: el buscador y los filtros de las listas de Cuentas, Contactos y Productos toman el aspecto de los demás campos del producto (mismo borde, esquinas, letra y realce al enfocar, en los tres temas) y un alto cómodo al tacto; en el celular el buscador ocupa la fila entera y los filtros se reparten sin salirse de la pantalla. Los desplegables y los textos largos de las ventanas de alta y edición se ven igual que las cajas de texto vecinas. Mientras se cargan Cuentas y Contactos, el marcador de carga ocupa el lugar de la tabla en el computador y el de las tarjetas en el celular. (4ec8e09)
-- 0.7.8 — Documentación interna del proyecto.
+- 0.7.8 — Documentación interna del proyecto. (e084ba0)
+- 0.7.9 — Inventario: el catálogo de productos pasa a llamarse Inventario en el menú, los títulos y los permisos.
 
 ## 0.2 — CRM nativo (2026-11-09)
 

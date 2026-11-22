@@ -226,12 +226,12 @@ export const MODULOS: readonly Modulo[] = [
     // 22-catalogo.sql y pantallas en src/modulos/productos/. Lo leen también
     // los módulos que dependen de él (productos_puede_leer).
     slug: 'productos',
-    nombre: 'Productos',
+    nombre: 'Inventario',
     icono: 'productos',
     ruta: '/productos',
     estado: 'disponible',
     permisos: [
-      { clave: 'app_productos', etiqueta: 'Ver Productos' },
+      { clave: 'app_productos', etiqueta: 'Ver Inventario' },
       { clave: 'edit_productos', etiqueta: 'Editar productos, categorías y unidades' },
     ],
     widgets: [],
@@ -363,7 +363,7 @@ export const MODULOS: readonly Modulo[] = [
   // el modelo que se lee: el catálogo (productos) y los terceros (crm, hoy el
   // único lugar de clientes y proveedores); lo demás es blando (PP-DEC-22).
   // Una pyme de servicios activa facturación sin inventario ni compras.
-  planeado('inventario', 'Inventario', ['productos'], ['compras', 'ventas']),
+  planeado('inventario', 'Existencias', ['productos'], ['compras', 'ventas']),
   planeado('compras', 'Compras', ['productos', 'crm'], ['inventario']),
   planeado('ventas', 'Ventas', ['productos', 'crm'], ['cotizador', 'inventario']),
   planeado('facturacion', 'Facturación', ['productos', 'crm'], ['ventas', 'compras'], ['facturacion']),
